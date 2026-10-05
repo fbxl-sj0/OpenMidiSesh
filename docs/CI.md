@@ -22,6 +22,7 @@ Android device operation or the Windows toolchain lock.
 
 `windows-release.yml` is manually dispatched from `main` and needs an
 interactive self-hosted Windows x64 desktop labelled `opensesh-release`.
+Use Actions Runner 2.327.1 or newer for the pinned Node.js 24 actions.
 Configure the supported compiler at `C:\FreeBASIC\fbc.exe`, the corrected
 fblint at `C:\fblint\fb_linter.exe`, and Python 3.9 or newer on PATH. See
 LINTING.md for the validator regression and exact reviewed identity. Verify
