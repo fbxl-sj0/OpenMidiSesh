@@ -35,7 +35,7 @@ def publish(directory: Path) -> None:
         if (not re.fullmatch(r"opensesh-[0-9A-Za-z.+-]+-" + target + r"-x86_64\.(zip|tar\.gz)", filename)
                 or report["system"] != target or report["architecture"] != "x86_64"
                 or report["source_commit"] != commit or report["tests_failed"] != 0
-                or report["tests_passed"] < 60
+                or report["tests_passed"] != (61 if target == "windows" else 60)
                 or report["built_editor"]["status"] != "pass"
                 or report["packaged_editor"]["status"] != "pass"):
             raise ValueError("Unqualified native target: " + target)

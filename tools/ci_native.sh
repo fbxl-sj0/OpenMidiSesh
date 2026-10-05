@@ -10,7 +10,7 @@ set -euo pipefail
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
 mkdir -p build/ci/bin build/ci/logs
-export PATH="$root/build/ci/bin:/usr/local/bin:/usr/pkg/bin:/usr/pkg/sbin:/usr/X11R6/bin:$PATH"
+export PATH="$root/build/ci/bin:/usr/local/bin:/usr/pkg/bin:/usr/pkg/sbin:/usr/X11R6/bin:/usr/X11R7/bin:$PATH"
 # GNU command names are prefixed on the BSDs. Limit compatibility links to
 # this job's private directory; never replace host utilities.
 for utility in timeout sha256sum; do

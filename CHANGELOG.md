@@ -11,8 +11,8 @@
 - Select the unavailable-endpoint MIDI adapter on BSD and Haiku and test its
   rejection and output-clearing contracts.
 
-The first GitHub release is being prepared from the existing 0.9.0 development
-editor. Release validation and supported-platform claims are recorded with
+The 0.9.0 development editor is published on GitHub. Native downloadable
+packages are being qualified. Release validation and platform claims are recorded with
 the release artifacts; historical review notes describe earlier snapshots.
 
 ### Release preparation

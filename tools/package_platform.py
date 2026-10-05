@@ -106,7 +106,8 @@ def package(executable: Path, tests: Path, destination: Path) -> None:
     test_text = tests.read_text()
     passed = re.findall(r"^tests_passed=(\d+)\s*$", test_text, re.MULTILINE)
     failed = re.findall(r"^tests_failed=(\d+)\s*$", test_text, re.MULTILINE)
-    if len(passed) != 1 or int(passed[0]) < 60 or failed != ["0"]:
+    expected_tests = 61 if system == "windows" else 60
+    if len(passed) != 1 or int(passed[0]) != expected_tests or failed != ["0"]:
         raise ValueError("A complete passing native test report is required.")
     built_smoke = json.loads((root / "build/ci/editor/editor-smoke.json").read_text())
     if built_smoke.get("status") != "pass":

@@ -23,24 +23,27 @@ case "$(uname -s)" in
         ;;
     FreeBSD)
         target=freebsd
-        as_root pkg install -y bash coreutils curl python312 gcc binutils \
+        as_root pkg install -y bash coreutils curl git python312 gcc binutils \
             libffi libX11 libXext libXpm libXrandr libXrender mesa-libs \
             ncurses xorg-vfbserver xauth
         ;;
     NetBSD)
         target=netbsd
+        # The stock guest uses FTP. HTTPS avoids FTP data-channel stalls under
+        # QEMU user networking. Its X11 libraries/server come from base sets.
+        printf '%s\n' 'https://cdn.NetBSD.org/pub/pkgsrc/packages/NetBSD/amd64/11.0/All' |
+            as_root tee /usr/pkg/etc/pkgin/repositories.conf >/dev/null
         as_root pkgin -y update
-        as_root pkgin -y install bash coreutils curl python312 gcc12 \
-            libffi libX11 libXext libXpm libXrandr libXrender MesaLib \
-            ncurses modular-xorg-server xauth
+        as_root pkgin -y install bash coreutils curl git python312 gcc12 \
+            libffi libXcursor libXrender MesaLib ncurses
         ;;
     OpenBSD)
         target=openbsd
-        as_root pkg_add -I bash coreutils curl python-3.12.11 gcc-11.2.0p19 g++-11.2.0p19 libffi
+        as_root pkg_add -I bash coreutils curl git python-3.12.11 gcc-11.2.0p19 g++-11.2.0p19 libffi
         ;;
     Haiku)
         target=haiku
-        pkgman install -y python312 curl libffi_devel ncurses6_devel
+        pkgman install -y python3.12 curl git haiku_devel libffi_devel ncurses6_devel
         ;;
     *) echo 'Unsupported native CI host.' >&2; exit 1 ;;
 esac
@@ -53,7 +56,12 @@ trap 'rm -rf -- "$download_root"' EXIT
 case "$target" in
     freebsd) as_root pkg install -y "$download_root/"*.pkg ;;
     netbsd) as_root pkg_add "$download_root/"*.tgz ;;
-    openbsd) as_root pkg_add -D unsigned "$download_root/"*.tgz ;;
+    openbsd)
+        # OpenBSD checks the filename against the package's embedded identity.
+        # GitHub's workflow artifact prefix is not part of that identity.
+        mv "$download_root/"*.tgz "$download_root/freebasic-1.20.4.3.tgz"
+        as_root pkg_add -D unsigned "$download_root/freebasic-1.20.4.3.tgz"
+        ;;
     haiku) pkgman install -y "$download_root/"*.hpkg ;;
 esac
 fbc -version
