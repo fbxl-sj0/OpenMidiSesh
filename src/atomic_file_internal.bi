@@ -50,13 +50,13 @@ Const ATOMIC_FILE_WRITE_THROUGH As ULong = &H8
 
 #include once "crt/stdio.bi"
 
-#ElseIf Defined(__FB_FREEBSD__) Or Defined(__FB_NETBSD__) Or Defined(__FB_OPENBSD__)
+#ElseIf Defined(__FB_FREEBSD__) Or Defined(__FB_NETBSD__) Or Defined(__FB_OPENBSD__) Or Defined(__FB_HAIKU__)
 
 #include once "crt/stdio.bi"
-#include once "crt/sys/types.bi"
-' These CRT snapshots provide pid_t but no BSD unistd.bi dispatcher. Bind only
-' the required POSIX function, using the target's own C return type.
-Declare Function atomicFile_NativeProcessId CDecl Alias "getpid" () As pid_t
+' The published BSD/Haiku CRT snapshots lack a complete unistd dispatcher;
+' FreeBSD also omits the pid_t typedef. Their native pid_t is a signed 32-bit
+' C integer. Bind only getpid, with FreeBASIC Long preserving that ABI width.
+Declare Function atomicFile_NativeProcessId CDecl Alias "getpid" () As Long
 
 #Else
 
@@ -80,8 +80,8 @@ Private Function atomicFile_ProcessId() As ULong
         a crash.
     '/
     Return CULng(Timer * 1000.0)
-#ElseIf Defined(__FB_FREEBSD__) Or Defined(__FB_NETBSD__) Or Defined(__FB_OPENBSD__)
-    Dim As pid_t processId = atomicFile_NativeProcessId()
+#ElseIf Defined(__FB_FREEBSD__) Or Defined(__FB_NETBSD__) Or Defined(__FB_OPENBSD__) Or Defined(__FB_HAIKU__)
+    Dim As Long processId = atomicFile_NativeProcessId()
     If processId < 0 Then Return 0
     Return CULng(processId)
 #Else
