@@ -63,6 +63,7 @@ def publish(directory: Path) -> None:
                     "Windows: 64-bit Windows 10 or newer. Linux: Ubuntu 26.04 or compatible glibc 2.43/X11/ALSA. "
                     "FreeBSD: 15.1 with X11. NetBSD: 11.0 with X11. OpenBSD: 7.8 with X11. Haiku: r1beta6 x86_64.\n\n"
                     "BSD and Haiku external MIDI endpoints are unavailable; editing and software synthesis are supported. "
+                    "Haiku uses a fixed editor window because of the pinned runtime's resize initialization bug. "
                     "These unsigned development builds have no physical-device or frame-pacing qualification from hosted CI.\n\n"
                     "This is distribution revision " + tag + "; the application reports " + evidence[0]["application_version"] + ".\n")
     command = ["gh", "release", "create", tag, "--verify-tag", "--title", "OpenSesh " + tag[1:],

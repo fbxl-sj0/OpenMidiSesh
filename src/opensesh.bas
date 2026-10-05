@@ -227,6 +227,16 @@ Dim As Integer session_TestSnapshotFrame = session_TestEnvironmentInteger( _
 Dim As Integer session_TestWindowWidth = SESSION_INITIAL_WIDTH
 Dim As Integer session_TestWindowHeight = SESSION_INITIAL_HEIGHT
 Dim As UInteger session_TestWindowFlags = BACKEND_WINDOW_RESIZABLE
+#If Defined(__FB_HAIKU__)
+    /'
+        The pinned Haiku runtime initializes a resizable window with a 1x1
+        framebuffer, which also invalidates widget hit testing. Its fixed
+        window preserves the requested viewport and passes native rendering.
+        Recheck the full native GUI audit before enabling resize with a newer
+        toolchain. This policy does not alter other desktop window modes.
+    '/
+    session_TestWindowFlags = BACKEND_WINDOW_FIXED
+#EndIf
 Dim As Integer session_AutomatedRenderRun = _
     session_TestSnapshotFilename <> "" OrElse _
     session_TestSmoothnessReport <> ""

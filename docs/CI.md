@@ -19,12 +19,15 @@ the Haiku desktop. Nothing runs public contributions on a trusted workstation.
 | FreeBSD x86_64 tar.gz | FreeBSD 15.1 | X11 desktop and system audio libraries |
 | NetBSD x86_64 tar.gz | NetBSD 11.0 | X11 desktop and system audio libraries |
 | OpenBSD x86_64 tar.gz | OpenBSD 7.8 | X11 desktop and system audio libraries |
-| Haiku x86_64 tar.gz | Haiku r1beta6 | Native app_server desktop |
+| Haiku x86_64 tar.gz | Haiku r1beta6 | Native app_server desktop, fixed editor window |
 
 The public FreeBASIC 1.20.4 packages are pinned by name, length and SHA-256 in
 `tools/ci_toolchains.toml`. BSD and Haiku use `midi_null.bas`, which explicitly
 reports unavailable external MIDI endpoints. Editing, software synthesis and
 file exports remain available. No separate original BeOS package is built.
+The pinned Haiku runtime initializes resizable windows at 1x1, so the editor
+uses a fixed window there. Native CI still requires the complete GUI audit
+and framebuffer checks. Enable resizing only after qualifying a newer runtime.
 
 Each job checks source integrity and archive/download failure fixtures, compiles
 with all warnings enabled, and runs the deterministic native tests. The Windows
