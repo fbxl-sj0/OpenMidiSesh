@@ -4,6 +4,9 @@
 
     File: checkbox.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for checkbox.
+
     Purpose:
 
         Declare a labeled boolean checkbox widget.

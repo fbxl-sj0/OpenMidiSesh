@@ -4,6 +4,9 @@
 
     File: rtfview.bas
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: Implements rtfview.bi; declarations there define the interface.
+
     Purpose:
 
         Parse and display bounded, read-only RTF documents.
@@ -20,7 +23,7 @@
         - document file access or navigation
         - rich text editing or hyperlink activation
         - platform-native rich text controls
-'/ 
+'/
 
 #lang "fb"
 #include once "src/widgets/rtfview.bi"
@@ -481,6 +484,7 @@ Private Function rtfview_AppendTab( _
     ByVal d As RtfViewData Ptr, ByRef parserState As RtfViewParserState _
 ) As Integer
 
+    ' fblint: disable-next-line FBL311 REASON: The loop counter bounds repeated work; the cursor or stream state supplies each value.
     For spaceIndex As Integer = 1 To 4
         If rtfview_AppendCodePoint(d, parserState, 32) = 0 Then Return 0
     Next spaceIndex
@@ -499,6 +503,7 @@ Private Sub rtfview_SetError( _
 End Sub
 
 
+' fblint: disable-next-line FBL110 FBL111 REASON: The RTF control-word dispatcher shares one bounded group and style stack.
 Private Function rtfview_ParseRtf( _
     ByVal d As RtfViewData Ptr, ByRef rtfText As Const String _
 ) As Integer
@@ -936,11 +941,12 @@ Private Function rtfview_ParsePlainText( _
             If rtfview_StartParagraph(d, parserState) = 0 Then Return 0
         Case 9
             If rtfview_AppendTab(d, parserState) = 0 Then Return 0
-        Case 0
-            ' File readers may retain the conventional trailing NUL byte.
         Case Else
-            If rtfview_AppendCodePoint(d, parserState, characterCode) = 0 _
-                Then Return 0
+            ' File readers may retain a trailing NUL; it has no display glyph.
+            If characterCode <> 0 Then
+                If rtfview_AppendCodePoint(d, parserState, characterCode) = 0 _
+                    Then Return 0
+            End If
         End Select
     Wend
 
@@ -1029,6 +1035,7 @@ Private Sub rtfview_AddLine( _
     d->visual_line_count += 1
 End Sub
 
+' fblint: disable-next-line FBL111 REASON: The layout pass handles each decoded run kind in sequence.
 Private Function rtfview_BuildLayout( _
     ByVal w As Widget Ptr, ByVal d As RtfViewData Ptr _
 ) As Integer

@@ -1,6 +1,9 @@
 /'
     Project: omaGUI
     File: splitter.bi
+
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for splitter.
     Purpose: Declare a movable divider for application panes.
     Responsibilities:
         - expose bounded parent-relative positions and input notifications

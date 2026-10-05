@@ -1,0 +1,18 @@
+# Project: OpenSesh
+# File: .editorconfig
+# Match the existing four-space source style and portable script endings.
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 4
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[vendor/**]
+# Dependency manifests require preserving the imported bytes.
+trim_trailing_whitespace = false
+
+# end of .editorconfig

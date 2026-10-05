@@ -1,0 +1,9 @@
+# Project: OpenSesh
+# File: .github/actionlint.yaml
+# Purpose: declare the trusted desktop runner label used by release CI.
+# Responsibilities: keep workflow validation aware of the repository's label.
+# This file does not register or authorize a runner.
+self-hosted-runner:
+  labels:
+    - opensesh-release
+# end of .github/actionlint.yaml

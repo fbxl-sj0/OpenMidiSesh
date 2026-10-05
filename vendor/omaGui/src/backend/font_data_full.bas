@@ -2,6 +2,9 @@
     Project: omaGUI
     ---------------
     File: font_data_full.bas
+
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI font_data_full implementation imported through omaGUI.bi.
     Purpose:
         Own embedded bitmap glyph data and initialize font pointers.
 

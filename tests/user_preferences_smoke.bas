@@ -4,6 +4,8 @@
 
     File: tests/user_preferences_smoke.bas
 
+    Module API: Test executable; process status reports failed behavioral assertions.
+
     Copyright (C) 2026 OpenSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -34,7 +36,7 @@
 
 #lang "fb"
 
-#include once "../user_preferences.bi"
+#include once "../src/user_preferences.bi"
 
 Private Sub test_Fail(ByVal messageText As String)
     Print "FAIL: "; messageText
@@ -135,7 +137,7 @@ If test_ReadData(filename) <> canonicalBlack Then _
 If Dir(filename + ".ose-tmp-*") <> "" Then _
     test_Fail "successful save left an atomic temporary file"
 
-Dim As String soundFontPath = "C:\SoundFonts\Timbres of Heaven 4.00.sf2"
+Dim As String soundFontPath = "C:\SoundFonts\Timbres of Heaven 4.00.sf2" ' fblint: disable-line FBL007 REASON: This path is parser/serialization test data; the test does not open a Windows file.
 preferences.soundFontPath = soundFontPath
 If userPreferences_Save(filename, preferences) = 0 Then _
     test_Fail "SoundFont preference could not be saved"

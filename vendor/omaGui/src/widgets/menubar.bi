@@ -4,6 +4,9 @@
 
     File: menubar.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for menubar.
+
     Purpose:
 
         Declare a portable Windows-style menu bar with bounded drop-downs.

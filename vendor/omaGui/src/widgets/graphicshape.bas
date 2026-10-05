@@ -4,6 +4,9 @@
 
     File: graphicshape.bas
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: Implements graphicshape.bi; declarations there define the interface.
+
     Purpose:
 
         Render generic primitive graphic shapes through the backend drawing
@@ -1233,7 +1236,7 @@ Private Sub graphicshape_DrawCalendarBox(ByVal x As Integer, ByVal y As Integer,
     grid_top = y + header_h
 
     If selected_day >= 1 AndAlso selected_day <= 31 Then
-        selected_col = (selected_day - 1) Mod 7
+        selected_col = (selected_day - 1) Mod 7 ' fblint: disable-line FBL406 REASON: Range checks keep the dividend nonnegative and the modulus positive before this calculation.
         selected_row = (selected_day - 1) \ 7
         backend_RectEx _
             x + (selected_col * w \ 7) + 1, _

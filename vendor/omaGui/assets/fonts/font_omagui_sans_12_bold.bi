@@ -4,6 +4,9 @@
 
     File: font_omagui_sans_12_bold.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: Embedded bitmap font tables selected by omaGUI; no runtime entry point.
+
     Purpose:
 
         Store one generated bitmap font for the omaGUI renderer.

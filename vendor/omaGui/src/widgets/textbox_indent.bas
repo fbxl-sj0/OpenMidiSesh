@@ -1,6 +1,9 @@
 /'
     Project: omaGUI
     File: textbox_indent.bas
+
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI textbox_indent implementation imported through omaGUI.bi.
     Purpose: Indent logical source lines as one bounded textbox transaction.
     Responsibilities:
         - preserve mixed line endings, non-whitespace bytes, and selection direction
@@ -67,7 +70,7 @@ Private Function textboxIndent_PrefixLength(ByRef source_text As Const String, B
         If character_code = 32 Then
             removed_columns += 1
         ElseIf character_code = 9 Then
-            removed_columns += TEXTBOX_TAB_COLUMNS - (removed_columns Mod TEXTBOX_TAB_COLUMNS)
+            removed_columns += TEXTBOX_TAB_COLUMNS - (removed_columns Mod TEXTBOX_TAB_COLUMNS) ' fblint: disable-line FBL406 REASON: The Mod operands are nonnegative; the minus sign belongs to a different expression.
         Else
             Exit While
         End If

@@ -4,6 +4,8 @@
 
     File: audio_tracks_smoke.bas
 
+    Module API: Test executable; process status reports failed behavioral assertions.
+
     Copyright (C) 2026 OpenSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -35,7 +37,7 @@
 
 #lang "fb"
 
-#include once "../audio_tracks.bi"
+#include once "../src/audio_tracks.bi"
 
 Private Function test_Le16(ByVal value As ULong) As String
     Return Chr(CInt(value And &HFF)) + Chr(CInt((value Shr 8) And &HFF))

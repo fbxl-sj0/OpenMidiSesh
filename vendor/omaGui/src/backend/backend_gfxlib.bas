@@ -3,6 +3,9 @@
     ---------------
     File: backend_gfxlib.bas
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI backend_gfxlib implementation imported through omaGUI.bi.
+
     Purpose:
         Implement omaGUI drawing and window management with FreeBASIC gfxlib.
 
@@ -170,6 +173,7 @@ Private Sub backend_SetPresentationTiming(ByVal active As Integer)
                 backend_TimerPeriodActive = -1
         End If
     ElseIf backend_TimerPeriodActive <> 0 Then
+        ' fblint: disable-next-line FBL310 REASON: The Windows-only branch uses declarations supplied by windows.bi and the system headers.
         timeEndPeriod BACKEND_TIMER_PERIOD_MILLISECONDS
         backend_TimerPeriodActive = 0
     End If
@@ -866,7 +870,7 @@ Sub backend_ClearFontPacks()
     backend_FontGeneration += 1
 
     For fontIndex As Integer = LBound(backend_FontPacks) To _
-                                UBound(backend_FontPacks)
+                                UBound(backend_FontPacks) ' fblint: disable-line FBL-ARR-004 REASON: backend_FontPacks is a fixed registry with storage present for every supported font slot.
         If backend_FontPacks(fontIndex).glyphs <> 0 Then _
             Deallocate backend_FontPacks(fontIndex).glyphs
         If backend_FontPacks(fontIndex).bitmap_storage <> 0 Then _
@@ -965,7 +969,7 @@ Function backend_LoadFontPack( _
 
     fileNumber = FreeFile
     If Open(filename For Binary Access Read As #fileNumber) <> 0 Then _
-        Return 0
+        Return 0 ' fblint: disable-line FBL-IO-004 REASON: A failed Open acquires no handle; every successful open is closed below.
     fileLength = Lof(fileNumber)
     If fileLength < BACKEND_FONT_PACK_HEADER_BYTES OrElse _
        fileLength > BACKEND_FONT_PACK_MAX_BYTES Then
@@ -1040,7 +1044,7 @@ Function backend_LoadFontPack( _
 
     newGlyphs = Callocate( _
         CULngInt(glyphCount) * SizeOf(BackendFontGlyphIndex) _
-    )
+    ) ' fblint: disable-line FBL310 REASON: The including backend translation unit declares this GUI implementation symbol.
     If newGlyphs = 0 Then Return 0
     newBitmapStorage = Allocate(bitmapStorageSize)
     If newBitmapStorage = 0 Then
@@ -1130,6 +1134,7 @@ Function backend_RaiseWindow() As Integer
         Restore only minimized windows. SW_RESTORE also unmaximizes a normal
         maximized window, which would surprise users when they open a file.
     '/
+    ' fblint: disable-next-line FBL310 REASON: The Windows-only branch uses declarations supplied by windows.bi and the system headers.
     If IsIconic(nativeHandle) <> 0 Then ShowWindow nativeHandle, SW_RESTORE
     If SetForegroundWindow(nativeHandle) = 0 Then Return 0
     Return -1
@@ -1934,7 +1939,7 @@ Function backend_ReadUTF8Codepoint( _
         If byteIndex + 1 >= textLength Then Goto invalid_sequence
         secondByte = text[byteIndex + 1]
         If secondByte < &H80 OrElse secondByte > &HBF Then _
-            Goto invalid_sequence
+            Goto invalid_sequence ' fblint: disable-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
         codepoint = ((firstByte And &H1F) Shl 6) Or _
                     (secondByte And &H3F)
         byteIndex += 2
@@ -1947,10 +1952,10 @@ Function backend_ReadUTF8Codepoint( _
         thirdByte = text[byteIndex + 2]
         If secondByte < &H80 OrElse secondByte > &HBF OrElse _
            thirdByte < &H80 OrElse thirdByte > &HBF Then _
-            Goto invalid_sequence
+            Goto invalid_sequence ' fblint: disable-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
         If (firstByte = &HE0 AndAlso secondByte < &HA0) OrElse _
            (firstByte = &HED AndAlso secondByte > &H9F) Then _
-            Goto invalid_sequence
+            Goto invalid_sequence ' fblint: disable-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
         codepoint = ((firstByte And &HF) Shl 12) Or _
                     ((secondByte And &H3F) Shl 6) Or _
                     (thirdByte And &H3F)
@@ -1966,10 +1971,10 @@ Function backend_ReadUTF8Codepoint( _
         If secondByte < &H80 OrElse secondByte > &HBF OrElse _
            thirdByte < &H80 OrElse thirdByte > &HBF OrElse _
            fourthByte < &H80 OrElse fourthByte > &HBF Then _
-            Goto invalid_sequence
+            Goto invalid_sequence ' fblint: disable-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
         If (firstByte = &HF0 AndAlso secondByte < &H90) OrElse _
            (firstByte = &HF4 AndAlso secondByte > &H8F) Then _
-            Goto invalid_sequence
+            Goto invalid_sequence ' fblint: disable-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
         codepoint = ((firstByte And &H7) Shl 18) Or _
                     ((secondByte And &H3F) Shl 12) Or _
                     ((thirdByte And &H3F) Shl 6) Or _
@@ -3096,6 +3101,7 @@ Sub backend_SaveSnapshot(ByVal filename As String)
     Dim file_size As UInteger
     Dim x As Integer
     Dim y As Integer
+    ' fblint: disable-next-line FBL311 REASON: The loop counter bounds repeated work; the cursor or stream state supplies each value.
     Dim pad_index As Integer
     Dim screen_buffer As Any Ptr
     Dim row_ptr As UByte Ptr

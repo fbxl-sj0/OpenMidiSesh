@@ -4,6 +4,9 @@
 
     File: widgets.bas
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: Implements widgets.bi; declarations there define the interface.
+
     Purpose:
         Manage widget registration, hierarchy, input, drawing, and layout.
 

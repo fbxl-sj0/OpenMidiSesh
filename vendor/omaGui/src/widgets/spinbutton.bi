@@ -4,6 +4,9 @@
 
     File: spinbutton.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for spinbutton.
+
     Purpose:
 
         Declare a bounded horizontal or vertical spin-button widget.

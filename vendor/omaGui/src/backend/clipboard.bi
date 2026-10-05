@@ -4,6 +4,9 @@
 
     File: clipboard.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for clipboard.
+
     Purpose:
 
         Declare the bounded cross-platform clipboard used by editable widgets.

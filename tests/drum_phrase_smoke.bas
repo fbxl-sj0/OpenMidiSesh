@@ -2,6 +2,8 @@
     Project: OpenSesh
     File: tests/drum_phrase_smoke.bas
 
+    Module API: Test executable; process status reports failed behavioral assertions.
+
     Copyright (C) 2026 OpenSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -16,7 +18,7 @@
 '/
 
 #lang "fb"
-#include once "../drum_phrase.bi"
+#include once "../src/drum_phrase.bi"
 
 Private Sub test_Check(ByVal condition As Integer, ByVal messageText As String)
     If condition <> 0 Then

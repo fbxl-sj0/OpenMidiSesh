@@ -4,6 +4,9 @@
 
     File: menu.bas
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: Implements menu.bi; declarations there define the interface.
+
     Purpose:
 
         Implement portable popup menus and owned submenu trees.
@@ -973,7 +976,8 @@ End Sub
 ' -------------------------------------------------------------------------
 
 Private Function menu_NodeAtPoint(ByVal root As Widget Ptr, ByVal x As Integer, ByVal y As Integer) As Widget Ptr
-    Dim As Widget Ptr current = root, result
+    Dim As Widget Ptr current = root
+    Dim As Widget Ptr result
     Dim As Integer depth
     While current <> 0 AndAlso depth < MENU_MAX_NESTING
         If x >= current->ax AndAlso x < current->ax + current->w AndAlso _
@@ -1000,6 +1004,7 @@ End Sub
 Private Sub menu_MoveSelection(ByVal m As Widget Ptr, ByVal direction As Integer)
     Dim As MenuData Ptr d = m->data
     Dim As Integer candidate = d->selected
+    ' fblint: disable-next-line FBL311 REASON: The loop counter bounds repeated work; the cursor or stream state supplies each value.
     For attempt As Integer = 0 To d->count - 1
         candidate += direction
         If candidate < 0 Then candidate = d->count - 1
@@ -1190,7 +1195,8 @@ Sub menu_Update(ByVal w As Widget Ptr)
         If handledKeys <> 0 Then Exit Sub
     End If
 
-    Dim As Integer mouseX = input_MouseX(), mouseY = input_MouseY()
+    Dim As Integer mouseX = input_MouseX()
+    Dim As Integer mouseY = input_MouseY()
     Dim As Integer mouseButtons = input_MouseButtons()
     Dim As Widget Ptr pointerMenu = menu_NodeAtPoint(w, mouseX, mouseY)
     Dim As Integer pointerIndex = MENU_POINTER_OUTSIDE

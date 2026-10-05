@@ -31,8 +31,8 @@
 
 #lang "fb"
 
-#include once "../midi_output_stop_internal.bi"
-#include once "../midi_output_setup_internal.bi"
+#include once "../src/midi_output_stop_internal.bi"
+#include once "../src/midi_output_setup_internal.bi"
 
 Dim Shared test_Sustain(0 To 15) As Integer
 Dim Shared test_Sostenuto(0 To 15) As Integer

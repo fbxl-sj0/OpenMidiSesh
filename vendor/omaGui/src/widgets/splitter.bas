@@ -1,6 +1,9 @@
 /'
     Project: omaGUI
     File: splitter.bas
+
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: Implements splitter.bi; declarations there define the interface.
     Purpose: Implement a portable divider controlled by mouse or keyboard.
     Responsibilities:
         - preserve the grab offset and clamp movement to the host's range

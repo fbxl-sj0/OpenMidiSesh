@@ -4,6 +4,9 @@
 
     File: pixelsurface.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for pixelsurface.
+
     Purpose:
 
         Declare a bounded, retained sparse pixel surface for widgets that

@@ -4,6 +4,8 @@
 
     File: tests/soundfont_compatibility.bas
 
+    Module API: Test executable; process status reports failed behavioral assertions.
+
     Copyright (C) 2026 OpenSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -29,8 +31,8 @@
 
 #lang "fb"
 
-#include once "../soundfont_bank.bi"
-#include once "../soundfont_synth.bi"
+#include once "../src/soundfont_bank.bi"
+#include once "../src/soundfont_synth.bi"
 
 Private Sub compatibility_Fail(ByVal messageText As String)
     soundfontSynth_Shutdown()

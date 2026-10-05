@@ -3,6 +3,9 @@
     ---------------
     File: widgets.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for widgets.
+
     Purpose:
 
         Central widget registry and base structure definitions.
@@ -37,7 +40,7 @@ Const GUI_MODAL_ROOT_MAXIMUM_DEPTH As Integer = 64
 ' Type Definitions
 ' -------------------------------------------------------------------------
 
-Type Widget_Struct_
+Type Widget_Struct_ ' fblint: disable-line FBL910 REASON: This record is process-local state, never a raw serialized or external ABI layout.
     As String name
     As Integer x, y, w, h
     As Integer ax, ay

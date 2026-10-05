@@ -4,6 +4,8 @@
 
     File: tests/ui_icons_smoke.bas
 
+    Module API: Test executable; process status reports failed behavioral assertions.
+
     Copyright (C) 2026 OpenSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -30,7 +32,7 @@
 
 #lang "fb"
 
-#include once "../ui_icons.bi"
+#include once "../src/ui_icons.bi"
 
 ' -------------------------------------------------------------------------
 ' Test helpers and byte-level coverage contract

@@ -1,11 +1,18 @@
 /'
     Project: omaGUI
     File: listbox_selection.bi
+
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for listbox_selection.
     Purpose: Keep multiple row selection separate from keyboard focus.
     Responsibilities: Checked selection APIs and simple/extended gestures.
     This file intentionally does NOT own rendering, scrolling or input polling.
     Private include in listbox.bas. All calls run on the GUI thread. Row flags
     are inline bounded storage, so selection adds no separately owned memory.
+
+    This file intentionally does NOT contain:
+
+        - application document state or lifecycle policy
 '/
 
 #ifndef __LISTBOX_SELECTION_BI__

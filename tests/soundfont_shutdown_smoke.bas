@@ -22,8 +22,8 @@
 
 #lang "fb"
 
-#include once "../soundfont_synth.bi"
-#include once "../soundfont_bank.bi"
+#include once "../src/soundfont_synth.bi"
+#include once "../src/soundfont_bank.bi"
 
 Const TEST_SHUTDOWN_TIMEOUT_SECONDS As Double = 3.0
 Dim Shared test_Mutex As Any Ptr

@@ -4,6 +4,8 @@
 
     File: tests/audio_formats_malformed_smoke.bas
 
+    Module API: Test executable; process status reports failed behavioral assertions.
+
     Copyright (C) 2026 OpenSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -30,7 +32,7 @@
 
 #lang "fb"
 
-#include once "../audio_tracks.bi"
+#include once "../src/audio_tracks.bi"
 
 ' -------------------------------------------------------------------------
 ' Binary and text fixture helpers

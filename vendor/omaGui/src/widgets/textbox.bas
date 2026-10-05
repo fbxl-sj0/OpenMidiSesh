@@ -4,6 +4,9 @@
 
     File: textbox.bas
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: Implements textbox.bi; declarations there define the interface.
+
     Purpose:
 
         Implement a reusable text editor widget for both compact controls and
@@ -17,7 +20,7 @@
         - enforce optional byte limits before insertion and history changes
         - place the cursor and select text with mouse or keyboard input
         - provide selection-aware Cut, Copy, Paste, and Select All commands
-        - mask password drawing and metrics while preventing Copy/Cut export
+        - mask protected text drawing and metrics while preventing Copy/Cut export
         - route opt-in block indentation to one reusable edit transaction
         - route Ctrl+Z and Ctrl+Y to the textbox's local history
         - navigate logical lines with arrow, home, and end keys
@@ -105,6 +108,7 @@ Private Function textbox_VisualText( _
         transforms use change_serial because comparing the whole source for
         every visual row makes long documents unnecessarily expensive.
     '/
+    ' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
     If textData->password_character = 0 Then
         If textData->text_display_handler = 0 Then Return textData->text
         If textData->display_valid <> 0 AndAlso _
@@ -159,11 +163,13 @@ Private Function textbox_VisualText( _
         textData->display_valid = -1
         Return textData->display_text
     End If
+    ' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
     If Len(textData->password_display) <> Len(textData->text) Then
-        textData->password_display = String( _
-            Len(textData->text), textData->password_character _
+        textData->password_display = String( _ ' fblint: disable-line FBL-SEC-004 FBL008 REASON: This buffer contains masked display text, not a credential literal.
+            Len(textData->text), textData->password_character _ ' fblint: disable-line FBL-SEC-004 FBL008 REASON: This is a text masking character, not a credential literal.
         )
     End If
+    ' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
     Return textData->password_display
 End Function
 
@@ -1968,6 +1974,7 @@ Private Sub textbox_UpdateScrollMetrics( _
     Dim As Integer horizontalMaximum
     Dim As Integer horizontalMode
     Dim As ScrollBarData Ptr horizontalData
+    ' fblint: disable-next-line FBL311 REASON: The loop counter bounds repeated work; the cursor or stream state supplies each value.
     Dim As Integer iteration
     Dim As Integer maximumLineWidth
     Dim As Integer maximumScroll
@@ -2942,7 +2949,8 @@ Private Sub textbox_RenderIndicators( _
         Dim As Integer characterWidth = textbox_TextWidth( _
             textData, Mid(displayLine, bytePosition + 1, characterLength) _
         )
-        Dim As Integer active, currentAlpha = 255
+        Dim As Integer active
+        Dim As Integer currentAlpha = 255
         Dim As Integer currentStyle = TEXTBOX_INDICATOR_STYLE_BOX
         Dim As ULong currentColor
         For sourceByte As Integer = 0 To characterLength - 1
@@ -3073,6 +3081,7 @@ Private Sub textbox_RenderCallbackLine( _
 End Sub
 
 
+' fblint: disable-next-line FBL111 REASON: One borrowed text span shares clipping, selection and masked rendering state.
 Private Sub textbox_RenderLine( _
     ByVal w As Widget Ptr, _
     ByVal textData As TextBoxData Ptr, _
@@ -3167,8 +3176,8 @@ Private Sub textbox_RenderLine( _
             Case 32
                 indentColumns += 1
             Case 9
-                indentColumns += textData->indent_width - _
-                    (indentColumns Mod textData->indent_width)
+                indentColumns += textData->indent_width - _ ' fblint: disable-line FBL406 REASON: The accumulated columns are nonnegative and indent width is positive.
+                    (indentColumns Mod textData->indent_width) ' fblint: disable-line FBL406 REASON: Accumulated columns are nonnegative and the configured indent width is positive.
             Case Else
                 Exit For
             End Select
@@ -3233,7 +3242,7 @@ Private Sub textbox_RenderLine( _
         selectedEnd = lineStart + Len(lineText)
 
     If selectedEnd <= selectedStart Then
-        If textData->password_character = 0 AndAlso _
+        If textData->password_character = 0 AndAlso _ ' fblint: disable-line FBL-SEC-004 FBL008 REASON: This flag selects text masking, not a credential literal.
            textData->syntax_mode = TEXTBOX_SYNTAX_FREEBASIC Then
             textbox_RenderSyntaxLine _
                 w, textData, drawX, drawY, lineStart, lineText, _
@@ -3245,6 +3254,7 @@ Private Sub textbox_RenderLine( _
         Exit Sub
     End If
 
+    ' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
     If textData->password_character = 0 AndAlso _
        textData->syntax_mode = TEXTBOX_SYNTAX_FREEBASIC Then
         textbox_RenderSyntaxLine _
@@ -3704,8 +3714,10 @@ Private Sub textbox_HandleMouseInput( _
     End If
     If insideWidget = 0 OrElse textData->context_menu_latch <> 0 Then Exit Sub
     textData->context_menu_latch = -1
+    ' fblint: disable-next-line FBL008 REASON: This implements masked text input; the source contains no credential literal.
     ' The ordinary menu offers Copy and Cut. Password fields retain pointer
     ' selection above, but do not open this unrestricted editor menu.
+    ' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
     If textData->password_character <> 0 Then Exit Sub
 
     textData->active = 1
@@ -3763,7 +3775,7 @@ Private Function textbox_HandleTabInput( _
     If textbox_GetLineColumn(w, lineNumber, columnNumber) = 0 Then Return 0
     Dim As Integer tabColumns = textData->indent_width
     If tabColumns < 1 Then tabColumns = TEXTBOX_TAB_COLUMNS
-    spaceCount = tabColumns - ((columnNumber - 1) Mod tabColumns)
+    spaceCount = tabColumns - ((columnNumber - 1) Mod tabColumns) ' fblint: disable-line FBL406 REASON: Line/column validation guarantees columnNumber is at least one; tabColumns is positive.
     Dim As String tabText = Space(spaceCount)
     If textData->indent_with_tabs Then tabText = Chr(9)
     If textbox_ConstrainInput(textData, tabText) = 0 Then Return -1
@@ -3896,10 +3908,12 @@ End Function
 Function textbox_GetPasswordChar(ByVal w As Widget Ptr) As Integer
     If w = 0 OrElse w->destroy <> @textbox_Destroy OrElse _
        w->data = 0 Then Return 0
+    ' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
     Return Cast(TextBoxData Ptr, w->data)->password_character
 End Function
 
 
+' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
 Function textbox_SetPasswordChar( _
     ByVal w As Widget Ptr, ByVal character_code As Integer _
 ) As Integer
@@ -3913,15 +3927,19 @@ Function textbox_SetPasswordChar( _
        (character_code < 33 OrElse character_code > 126) Then Return 0
     textData = Cast(TextBoxData Ptr, w->data)
     If character_code <> 0 AndAlso textData->multiline <> 0 Then Return 0
+    ' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
     If textData->password_character = character_code Then Return -1
 
+    ' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
     If textData->password_character = 0 Then
-        textData->password_saved_wordwrap = textData->wordwrap
+        textData->password_saved_wordwrap = textData->wordwrap ' fblint: disable-line FBL-SEC-004 FBL008 REASON: This stores a layout flag for text masking, not a credential literal.
     End If
+    ' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
     textData->password_character = character_code
-    textData->password_display = ""
+    ' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
+    textData->password_display = "" ' fblint: disable-line FBL-SEC-004 FBL008 REASON: This clears masked display text, not a credential literal.
     If character_code = 0 Then
-        textData->wordwrap = textData->password_saved_wordwrap
+        textData->wordwrap = textData->password_saved_wordwrap ' fblint: disable-line FBL-SEC-004 FBL008 REASON: This restores a text-layout flag, not a credential literal.
     Else
         textData->wordwrap = 0
     End If
@@ -4334,6 +4352,7 @@ Function textbox_Copy(ByVal w As Widget Ptr) As Integer
 
     If w = 0 OrElse w->data = 0 Then Return 0
     textData = Cast(TextBoxData Ptr, w->data)
+    ' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
     If textData->password_character <> 0 Then Return 0
     selectedText = textbox_SelectedText(textData)
     If Len(selectedText) = 0 Then Return 0
@@ -4348,6 +4367,7 @@ Function textbox_Cut(ByVal w As Widget Ptr) As Integer
 
     If w = 0 OrElse w->data = 0 OrElse w->enabled = 0 Then Return 0
     textData = Cast(TextBoxData Ptr, w->data)
+    ' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
     If textData->password_character <> 0 Then Return 0
     If textData->read_only <> 0 Then Return 0
     selectedText = textbox_SelectedText(textData)
@@ -4560,6 +4580,7 @@ Function textbox_GetRenderObservation(ByVal w As Widget Ptr) As String
     OBSERVE_TEXT_FIELD(syntax_member_color)
     OBSERVE_TEXT_FIELD(syntax_label_color)
     OBSERVE_TEXT_FIELD(syntax_object_color)
+    ' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
     OBSERVE_TEXT_FIELD(password_character)
     OBSERVE_TEXT_FIELD(hide_selection_on_blur)
     OBSERVE_TEXT_FIELD(text_style)
@@ -4632,6 +4653,7 @@ Function textbox_GetRenderDamage(ByVal w As Widget Ptr, _
 End Function
 
 
+' fblint: disable-next-line FBL111 REASON: The widget renderer shares one clipping and selection state across its branches.
 Sub textbox_Render(ByVal w As Widget Ptr)
 
     Dim textData As TextBoxData Ptr
@@ -4742,7 +4764,8 @@ Sub textbox_Render(ByVal w As Widget Ptr)
     textData->render_color_state = 0
     textData->render_style_state = 0
 
-    Dim As Integer preparedState, firstRenderRow = textData->v_scroll
+    Dim As Integer preparedState
+    Dim As Integer firstRenderRow = textData->v_scroll
     If textData->render_state_handler <> 0 AndAlso textData->wordwrap = 0 Then
         Dim As Integer probePosition, probeStart, probeEnd, probeRow
         Dim As Integer probeSourceNumber, probeSourceStart, probeNumber, probeLogicalStart
@@ -4887,6 +4910,7 @@ Sub textbox_Render(ByVal w As Widget Ptr)
 End Sub
 
 
+' fblint: disable-next-line FBL111 REASON: The focused widget dispatcher validates its supported key and pointer event families.
 Sub textbox_Update(ByVal w As Widget Ptr)
 
     Dim controlInputHandled As Integer

@@ -4,6 +4,9 @@
 
     File: toolbar.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for toolbar.
+
     Purpose:
 
         Declare a portable classic command toolbar.

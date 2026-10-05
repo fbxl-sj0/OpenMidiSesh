@@ -19,7 +19,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $buildScript = Join-Path $projectRoot 'build_editor_android.ps1'
-$versionSource = Get-Content -LiteralPath (Join-Path $projectRoot 'version.bi') -Raw
+$versionSource = Get-Content -LiteralPath (Join-Path $projectRoot 'src\version.bi') -Raw
 $versionMatch = [regex]::Match($versionSource,
     '(?m)^Const OSE_VERSION_TEXT As String = "([^"\r\n]+)"')
 if (-not $versionMatch.Success) { throw 'The product display version was not found.' }

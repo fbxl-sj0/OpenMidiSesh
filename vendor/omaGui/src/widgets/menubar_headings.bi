@@ -1,11 +1,18 @@
 /'
     Project: omaGUI
     File: menubar_headings.bi
+
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for menubar_headings.
     Purpose: Maintain mutable heading state for the native menu bar.
     Responsibilities: compact visible headings and gate navigation/activation.
     This private implementation include contains no platform menu calls.
     The GUI thread owns all state. Metadata changes cancel any pending press
     before moving headings, so release cannot activate a different command.
+
+    This file intentionally does NOT contain:
+
+        - application document state or lifecycle policy
 '/
 #ifndef __MENUBAR_HEADINGS_BI__
 #define __MENUBAR_HEADINGS_BI__
@@ -31,6 +38,7 @@ End Function
 
 Private Function menubar_NextHeading(ByVal bar_data As MenuBarData Ptr, ByVal current_menu As Integer, ByVal direction As Integer) As Integer
     If bar_data = 0 OrElse bar_data->menu_count = 0 Then Return -1
+    ' fblint: disable-next-line FBL311 REASON: The loop counter bounds repeated work; the cursor or stream state supplies each value.
     For attempt As Integer = 1 To bar_data->menu_count
         current_menu += direction
         If current_menu < 0 Then current_menu = bar_data->menu_count - 1

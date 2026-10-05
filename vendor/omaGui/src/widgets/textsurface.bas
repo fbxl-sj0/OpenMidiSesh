@@ -1,9 +1,15 @@
 /'
     Project: omaGUI
     File: textsurface.bas
+
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: Implements textsurface.bi; declarations there define the interface.
     Purpose: Retain and render bounded, individually colored byte cells.
     Responsibilities: Transactional allocation, clipped writes, and cell redraw.
-    This file intentionally does NOT contain widget creation, input, or PRINT
+
+    This file intentionally does NOT contain:
+
+        - widget creation, input, or PRINT
         formatting. The caller owns layout and cursor advancement.
 
     Ownership and threading: each surface owns one zeroed byte allocation;

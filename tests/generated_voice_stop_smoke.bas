@@ -42,7 +42,7 @@
 #lang "fb"
 
 #include once "sfxlib_raw.bi"
-#include once "../generated_voice_stop_internal.bi"
+#include once "../src/generated_voice_stop_internal.bi"
 
 Declare Sub test_RuntimeLock CDecl Alias "fb_sfxRuntimeLock" ()
 Declare Sub test_RuntimeUnlock CDecl Alias "fb_sfxRuntimeUnlock" ()
@@ -97,6 +97,9 @@ Private Sub test_StopWorker(ByVal unused As Any Ptr)
 End Sub
 
 Private Sub test_CheckStopExclusion()
+    ' Keep counter storage outside the conditional loop. Generated-C builds
+    ' must retain its initializer across the early Exit For paths as well.
+    Dim As Integer observation = 0 ' fblint: disable-line FBL311 REASON: This counter bounds repeated stop-exclusion observations.
     test_StopMutex = MutexCreate()
     If test_StopMutex = 0 Then
         test_Fail "could not create stop-worker handshake"
@@ -129,7 +132,7 @@ Private Sub test_CheckStopExclusion()
     ' The rendering owner retains its lock while the other thread attempts
     ' the production helper. An unlocked helper silences this live fixture.
     If Len(failureText) = 0 Then
-        For observation As Integer = 1 To 100
+        For observation = 1 To 100 ' fblint: disable-line FBL311 REASON: The counter bounds repeated stop-exclusion observations.
             If test_RenderEnergy() <= 0.000001 Then
                 failureText = "concurrent Stop changed a renderer-owned voice"
                 Exit For
@@ -155,7 +158,7 @@ Private Sub test_CheckStopExclusion()
         test_Fail "concurrent Stop did not finish after the renderer unlocked"
 End Sub
 
-If Environ("SFXLIB_DRIVER") <> "null" Then _
+If Environ("SFXLIB_DRIVER") <> "null" Then _ ' fblint: disable-line FBL750 REASON: The runner selects the null audio driver; this test rejects a missing or different driver explicitly.
     test_Fail "set SFXLIB_DRIVER=null before running this test"
 If sfxlib.RawOpen() <= 0 Then
     test_Fail "null raw output could not be initialized"

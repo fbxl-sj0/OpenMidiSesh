@@ -36,10 +36,10 @@
 
 #lang "fb"
 
-#include once "../audio_tracks.bi"
-#include once "../audio_sample_slots.bi"
-#include once "../wav_export_sfx.bi"
-#include once "../sfx_runtime.bi"
+#include once "../src/audio_tracks.bi"
+#include once "../src/audio_sample_slots.bi"
+#include once "../src/wav_export_sfx.bi"
+#include once "../src/sfx_runtime.bi"
 
 Const TEST_SAMPLE_RATE As ULong = 8000
 Const TEST_SAMPLE_FRAMES As ULong = 1000
@@ -53,10 +53,8 @@ Const TEST_HIGH_CROSSING_MIN As Integer = 140
 Const TEST_USEFUL_PEAK As Integer = 1000
 
 Declare Sub fb_sfxUpdate CDecl Alias "fb_sfxUpdate" (ByVal frames As Long)
-Declare Sub fb_sfxForegroundFeedBegin CDecl _
-    Alias "fb_sfxForegroundFeedBegin" ()
-Declare Sub fb_sfxForegroundFeedEnd CDecl _
-    Alias "fb_sfxForegroundFeedEnd" ()
+Declare Sub fb_sfxForegroundFeedBegin CDecl Alias "fb_sfxForegroundFeedBegin" ()
+Declare Sub fb_sfxForegroundFeedEnd CDecl Alias "fb_sfxForegroundFeedEnd" ()
 
 ' -------------------------------------------------------------------------
 ' Test fixture helpers
@@ -167,7 +165,7 @@ Private Function test_AnalyzeWave( _
     ' wav_export_sfx writes the canonical 44-byte PCM container.
     Seek #fileNumber, 45
     Dim As Integer previousSign
-    For frameIndex As ULongInt = 0 To waveInfo.sampleFrames - 1
+    For frameIndex As ULongInt = 0 To waveInfo.sampleFrames - 1 ' fblint: disable-line FBL311 REASON: The counter bounds sequential reads of the validated sample frame count.
         Dim As Short sampleValue
         Get #fileNumber, , sampleValue
         channelIndex = 1

@@ -4,6 +4,8 @@
 
     File: tests/selected_note_playback_smoke.bas
 
+    Module API: Test executable; process status reports failed behavioral assertions.
+
     Copyright (C) 2026 OpenSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -32,10 +34,10 @@
 
 #lang "fb"
 
-#include once "../midi_model.bi"
-#include once "../note_selection.bi"
-#include once "../selected_note_playback.bi"
-#include once "../playback_timing.bi"
+#include once "../src/midi_model.bi"
+#include once "../src/note_selection.bi"
+#include once "../src/selected_note_playback.bi"
+#include once "../src/playback_timing.bi"
 
 Private Sub test_Fail(ByVal messageText As String)
     Print "FAIL: "; messageText

@@ -4,6 +4,9 @@
 
     File: subwindow.bas
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: Implements subwindow.bi; declarations there define the interface.
+
     Purpose:
         Implement a movable, resizable, ordered, closable child window.
 

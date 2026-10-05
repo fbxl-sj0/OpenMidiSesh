@@ -4,6 +4,9 @@
 
     File: confirmdialog.bas
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: Implements confirmdialog.bi; declarations there define the interface.
+
     Purpose:
 
         Implement generated-widget modal decision windows.

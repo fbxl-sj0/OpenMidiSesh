@@ -4,6 +4,9 @@
 
     File: menubar.bas
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: Implements menubar.bi; declarations there define the interface.
+
     Purpose:
 
         Implement a portable Windows-style menu bar with bounded drop-downs.

@@ -4,6 +4,9 @@
 
     File: timerwidget.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for timerwidget.
+
     Purpose:
 
         Declare a portable nonvisual interval timer widget.

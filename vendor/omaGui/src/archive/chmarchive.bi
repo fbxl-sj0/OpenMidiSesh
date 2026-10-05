@@ -4,6 +4,9 @@
 
     File: chmarchive.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for chmarchive.
+
     Purpose:
 
         Declare a read-only, on-demand reader for Microsoft Compiled HTML
@@ -23,7 +26,7 @@
 
     The archive and LZX implementation are based on the LGPL-2.1-or-later
     libmspack implementation. See LICENSES/LGPL-2.1.txt.
-'/ 
+'/
 
 #ifndef __OMAGUI_CHMARCHIVE_BI__
 #define __OMAGUI_CHMARCHIVE_BI__

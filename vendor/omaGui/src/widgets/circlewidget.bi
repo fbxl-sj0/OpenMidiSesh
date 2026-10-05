@@ -4,6 +4,9 @@
 
     File: circlewidget.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for circlewidget.
+
     Purpose:
 
         Declare a registry-managed circle drawing widget.

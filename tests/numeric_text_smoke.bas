@@ -4,6 +4,8 @@
 
     File: numeric_text_smoke.bas
 
+    Module API: Test executable; process status reports failed behavioral assertions.
+
     Copyright (C) 2026 OpenSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -30,7 +32,7 @@
 
 #lang "fb"
 
-#include once "../numeric_text.bi"
+#include once "../src/numeric_text.bi"
 
 Private Sub test_Fail(ByVal messageText As String)
     Print "ERROR: "; messageText

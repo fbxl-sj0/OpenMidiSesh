@@ -1733,6 +1733,7 @@ needed by application code.
   `circlewidget_Create`, and `curvewidget_Create`
 - Label state: `label_SetFont`, `label_SetWordWrap`, and
   `label_GetRenderedLineCount`, `label_SetTextColor`, `label_GetTextColor`,
+  `label_SetTextStyle`, `label_GetTextStyle`,
   `label_SetBackgroundColor`, `label_ClearBackgroundColor`, and
   `label_GetBackgroundColor`
 - Button state: `button_SetBackgroundColor`, `button_ClearBackgroundColor`, and

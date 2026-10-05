@@ -20,7 +20,15 @@
         - the license text
 -->
 
-# Shared omaGUI tree
+# omaGUI dependency snapshot
+
+OpenSesh maintains this copy downstream. The release preparation includes
+source documentation, narrowly explained lint annotations, CSS selector bounds
+checks and a safe unallocated-image probe. It retains the existing API and
+third-party license notices, and includes additive portable label text styles.
+These edits have not been synchronized to the
+other local projects. The manifests identify the current bytes, rather than
+claiming an upstream commit or unchanged shared-tree identity.
 
 This directory is the common omaGUI development tree. `TREE.sha256` records
 every file in the tree except itself, including this document and

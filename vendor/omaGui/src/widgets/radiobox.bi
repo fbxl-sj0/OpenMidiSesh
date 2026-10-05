@@ -4,6 +4,9 @@
 
     File: radiobox.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for radiobox.
+
     Purpose:
 
         Declare a labeled radio-button widget with registry-wide grouping.

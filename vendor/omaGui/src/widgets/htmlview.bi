@@ -4,6 +4,9 @@
 
     File: htmlview.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for htmlview.
+
     Purpose:
 
         Declare a small, portable HTML document viewer widget.
@@ -213,7 +216,7 @@ Declare Sub htmlview_SetImageHandler( _
     stylesheets or other small text resources from an application-owned
     namespace such as "chm://style.css". Returning zero allows ordinary
     local-file loading only when the resolved path is not a URI scheme.
-'/ 
+'/
 Declare Sub htmlview_SetResourceHandler( _
     ByVal htmlWidget As Widget Ptr, _
     ByVal handler As Any Ptr, _

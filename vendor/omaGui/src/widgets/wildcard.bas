@@ -4,6 +4,9 @@
 
     File: wildcard.bas
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: Implements wildcard.bi; declarations there define the interface.
+
     Purpose:
 
         Match filename patterns consistently on every supported backend.

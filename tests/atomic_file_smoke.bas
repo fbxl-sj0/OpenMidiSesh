@@ -37,7 +37,7 @@
 
 #lang "fb"
 
-#include once "../atomic_file_internal.bi"
+#include once "../src/atomic_file_internal.bi"
 
 Private Sub test_Fail(ByVal messageText As String)
     Print "FAIL: "; messageText

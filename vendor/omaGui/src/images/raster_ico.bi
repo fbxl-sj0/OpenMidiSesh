@@ -1,6 +1,9 @@
 /'
     Project: omaGUI Portable Raster Images
     File: raster_ico.bi
+
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for raster_ico.
     Purpose: Decode classic ICO bitmaps without platform image APIs.
     Responsibilities:
         - validate the directory and first image's DIB, palette, and masks
@@ -39,6 +42,7 @@ Private Function rasterico_Decode( _
     If entryCount = 0 OrElse entryCount > (byteCount - 6) \ 16 Then Return 0
     ' Check every entry span even though only the first frame is decoded.
     For entryIndex As Long = 0 To entryCount - 1
+        ' fblint: disable-next-line FBL-NUM-002 REASON: The offset operand is explicitly widened before multiplication; ICO dimensions are bounded to 256.
         Dim As LongInt entryOffset = 6 + CLngInt(entryIndex) * 16
         Dim As ULong spanOffset, spanLength
         rasterimage_ReadU32LE bytes(), byteCount, entryOffset + 8, spanLength
@@ -83,6 +87,7 @@ Private Function rasterico_Decode( _
     errorMessage = "ICO bitmap palette or masks are truncated"
     If andOffset + CLngInt(andStride) * imageHeight > CLngInt(imageOffset) + imageLength Then Return 0
     For colorIndex As Long = 0 To CLng(colorCount) - 1
+        ' fblint: disable-next-line FBL-NUM-002 REASON: The offset operand is explicitly widened before multiplication; ICO dimensions are bounded to 256.
         Dim As LongInt offsetValue = paletteOffset + colorIndex * 4
         paletteColors(colorIndex) = RGB(bytes(offsetValue + 2), bytes(offsetValue + 1), bytes(offsetValue))
     Next colorIndex
@@ -98,11 +103,14 @@ Private Function rasterico_Decode( _
         Return 0
     End If
     For rowIndex As Long = 0 To imageHeight - 1
+        ' fblint: disable-next-line FBL-NUM-002 REASON: The offset operand is explicitly widened before multiplication; ICO dimensions are bounded to 256.
         Dim As LongInt xorRow = xorOffset + CLngInt(imageHeight - 1 - rowIndex) * xorStride
+        ' fblint: disable-next-line FBL-NUM-002 REASON: The offset operand is explicitly widened before multiplication; ICO dimensions are bounded to 256.
         Dim As LongInt andRow = andOffset + CLngInt(imageHeight - 1 - rowIndex) * andStride
         For columnIndex As Long = 0 To imageWidth - 1
             Dim As ULong pixelColor
             If bitCount = 24 Then
+                ' fblint: disable-next-line FBL-NUM-002 REASON: The offset operand is explicitly widened before multiplication; ICO dimensions are bounded to 256.
                 Dim As LongInt offsetValue = xorRow + columnIndex * 3
                 pixelColor = RGB(bytes(offsetValue + 2), bytes(offsetValue + 1), bytes(offsetValue))
             Else
@@ -128,6 +136,7 @@ Private Function rasterico_Decode( _
             Else
                 pixelColor Or= &hFF000000UL
             End If
+            ' fblint: disable-next-line FBL-PTR-019 FBL525 REASON: ImageInfo validates pitch and size before rowIndex and columnIndex traverse the declared dimensions.
             Cast(ULong Ptr, Cast(UByte Ptr, pixelBytes) + rowIndex * pitch)[columnIndex] = pixelColor
         Next columnIndex
     Next rowIndex

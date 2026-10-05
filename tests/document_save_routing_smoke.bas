@@ -29,7 +29,7 @@
 
 #lang "fb"
 
-#include once "../document_save_routing.bi"
+#include once "../src/document_save_routing.bi"
 
 Dim As String projectFilename = "song.ose"
 Dim As String commandLineMidiFilename = "render.mid"

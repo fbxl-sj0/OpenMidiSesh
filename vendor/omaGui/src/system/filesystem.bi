@@ -4,6 +4,9 @@
 
     File: filesystem.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for filesystem.
+
     Purpose:
 
         Expose the small filesystem operations needed by portable widgets and
@@ -19,7 +22,7 @@
         - file content loading or saving policy
         - file dialog layout or application search behavior
         - graphics, input, or window management
-'/ 
+'/
 
 #ifndef __SYSTEM_FILESYSTEM_BI__
 #define __SYSTEM_FILESYSTEM_BI__

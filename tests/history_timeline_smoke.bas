@@ -4,6 +4,8 @@
 
     File: tests/history_timeline_smoke.bas
 
+    Module API: Test executable; process status reports failed behavioral assertions.
+
     Copyright (C) 2026 OpenSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -29,7 +31,7 @@
 
 #lang "fb"
 
-#include once "../history_timeline.bi"
+#include once "../src/history_timeline.bi"
 
 Private Sub test_Fail(ByVal messageText As String)
     Print "FAIL: "; messageText

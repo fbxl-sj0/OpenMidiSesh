@@ -4,6 +4,8 @@
 
     File: notation_duration_smoke.bas
 
+    Module API: Test executable; process status reports failed behavioral assertions.
+
     Copyright (C) 2026 OpenSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -32,7 +34,7 @@
 
 #lang "fb"
 
-#include once "../midi_model.bi"
+#include once "../src/midi_model.bi"
 
 Dim As String outputFilename = Trim(Command(1))
 If outputFilename = "" Then

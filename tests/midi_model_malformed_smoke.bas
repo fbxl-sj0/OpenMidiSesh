@@ -33,7 +33,7 @@
 
 #lang "fb"
 
-#include once "../midi_model.bi"
+#include once "../src/midi_model.bi"
 
 Dim Shared test_ActiveSummary As MidiSummary
 

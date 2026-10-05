@@ -30,7 +30,7 @@
 
 #lang "fb"
 
-#include once "../midi_output.bi"
+#include once "../src/midi_output.bi"
 
 Dim Shared test_OpenCalls As Integer
 Dim Shared test_CloseCalls As Integer

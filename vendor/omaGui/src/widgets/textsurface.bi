@@ -1,9 +1,15 @@
 /'
     Project: omaGUI
     File: textsurface.bi
+
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for textsurface.
     Purpose: Declare a bounded, retained byte-cell drawing surface.
     Responsibilities: Own cells independently of a widget's caption and layout.
-    This file intentionally does NOT contain BASIC PRINT parsing, cursor policy,
+
+    This file intentionally does NOT contain:
+
+        - BASIC PRINT parsing, cursor policy,
         input dispatch, or automatic repaint/lifetime policy.
 
     The containing widget owns the surface and calls textsurface_Release before

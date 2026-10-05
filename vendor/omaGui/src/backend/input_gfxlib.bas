@@ -3,6 +3,9 @@
     ---------------
     File: input_gfxlib.bas
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI input_gfxlib implementation imported through omaGUI.bi.
+
     Purpose:
         Implement the input abstraction with FreeBASIC gfxlib calls.
 
@@ -798,6 +801,7 @@ Sub input_ResumeAfterScreenChange()
             If event_value.type = FB.EVENT_WINDOW_CLOSE Then inputWindowCloseRequested = -1
         Next event_index
         If useMockText = 0 Then
+            ' fblint: disable-next-line FBL311 REASON: The loop counter bounds repeated work; the cursor or stream state supplies each value.
             For key_index As Integer = 1 To MAX_DISCARDED_EVENTS
                 If Len(Inkey) = 0 Then Exit For
             Next key_index

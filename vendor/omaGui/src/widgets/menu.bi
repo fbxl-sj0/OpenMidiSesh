@@ -4,6 +4,9 @@
 
     File: menu.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for menu.
+
     Purpose:
 
         Declare a bounded popup menu used directly and by imported dropdowns.
@@ -35,7 +38,7 @@ Const MENU_ITEM_KIND_NORMAL As Integer = 0
 Const MENU_ITEM_KIND_SEPARATOR As Integer = 1
 Const MENU_MAX_NESTING As Integer = 32
 
-Type MenuData
+Type MenuData ' fblint: disable-line FBL910 REASON: This record is process-local state, never a raw serialized or external ABI layout.
     As String items(0 To MENU_MAX_ITEMS - 1)
     As Sub(ByVal As Integer) callbacks(0 To MENU_MAX_ITEMS - 1)
     As Integer item_kinds(0 To MENU_MAX_ITEMS - 1)

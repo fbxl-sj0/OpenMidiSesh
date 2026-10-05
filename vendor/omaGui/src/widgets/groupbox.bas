@@ -4,6 +4,9 @@
 
     File: groupbox.bas
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: Implements groupbox.bi; declarations there define the interface.
+
     Purpose:
 
         Render a portable classic group frame with an optional caption.

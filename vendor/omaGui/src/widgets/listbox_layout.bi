@@ -1,11 +1,18 @@
 /'
     Project: omaGUI
     File: listbox_layout.bi
+
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for listbox_layout.
     Purpose: Share column geometry between rendering, scrolling and hit testing.
     Responsibilities: Bound row/column calculations and reveal the caret.
     This file intentionally does NOT own input edges or selection state.
     Private GUI-thread include in listbox.bas. scroll_top remains a row index;
     in column mode it is aligned to the first row of the leftmost column.
+
+    This file intentionally does NOT contain:
+
+        - application document state or lifecycle policy
 '/
 #ifndef __LISTBOX_LAYOUT_BI__
 #define __LISTBOX_LAYOUT_BI__
@@ -100,7 +107,7 @@ Private Sub listbox_RenderColumns(ByVal w As Widget Ptr, ByVal foreground_color 
     For item_index As Integer = d->scroll_top To d->item_count - 1
         Dim As Integer column_index = (item_index - d->scroll_top) \ rows_per_column
         If column_index >= visible_columns Then Exit For
-        Dim As Integer row_index = (item_index - d->scroll_top) Mod rows_per_column
+        Dim As Integer row_index = (item_index - d->scroll_top) Mod rows_per_column ' fblint: disable-line FBL406 REASON: Range checks keep the dividend nonnegative and the modulus positive before this calculation.
         Dim As Integer column_x = w->ax + column_index * column_width
         Dim As Integer row_y = w->ay + row_index * listbox_RowHeight(d)
         Dim As Integer width_value = column_width

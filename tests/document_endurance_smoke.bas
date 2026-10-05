@@ -4,6 +4,8 @@
 
     File: tests/document_endurance_smoke.bas
 
+    Module API: Test executable; process status reports failed behavioral assertions.
+
     Copyright (C) 2026 OpenSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -35,7 +37,7 @@
 
 #lang "fb"
 
-#include once "../document_history.bi"
+#include once "../src/document_history.bi"
 
 Const TEST_OPERATION_COUNT As Integer = 8192
 Const TEST_RESET_INTERVAL As Integer = 1024
@@ -245,8 +247,6 @@ Private Sub test_ApplyMidiEdit( _
             Else
                 editMode = 1
             End If
-        Case 1
-            ' The shared note-edit path below also handles bounded fallbacks.
         Case 2
             If noteCount > 1 Then
                 mutationSucceeded = midi_RemoveEditableNote(summary, _
@@ -261,7 +261,9 @@ Private Sub test_ApplyMidiEdit( _
             mutationSucceeded = midi_SetInitialTempoBpm(summary, _
                 40 + ((cycleIndex * 7) Mod 201))
         Case Else
-            test_Fail "random MIDI edit selector left its bounded range"
+            ' Mode 1 and capacity fallbacks share the note-edit path below.
+            If editMode <> 1 Then _
+                test_Fail "random MIDI edit selector left its bounded range"
     End Select
 
     If editMode = 1 Then

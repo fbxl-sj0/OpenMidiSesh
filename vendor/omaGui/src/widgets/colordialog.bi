@@ -4,6 +4,9 @@
 
     File: colordialog.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for colordialog.
+
     Purpose:
 
         Declare a modal chooser for the classic sixteen-color palette.

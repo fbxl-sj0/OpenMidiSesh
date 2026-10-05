@@ -1,10 +1,17 @@
 /'
     Project: omaGUI
     File: retained_render.bas
+
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI retained_render implementation imported through omaGUI.bi.
     Purpose: Keep unchanged scene pixels and collect bounded repaint regions.
     Responsibilities: Observe GUI-thread visual keys, retain old widget bounds,
         merge overlapping damage and recover from layout or registry changes.
     This file contains no input dispatch, widget drawing or page switching.
+
+    This file intentionally does NOT contain:
+
+        - application document state or lifecycle policy
 '/
 
 ' This implementation is included by widgets.bas and shares its registry.
@@ -30,7 +37,8 @@ Sub gui_InvalidateRect(ByVal x As Integer, ByVal y As Integer, _
     backend_GetSize screenWidth, screenHeight
     ' Imported line/shape widgets may use negative or zero extents. Match the
     ' ordinary scene renderer's normalized rectangle before clipping damage.
-    Dim As LongInt leftEdge = x, topEdge = y
+    Dim As LongInt leftEdge = x
+    Dim As LongInt topEdge = y
     Dim As LongInt rightEdge = CLngInt(x) + widthValue
     Dim As LongInt bottomEdge = CLngInt(y) + heightValue
     If rightEdge < leftEdge Then Swap rightEdge, leftEdge

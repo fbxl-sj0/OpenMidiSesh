@@ -42,22 +42,20 @@
 
 #lang "fb"
 
-#include once "../midi_model.bi"
-#include once "../audio_tracks.bi"
-#include once "../wav_export_sfx.bi"
-#include once "../playback_mix.bi"
-#include once "../playback_timing.bi"
-#include once "../software_synth.bi"
-#include once "../mixer_state.bi"
+#include once "../src/midi_model.bi"
+#include once "../src/audio_tracks.bi"
+#include once "../src/wav_export_sfx.bi"
+#include once "../src/playback_mix.bi"
+#include once "../src/playback_timing.bi"
+#include once "../src/software_synth.bi"
+#include once "../src/mixer_state.bi"
 
 Const TEST_FEED_BLOCK_FRAMES As Long = 256
 Const TEST_RENDER_TAIL_SECONDS As Double = 0.50
 
 Declare Sub fb_sfxUpdate CDecl Alias "fb_sfxUpdate" (ByVal frames As Long)
-Declare Sub fb_sfxForegroundFeedBegin CDecl _
-    Alias "fb_sfxForegroundFeedBegin" ()
-Declare Sub fb_sfxForegroundFeedEnd CDecl _
-    Alias "fb_sfxForegroundFeedEnd" ()
+Declare Sub fb_sfxForegroundFeedBegin CDecl Alias "fb_sfxForegroundFeedBegin" ()
+Declare Sub fb_sfxForegroundFeedEnd CDecl Alias "fb_sfxForegroundFeedEnd" ()
 
 Private Sub test_Fail(ByVal messageText As String)
     Print "FAIL: "; messageText
@@ -149,9 +147,11 @@ Private Function test_ToneMagnitude( _
     If Open(filename For Binary Access Read As #fileNumber) <> 0 Then
         Return -1.0
     End If
+    ' fblint: disable-next-line FBL-NUM-002 REASON: Operands are widened to LongInt before the product.
     Dim As LongInt sampleCount = CLngInt(frameCount) * CLngInt(channelCount)
     Dim As Short samples()
     Redim samples(0 To CInt(sampleCount - 1))
+    ' fblint: disable-next-line FBL-NUM-002 REASON: Operands are widened to LongInt before the product.
     Dim As LongInt firstByte = 45 + firstFrame * _
         CLngInt(channelCount) * CLngInt(SizeOf(Short))
     If Get(#fileNumber, firstByte, samples()) <> 0 Then
@@ -243,7 +243,7 @@ End If
 Dim As Double renderSeconds = timelineSeconds + TEST_RENDER_TAIL_SECONDS
 
 SetEnviron "SFXLIB_DRIVER=null"
-If LCase(Trim(Environ("SFXLIB_DRIVER"))) <> "null" Then _
+If LCase(Trim(Environ("SFXLIB_DRIVER"))) <> "null" Then _ ' fblint: disable-line FBL750 REASON: The runner selects the null audio driver; this test rejects a missing or different driver explicitly.
     test_Fail "null output driver selection could not be established"
 softwareSynth_Configure()
 Dim As OseWavExportState exportState

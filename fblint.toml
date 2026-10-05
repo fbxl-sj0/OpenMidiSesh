@@ -1,0 +1,11 @@
+# Project: OpenSesh
+# File: fblint.toml
+# Purpose: consistent strict source policy; tools/lint.ps1 defines release inputs.
+[tool.fblint]
+profile = "strict"
+indent-width = 4
+honor-suppressions = true
+fail-on-warning = true
+strict-headers = true
+strict-tabs = true
+# end of fblint.toml

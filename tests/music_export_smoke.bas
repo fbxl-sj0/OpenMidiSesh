@@ -4,6 +4,8 @@
 
     File: music_export_smoke.bas
 
+    Module API: Test executable; process status reports failed behavioral assertions.
+
     Copyright (C) 2026 OpenSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -29,8 +31,8 @@
 
 #lang "fb"
 
-#include once "../midi_model.bi"
-#include once "../music_export.bi"
+#include once "../src/midi_model.bi"
+#include once "../src/music_export.bi"
 #If Defined(__FB_WIN32__)
 #include once "windows.bi"
 #EndIf

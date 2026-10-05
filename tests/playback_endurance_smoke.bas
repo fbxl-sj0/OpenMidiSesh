@@ -36,11 +36,11 @@
 
 #lang "fb"
 
-#include once "../audio_tracks.bi"
-#include once "../wav_export_sfx.bi"
-#include once "../playback_mix.bi"
-#include once "../software_synth.bi"
-#include once "../sfx_runtime.bi"
+#include once "../src/audio_tracks.bi"
+#include once "../src/wav_export_sfx.bi"
+#include once "../src/playback_mix.bi"
+#include once "../src/software_synth.bi"
+#include once "../src/sfx_runtime.bi"
 
 Const TEST_RENDER_SECONDS As Double = 30.0
 Const TEST_FEED_BLOCK_FRAMES As Long = 256
@@ -51,16 +51,13 @@ Const TEST_RECOVERY_SECONDS As Double = 1.0
 Declare Sub fb_sfxUpdate CDecl Alias "fb_sfxUpdate" (ByVal frames As Long)
 ' These are public, target-stable names in the linked sfxlib C ABI.
 ' fblint: disable-next-line FBL931 REASON: This declaration binds the verified sfxlib C ABI export used by the test.
-Declare Sub fb_sfxForegroundFeedBegin CDecl _
-    Alias "fb_sfxForegroundFeedBegin" ()
+Declare Sub fb_sfxForegroundFeedBegin CDecl Alias "fb_sfxForegroundFeedBegin" ()
 ' fblint: disable-next-line FBL931 REASON: This declaration binds the verified sfxlib C ABI export used by the test.
-Declare Sub fb_sfxForegroundFeedEnd CDecl _
-    Alias "fb_sfxForegroundFeedEnd" ()
+Declare Sub fb_sfxForegroundFeedEnd CDecl Alias "fb_sfxForegroundFeedEnd" ()
 ' The definition query is a target-stable sfxlib C ABI used only to prove the
 ' restart cleared and then rebuilt the production instrument table.
 ' fblint: disable-next-line FBL931 REASON: This declaration binds the verified sfxlib C ABI export used by the test.
-Declare Function fb_sfxInstrumentDefined CDecl _
-    Alias "fb_sfxInstrumentDefined" (ByVal instrumentId As Integer) As Long
+Declare Function fb_sfxInstrumentDefined CDecl Alias "fb_sfxInstrumentDefined" (ByVal instrumentId As Integer) As Long
 
 ' -------------------------------------------------------------------------
 ' Validation helpers

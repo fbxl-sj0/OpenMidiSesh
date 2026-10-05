@@ -4,6 +4,8 @@
 
     File: tests/project_transaction_smoke.bas
 
+    Module API: Test executable; process status reports failed behavioral assertions.
+
     Copyright (C) 2026 OpenSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -33,7 +35,7 @@
 
 #lang "fb"
 
-#include once "../project_transaction.bi"
+#include once "../src/project_transaction.bi"
 
 Private Sub test_Fail(ByVal messageText As String)
     Print "FAIL: "; messageText

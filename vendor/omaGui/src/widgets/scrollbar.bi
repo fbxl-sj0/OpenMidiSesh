@@ -4,6 +4,9 @@
 
     File: scrollbar.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for scrollbar.
+
     Purpose:
         Declare horizontal and vertical scrollbar widgets.
 

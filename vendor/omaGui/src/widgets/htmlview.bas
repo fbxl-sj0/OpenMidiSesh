@@ -4,6 +4,9 @@
 
     File: htmlview.bas
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: Implements htmlview.bi; declarations there define the interface.
+
     Purpose:
 
         Implement a bounded, display-only HTML viewer with omaGUI primitives.
@@ -889,6 +892,8 @@ Private Function htmlview_CssSelectorMatches( _
 
     selectorText = LCase(Trim(selectorText))
     If Left(selectorText, 1) = "." Then
+        ' A class selector must name a class; a bare prefix matches nothing.
+        If Len(selectorText) < 2 Then Return 0
         className = Mid(selectorText, 2)
         classList = LCase(htmlview_GetAttribute(attributeText, "class"))
         Return IIf( _
@@ -896,7 +901,9 @@ Private Function htmlview_CssSelectorMatches( _
         )
     End If
     If Left(selectorText, 1) = "#" Then
+        If Len(selectorText) < 2 Then Return 0
         attributeValue = LCase(htmlview_GetAttribute(attributeText, "id"))
+        ' fblint: disable-next-line FBL513 REASON: The selector prefix and length are validated before the positive one-based Mid position.
         Return IIf(attributeValue = Mid(selectorText, 2), -1, 0)
     End If
     Return IIf(selectorText = LCase(tagName), -1, 0)
@@ -2962,6 +2969,7 @@ Private Sub htmlview_InitializeParseContext( _
 End Sub
 
 
+' fblint: disable-next-line FBL110 FBL111 REASON: The resumable tag dispatcher advances one bounded parse cursor.
 Private Function htmlview_ParseContextStep( _
     ByRef parseContext As HtmlViewParseContext, _
     ByVal timeBudgetMilliseconds As Integer _

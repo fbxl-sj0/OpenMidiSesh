@@ -4,6 +4,9 @@
 
     File: theme.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for theme.
+
     Purpose:
 
         Declare the shared classic widget color theme.

@@ -4,6 +4,9 @@
 
     File: font_data.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for font_data.
+
     Purpose:
 
         Declare the default embedded glyph table used by the text backend.

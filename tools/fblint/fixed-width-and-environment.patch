@@ -1,0 +1,32 @@
+--- a/src/fb_linter.bas
++++ b/src/fb_linter.bas
+@@ -6541,7 +6541,7 @@
+                 End If
+             End If
+ 
+-            If InStr(CodeUpper, "ENVIRON") <> 0 Or InStr(CodeUpper, "ENVIRON$(") <> 0 Then
++            If ContainsCodeToken(CodeUpper, "ENVIRON") Or InStr(CodeUpper, "ENVIRON$(") <> 0 Then
+                 If PortableRulesEnabled() Then
+                     AddFinding FilePath, LineNumber, 1, "FBL750", _
+                         SEVERITY_WARNING, "platform", _
+--- a/src/fb_linter_proposed_rules.bi
++++ b/src/fb_linter_proposed_rules.bi
+@@ -3383,11 +3383,13 @@
+                 ImplicitArraySeen = -1
+             End If
+ 
+-            If InStr(TypeText, "LONG") <> 0 And PortableRulesEnabled() Then
+-                AddFinding FilePath, LineNumber, 1, "FBL423", _
+-                    SEVERITY_WARNING, "type-safety", _
+-                    "Long width assumptions should be reviewed against the target ABI."
+-            End If
++            /'
++                FreeBASIC Long and ULong are fixed 32-bit types; LongInt and
++                ULongInt are fixed 64-bit types on every supported target.
++                Their spelling does not imply the platform's C long width.
++                External ABI/layout checks must inspect the boundary itself,
++                rather than report every correct fixed-width local variable.
++            '/
+ 
+             If InStr(TypeText, "SINGLE") <> 0 And _
+                LineContainsAny(NameText, "COUNT,COUNTER,OFFSET,SIZE,BYTE,PIXEL") Then

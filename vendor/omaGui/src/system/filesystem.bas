@@ -4,6 +4,9 @@
 
     File: filesystem.bas
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: Implements filesystem.bi; declarations there define the interface.
+
     Purpose:
 
         Provide a bounded directory listing interface for native applications.
@@ -19,7 +22,7 @@
         - application file filters or search logic
         - file content loading or saving
         - file dialog state or widgets
-'/ 
+'/
 
 #lang "fb"
 
@@ -146,7 +149,9 @@ Function system_IsDirectory(ByRef directoryPath As Const String) As Integer
 
 #if defined(__FB_WIN32__)
     Dim As DWORD attributes = GetFileAttributesA(StrPtr(directoryPath))
+    ' fblint: disable-next-line FBL310 REASON: The Windows-only branch uses declarations supplied by windows.bi and the system headers.
     If attributes = INVALID_FILE_ATTRIBUTES Then Return 0
+    ' fblint: disable-next-line FBL310 REASON: The Windows-only branch uses declarations supplied by windows.bi and the system headers.
     Return IIf((attributes And FILE_ATTRIBUTE_DIRECTORY) <> 0, -1, 0)
 #else
     Dim As Integer attributes

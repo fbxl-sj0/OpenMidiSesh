@@ -35,7 +35,7 @@
 
 #lang "fb"
 
-#include once "../midi_model.bi"
+#include once "../src/midi_model.bi"
 
 Const TEST_RANDOM_SEED As ULong = &HC0DEC0DEUL
 Const TEST_RANDOM_CASES As Integer = 1536

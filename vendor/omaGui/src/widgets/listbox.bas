@@ -4,6 +4,9 @@
 
     File: listbox.bas
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: Implements listbox.bi; declarations there define the interface.
+
     Purpose:
         Implement a bounded, selectable, scrolling list control.
 
@@ -565,7 +568,7 @@ Sub listbox_Render(ByVal w As Widget Ptr)
                 Dim As Integer rowSelected
                 listbox_GetItemSelected w, idx, rowSelected
                 Dim As ULong row_color = foreground_color
-                If d->table_column_count > 0 AndAlso (idx Mod 2) = 1 Then _
+                If d->table_column_count > 0 AndAlso (idx Mod 2) = 1 Then _ ' fblint: disable-line FBL406 REASON: The Mod operands are nonnegative; the minus sign belongs to a different expression.
                     backend_Rect w->ax + 1, iy, clip_width, listbox_RowHeight(d), RGB(247, 247, 247), 1
                 If rowSelected AndAlso d->checklist_style = 0 Then
                     Dim As Integer selection_x = w->ax + LISTBOX_CLIP_INSET

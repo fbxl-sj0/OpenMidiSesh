@@ -4,6 +4,9 @@
 
     File: canvas.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for canvas.
+
     Purpose:
 
         Declare a clipped application-rendered canvas widget.

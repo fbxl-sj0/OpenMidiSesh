@@ -4,6 +4,14 @@
 
     File: chmarchive.bas
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: Implements chmarchive.bi; declarations there define the interface.
+    Ownership:
+
+        The archive object owns its member index, reset table and cached
+        decoded interval. Open failure resets that storage; returned member
+        strings belong to the caller. File handles are closed before return.
+
     Purpose:
 
         Read individual files from a Compiled HTML Help archive on demand.
@@ -24,7 +32,12 @@
 
     The CHM/LZX handling follows the LGPL-2.1-or-later libmspack format
     implementation. See LICENSES/LGPL-2.1.txt.
-'/ 
+'/
+
+' -------------------------------------------------------------------------
+' Implementation
+' -------------------------------------------------------------------------
+
 
 #include once "src/archive/chmarchive.bi"
 
@@ -337,6 +350,7 @@ Private Function chmarchive_LoadResetTable( _
     )
     systemText = ""
 
+    ' fblint: disable-next-line FBL310 REASON: resetTableName is a named CHM stream constant declared in this module.
     resetEntryIndex = chmarchive_FindRawSystemEntry(archive, resetTableName)
     If resetEntryIndex >= 0 Then
         tableLength = archive->entries(resetEntryIndex).length
@@ -554,6 +568,7 @@ Private Function chmarchive_ReadCompressedMember( _
 End Function
 
 
+' fblint: disable-next-line FBL111 REASON: Container records are checked in stream order and share one rollback path.
 Function chmarchive_Open( _
     ByRef filePath As Const String, ByRef errorText As String _
 ) As ChmArchive Ptr
@@ -619,6 +634,7 @@ Function chmarchive_Open( _
     If archive->fileLength < CHMARCHIVE_ITSF_HEADER_BYTES OrElse _
        archive->fileLength > CHMARCHIVE_MAX_FILE_BYTES Then
         errorText = "CHM archive length is outside the supported bounds"
+        ' fblint: disable-next-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
         Goto open_failed
     End If
 
@@ -628,11 +644,13 @@ Function chmarchive_Open( _
     ) = 0 Then Goto open_failed
     If Left(fileText, 4) <> "ITSF" Then
         errorText = "File does not have an ITSF CHM signature"
+        ' fblint: disable-next-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
         Goto open_failed
     End If
     chmVersion = CInt(chmarchive_ReadU32(fileText, 4))
     If chmVersion <> 3 Then
         errorText = "Only version 3 CHM archives are supported"
+        ' fblint: disable-next-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
         Goto open_failed
     End If
     If CInt(chmarchive_ReadU32(fileText, 8)) < _
@@ -643,6 +661,7 @@ Function chmarchive_Open( _
        chmarchive_ReadU64(fileText, 80, hs1Length) = 0 OrElse _
        chmarchive_ReadU64(fileText, 88, cs0Offset) = 0 Then
         errorText = "CHM ITSF header fields are invalid"
+        ' fblint: disable-next-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
         Goto open_failed
     End If
     If hs0Offset > archive->fileLength OrElse _
@@ -650,6 +669,7 @@ Function chmarchive_Open( _
        hs1Offset > archive->fileLength OrElse _
        hs1Length > archive->fileLength - hs1Offset Then
         errorText = "CHM ITSF sections exceed the archive file"
+        ' fblint: disable-next-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
         Goto open_failed
     End If
     directoryOffset = hs1Offset
@@ -658,6 +678,7 @@ Function chmarchive_Open( _
        hs1Length > archive->fileLength - directoryOffset OrElse _
        CHMARCHIVE_ITSP_HEADER_BYTES > archive->fileLength - directoryOffset Then
         errorText = "CHM ITSP directory header exceeds the archive file"
+        ' fblint: disable-next-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
         Goto open_failed
     End If
     archive->section0Offset = cs0Offset
@@ -667,6 +688,7 @@ Function chmarchive_Open( _
     ) = 0 Then Goto open_failed
     If Left(itspText, 4) <> "ITSP" Then
         errorText = "CHM directory has no ITSP signature"
+        ' fblint: disable-next-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
         Goto open_failed
     End If
     itspHeaderLength = chmarchive_ReadU32(itspText, 8)
@@ -682,10 +704,12 @@ Function chmarchive_Open( _
        chunkFirst < 0 OrElse chunkLast < chunkFirst OrElse _
        CULng(chunkLast) >= numChunks Then
         errorText = "CHM ITSP directory bounds are invalid"
+        ' fblint: disable-next-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
         Goto open_failed
     End If
     If itspHeaderLength > hs1Length Then
         errorText = "CHM ITSP header exceeds header section one"
+        ' fblint: disable-next-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
         Goto open_failed
     End If
     chunksOffset = directoryOffset + itspHeaderLength
@@ -693,6 +717,7 @@ Function chmarchive_Open( _
        CULngInt(numChunks) * CULngInt(chunkSize) > _
        CULngInt(archive->fileLength - chunksOffset) Then
         errorText = "CHM directory chunks exceed the archive file"
+        ' fblint: disable-next-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
         Goto open_failed
     End If
     archive->chunkSize = CInt(chunkSize)
@@ -711,6 +736,7 @@ Function chmarchive_Open( _
         quickRefBytes = chmarchive_ReadU32(chunkText, 4)
         If quickRefBytes > chunkSize - CHMARCHIVE_PMGL_HEADER_BYTES Then
             errorText = "CHM PMGL quick-reference area is invalid"
+            ' fblint: disable-next-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
             Goto open_failed
         End If
         numberOfEntries = CInt(chmarchive_ReadU16( _
@@ -718,16 +744,19 @@ Function chmarchive_Open( _
         ))
         If numberOfEntries > chunkSize \ 4 Then
             errorText = "CHM PMGL entry count exceeds the chunk size"
+            ' fblint: disable-next-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
             Goto open_failed
         End If
 
         encintPosition = CHMARCHIVE_PMGL_HEADER_BYTES
         entryEnd = CInt(chunkSize) - 2
+        ' fblint: disable-next-line FBL311 REASON: The loop counter bounds repeated work; the cursor or stream state supplies each value.
         For localEntry As Integer = 0 To numberOfEntries - 1
             If chmarchive_ReadEncInt( _
                 chunkText, encintPosition, entryEnd, encodedValue _
             ) = 0 Then
                 errorText = "CHM PMGL filename length is invalid"
+                ' fblint: disable-next-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
                 Goto open_failed
             End If
             nameLength = CInt(encodedValue)
@@ -735,6 +764,7 @@ Function chmarchive_Open( _
                nameLength > CHMARCHIVE_MAX_ENTRY_NAME_BYTES OrElse _
                encintPosition > entryEnd - nameLength Then
                 errorText = "CHM PMGL filename exceeds its entry bounds"
+                ' fblint: disable-next-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
                 Goto open_failed
             End If
             nameOffset = encintPosition
@@ -757,11 +787,12 @@ Function chmarchive_Open( _
             ) = 0 Then Goto invalid_pmgl_entry
             If sectionIndex < 0 OrElse sectionIndex > 1 OrElse _
                encodedValue > CHMARCHIVE_MAX_FILE_BYTES Then _
-                Goto invalid_pmgl_entry
+                Goto invalid_pmgl_entry ' fblint: disable-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
             If memberOffset = 0 AndAlso encodedValue = 0 AndAlso _
                Right(entryName, 1) = "/" Then Continue For
             If archive->entryCount >= CHMARCHIVE_MAX_ENTRIES Then
                 errorText = "CHM directory exceeds the 16,384 member limit"
+                ' fblint: disable-next-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
                 Goto open_failed
             End If
             If chmarchive_NormalizeMemberName( _
@@ -777,12 +808,14 @@ Function chmarchive_Open( _
 
 invalid_pmgl_entry:
             errorText = "CHM PMGL member metadata is invalid"
+            ' fblint: disable-next-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
             Goto open_failed
         Next localEntry
     Next chunkIndex
 
     If archive->entryCount < 1 Then
         errorText = "CHM directory contains no readable members"
+        ' fblint: disable-next-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
         Goto open_failed
     End If
     rawSectionEnd = archive->fileLength - archive->section0Offset
@@ -792,18 +825,20 @@ invalid_pmgl_entry:
                archive->entries(entryIndex).length > _
                  rawSectionEnd - archive->entries(entryIndex).offset Then
                 errorText = "CHM stored member exceeds section zero"
+                ' fblint: disable-next-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
                 Goto open_failed
             End If
         End If
     Next entryIndex
 
     If chmarchive_LoadResetTable(archive, fileNumber, errorText) = 0 Then _
-        Goto open_failed
+        Goto open_failed ' fblint: disable-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
     For entryIndex = 0 To archive->entryCount - 1
         If archive->entries(entryIndex).sectionIndex = 1 Then
             If archive->entries(entryIndex).offset > archive->uncompressedLength OrElse _
                archive->entries(entryIndex).length > archive->uncompressedLength - archive->entries(entryIndex).offset Then
                 errorText = "CHM compressed member exceeds the logical section"
+                ' fblint: disable-next-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
                 Goto open_failed
             End If
         End If
@@ -812,6 +847,7 @@ invalid_pmgl_entry:
     If archive->contentOffset < archive->section0Offset OrElse _
        contentEnd > archive->fileLength Then
         errorText = "CHM compressed content exceeds the archive file"
+        ' fblint: disable-next-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
         Goto open_failed
     End If
 

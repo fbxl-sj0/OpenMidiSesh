@@ -4,6 +4,9 @@
 
     File: label.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for label.
+
     Purpose:
 
         Declare a noninteractive text-label widget.
@@ -11,6 +14,7 @@
     Responsibilities:
 
         - retain label text, color, and selected embedded font
+        - retain portable bold, italic, underline, and strikeout styles
         - expose checked text replacement and retrieval
         - retain an optional bounded client background color
         - expose bounded pixel-width word wrapping for narrow layouts
@@ -50,6 +54,8 @@ Type LabelData
     As Integer horizontalAlignment, verticalAlignment
     ' Optional fixed border. Existing labels retain their zero-inset layout.
     As Integer borderStyle
+    ' Appended flags reuse the backend's portable synthetic text styles.
+    As Integer textStyle
 End Type
 
 ' A sentinel keeps a label's text tied to the active theme at render time.
@@ -67,6 +73,9 @@ Declare Function label_SetText( _
 Declare Function label_GetText(ByVal w As Widget Ptr) As String
 Declare Sub label_SetFont(ByVal w As Widget Ptr, ByVal fontId As Integer)
 Declare Sub label_SetFontScalePercent(ByVal w As Widget Ptr, ByVal percent As Integer)
+' Style bits use BACKEND_TEXT_STYLE_*; invalid combinations leave state unchanged.
+Declare Function label_SetTextStyle(ByVal w As Widget Ptr, ByVal textStyle As Integer) As Integer
+Declare Function label_GetTextStyle(ByVal w As Widget Ptr) As Integer
 Declare Function label_SetTextColor( _
     ByVal w As Widget Ptr, ByVal textColor As ULong _
 ) As Integer

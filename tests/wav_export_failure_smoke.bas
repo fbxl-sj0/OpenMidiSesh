@@ -22,7 +22,7 @@
 
 #lang "fb"
 
-#include once "../wav_export_sfx.bi"
+#include once "../src/wav_export_sfx.bi"
 
 ' The adapter links against these exact C entry points. Replacing the saver
 ' in this test makes a partial write deterministic without filling a disk.

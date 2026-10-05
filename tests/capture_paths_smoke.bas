@@ -4,6 +4,8 @@
 
     File: tests/capture_paths_smoke.bas
 
+    Module API: Test executable; process status reports failed behavioral assertions.
+
     Copyright (C) 2026 OpenSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -29,7 +31,7 @@
 
 #lang "fb"
 
-#include once "../capture_paths.bi"
+#include once "../src/capture_paths.bi"
 
 Private Sub test_Fail(ByVal messageText As String)
     Print "FAIL: "; messageText
@@ -51,7 +53,7 @@ If capturePaths_Join(fixtureDirectory, "capture.wav") <> expectedJoin Then _
 If capturePaths_Join(fixtureDirectory + capturePaths_Separator(), _
     "capture.wav") <> expectedJoin Then _
     test_Fail "existing trailing separator was duplicated"
-If capturePaths_ParentDirectory("C:\Music\take.wav") <> "C:\Music" OrElse _
+If capturePaths_ParentDirectory("C:\Music\take.wav") <> "C:\Music" OrElse _ ' fblint: disable-line FBL007 REASON: This path is parser/serialization test data; the test does not open a Windows file.
     capturePaths_ParentDirectory("/home/user/take.wav") <> "/home/user" OrElse _
     capturePaths_ParentDirectory("take.wav") <> "" Then _
     test_Fail "parent directory parsing failed"

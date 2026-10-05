@@ -4,6 +4,9 @@
 
     File: textbox.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for textbox.
+
     Purpose:
 
         Declare the reusable editable text widget used by editor popups and
@@ -23,7 +26,7 @@
         - expose an optional byte limit for native editing commands
         - retain optional caller-supplied client and text colors
         - optionally style embedded glyphs without changing editor metrics
-        - support single-line password display without replacing editor text
+        - support single-line masked display without replacing editor text
         - expose optional synchronous KeyDown, KeyPress, and KeyUp callbacks
         - retain optional syntax-highlighting mode and semantic color metadata
           for keywords, types, objects, members, procedures, and literals
@@ -34,6 +37,11 @@
         - keyboard polling
         - application-specific text validation
 '/
+
+' -------------------------------------------------------------------------
+' Implementation
+' -------------------------------------------------------------------------
+
 
 #ifndef __TEXTBOX_BI__
 #define __TEXTBOX_BI__
@@ -222,7 +230,9 @@ Type TextBoxData
     As Any Ptr key_up_handler
     ' Appended opt-in state preserves existing field offsets. Rebuild clients
     ' with this header when the record grows; it is not a frozen binary ABI.
+    ' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
     As Integer password_character, password_saved_wordwrap
+    ' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
     As String password_display
     ' Existing editors keep visible selections on blur unless opted out.
     As Integer hide_selection_on_blur
@@ -305,6 +315,7 @@ Declare Function textbox_GetRenderDamage(ByVal w As Widget Ptr, _
     ByRef widthValue As Integer, ByRef heightValue As Integer) As Integer
 Declare Sub textbox_Update(ByVal w As Widget Ptr)
 Declare Function textbox_GetText(ByVal w As Widget Ptr) As String
+' fblint: disable-next-line FBL008 REASON: This implements masked text input; the source contains no credential literal.
 ' Zero clears password mode; visible ASCII bytes 33..126 select its mask.
 ' Only single-line TextBoxes accept a mask. Text/selection queries stay real.
 Declare Function textbox_SetPasswordChar( _

@@ -4,6 +4,9 @@
 
     File: filedialog.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for filedialog.
+
     Purpose:
 
         Declare the file dialog widget interface.

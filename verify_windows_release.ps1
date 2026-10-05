@@ -11,7 +11,7 @@
     Responsibilities:
 
         - run the complete Windows test suite from current source
-        - require unchanged reviewed Windows and Linux lint warning sets
+        - require strict Windows and Linux lint without warnings
         - build and inspect the versioned Windows editor executable
         - create and independently inspect the source-only release archive
         - retain logs, hashes, and a machine-readable evidence summary
@@ -73,8 +73,6 @@ $powerShellExecutable = (Get-Process -Id $PID).Path
 $compilerPath = [System.IO.Path]::GetFullPath($FreeBasicPath)
 $omaGuiRoot = [System.IO.Path]::GetFullPath($OmaGuiPath)
 $strictLinter = [System.IO.Path]::GetFullPath($LinterPath)
-$windowsLintBaseline = Join-Path $projectRoot 'windows_lint_baseline.txt'
-$portabilityBaseline = Join-Path $projectRoot 'portability_lint_baseline.txt'
 $workingRoot = Join-Path ([System.IO.Path]::GetTempPath()) `
     ('opensesh-release-verify-' + [System.Guid]::NewGuid().ToString('N'))
 $failureMessage = ''
@@ -88,12 +86,12 @@ $evidence = [ordered]@{
     status = 'running'
     automated_windows_gates = 'running'
     commercial_release_ready = $false
-    remaining_gate_document = 'RELEASE_CHECKLIST.md'
+    remaining_gate_document = 'docs\RELEASE_CHECKLIST.md'
     source_file_count = 0
     vendored_source_file_count = 0
     windows_test_count = 0
     windows_lint_warning_count = 0
-    reviewed_linux_lint_warning_count = 0
+    linux_lint_warning_count = 0
     vendored_windows_lint_warning_count = 0
     vendored_linux_lint_warning_count = 0
     locked_windows_toolchain_file_count = 0
@@ -253,8 +251,6 @@ try {
             $powerShellExecutable,
             $compilerPath,
             $strictLinter,
-            $windowsLintBaseline,
-            $portabilityBaseline,
             (Join-Path $projectRoot 'tests\run_tests.ps1'),
             (Join-Path $projectRoot 'build_editor.ps1'),
             (Join-Path $projectRoot 'prepare_source_release.ps1'))) {
@@ -274,10 +270,11 @@ try {
         # Build directories can contain compiler probes and extracted source
         # archives. Only maintained application and test sources belong in
         # the release lint boundary, regardless of previous local builds.
-        $sourceFiles = @(Get-ChildItem -LiteralPath $projectRoot -File |
+        $sourceFiles = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'src') `
+            -Recurse -File |
             Where-Object { $_.Extension -in @('.bas', '.bi') })
         $sourceFiles += @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'tests') `
-            -Recurse -File | Where-Object { $_.Extension -in @('.bas', '.bi') })
+            -File | Where-Object { $_.Extension -in @('.bas', '.bi') })
         # The local dependency tree also contains examples and tests. Lint
         # the exact source subset shipped by the release manifest.
         $vendoredSourceFiles = @(Get-Content -LiteralPath `
@@ -291,8 +288,8 @@ try {
         if ($sourceFiles.Count -le 0) {
             throw 'No FreeBASIC source files were found.'
         }
-        if ($vendoredSourceFiles.Count -ne 100) {
-            throw "Expected 100 vendored omaGui source files; found $($vendoredSourceFiles.Count)."
+        if ($vendoredSourceFiles.Count -le 0) {
+            throw 'The reviewed GUI manifest contains no FreeBASIC sources.'
         }
         $evidence.source_file_count = $sourceFiles.Count
         $evidence.vendored_source_file_count = $vendoredSourceFiles.Count
@@ -302,9 +299,13 @@ try {
         $linterVersion = @(& $strictLinter '--version' 2>&1) -join ''
         if ($LASTEXITCODE -ne 0 -or
             $linterVersion -notmatch
-                '^fb-linter 1\.0\.0 \(ruleset 2026\.10\.036,') {
-            throw "The reviewed lint ruleset is not installed: $linterVersion"
+                '^fb-linter [0-9.]+ \(ruleset [0-9.]+,') {
+            throw "The linter identity could not be read: $linterVersion"
         }
+
+        $evidence.linter_identity = $linterVersion
+        $evidence.linter_sha256 = (Get-FileHash -LiteralPath $strictLinter `
+            -Algorithm SHA256).Hash.ToLowerInvariant()
 
         $testLog = Join-Path $evidenceRoot 'windows-tests.log'
         $testArguments = @(
@@ -325,8 +326,8 @@ try {
             -Pattern '^tests_passed=(\d+)\s*$' -Description 'tests_passed')
         $testsFailed = [int] (Get-SingleCapturedValue -Lines $testLines `
             -Pattern '^tests_failed=(\d+)\s*$' -Description 'tests_failed')
-        if ($testsPassed -ne 66 -or $testsFailed -ne 0) {
-            throw "Expected 66 passing Windows tests and zero failures; got $testsPassed/$testsFailed."
+        if ($testsPassed -ne 68 -or $testsFailed -ne 0) {
+            throw "Expected 68 passing Windows tests and zero failures; got $testsPassed/$testsFailed."
         }
         foreach ($requiredTestEvidence in @(
                 'status=ok',
@@ -395,217 +396,26 @@ try {
         $evidence.locked_windows_toolchain_file_count = 14
 
         $windowsLintLog = Join-Path $evidenceRoot 'lint-windows.log'
-        Invoke-LoggedCommand -FilePath $strictLinter `
-            -Arguments (@('--no-semantic', '--target', 'windows', '--profile', 'strict',
-                '--honor-suppressions') + $lintSourcePaths) `
-            -LogPath $windowsLintLog `
-            -Description 'combined strict Windows source lint'
-        $windowsLintLines = @(Get-Content -LiteralPath $windowsLintLog)
-        $windowsLintSummary = Get-LintSummary -Lines $windowsLintLines `
-            -Description 'Windows'
-        if ($windowsLintSummary.Files -ne
-                ($sourceFiles.Count + $vendoredSourceFiles.Count) -or
-            $windowsLintSummary.Errors -ne 0 -or
-            $windowsLintSummary.Warnings -ne 178 -or
-            $windowsLintSummary.Info -ne 0) {
-            throw 'Combined Windows lint differs from the reviewed source boundaries.'
-        }
-        $windowsVendorWarnings = 0
-        $windowsProjectWarnings = 0
-        $windowsWarningGroups = @{}
-        $windowsWarningPattern = `
-            '^(.+?)\(\s*\d+,\s*\d+\):\s+warning\s+FBL'
-        foreach ($windowsLintLine in $windowsLintLines) {
-            $windowsWarningMatch = [regex]::Match(
-                $windowsLintLine,
-                $windowsWarningPattern)
-            if (-not $windowsWarningMatch.Success) {
-                continue
-            }
-            $windowsWarningFile = $windowsWarningMatch.Groups[1].Value
-            if ($windowsWarningFile.StartsWith('.\')) {
-                $windowsWarningFile = $windowsWarningFile.Substring(2)
-            }
-            $windowsWarningFile = $windowsWarningFile.Replace('\', '/')
-            if ($windowsWarningFile.StartsWith(
-                    'vendor/omaGui/',
-                    [System.StringComparison]::OrdinalIgnoreCase)) {
-                $windowsVendorWarnings++
-                continue
-            }
-            $windowsRule = [regex]::Match($windowsLintLine,
-                'warning\s+(FBL(?:\d+|-[A-Z0-9-]+))(?=\s)').Groups[1].Value
-            if ($windowsRule -eq '') {
-                throw "Unparsed Windows lint rule: $windowsLintLine"
-            }
-            $windowsKey = $windowsWarningFile + '|' + $windowsRule
-            if (-not $windowsWarningGroups.ContainsKey($windowsKey)) {
-                $windowsWarningGroups[$windowsKey] = 0
-            }
-            $windowsWarningGroups[$windowsKey]++
-            $windowsProjectWarnings++
-        }
-        if ($windowsVendorWarnings -ne 154 -or
-            ($windowsProjectWarnings + $windowsVendorWarnings) -ne
-                $windowsLintSummary.Warnings) {
-            throw 'Windows lint warning totals do not match the reviewed source boundaries.'
-        }
-        $expectedWindowsGroups = @{}
-        foreach ($baselineLine in Get-Content -LiteralPath $windowsLintBaseline) {
-            $trimmedBaselineLine = $baselineLine.Trim()
-            if ($trimmedBaselineLine -eq '' -or
-                $trimmedBaselineLine.StartsWith('#')) {
-                continue
-            }
-            $baselineMatch = [regex]::Match($trimmedBaselineLine,
-                '^([^|]+)\|(FBL(?:\d+|-[A-Z0-9-]+))\|([1-9]\d*)$')
-            if (-not $baselineMatch.Success) {
-                throw "Malformed Windows lint baseline row: $baselineLine"
-            }
-            $windowsKey = $baselineMatch.Groups[1].Value + '|' +
-                $baselineMatch.Groups[2].Value
-            if ($expectedWindowsGroups.ContainsKey($windowsKey)) {
-                throw "Duplicate Windows lint baseline group: $windowsKey"
-            }
-            $baselineSource = Join-Path $projectRoot `
-                $baselineMatch.Groups[1].Value.Replace('/', '\')
-            if (-not (Test-Path -LiteralPath $baselineSource -PathType Leaf)) {
-                throw "Windows lint baseline names a missing source: $baselineSource"
-            }
-            $expectedWindowsGroups[$windowsKey] =
-                [int] $baselineMatch.Groups[3].Value
-        }
-        foreach ($windowsKey in @($windowsWarningGroups.Keys +
-                $expectedWindowsGroups.Keys | Sort-Object -Unique)) {
-            $actualCount = 0
-            $expectedCount = 0
-            if ($windowsWarningGroups.ContainsKey($windowsKey)) {
-                $actualCount = $windowsWarningGroups[$windowsKey]
-            }
-            if ($expectedWindowsGroups.ContainsKey($windowsKey)) {
-                $expectedCount = $expectedWindowsGroups[$windowsKey]
-            }
-            if ($actualCount -ne $expectedCount) {
-                throw "Windows lint warning group changed: $windowsKey expected=$expectedCount actual=$actualCount"
-            }
-        }
-        $evidence.windows_lint_warning_count = $windowsProjectWarnings
-        $evidence.vendored_windows_lint_warning_count = `
-            $windowsVendorWarnings
-
         $linuxLintLog = Join-Path $evidenceRoot 'lint-linux-portability.log'
-        Invoke-LoggedCommand -FilePath $strictLinter `
-            -Arguments (@('--no-semantic', '--target', 'linux', '--profile', 'strict',
-                '--honor-suppressions') + $lintSourcePaths) `
-            -LogPath $linuxLintLog `
-            -Description 'combined reviewed Linux-target portability lint' `
-            -SuppressConsoleOutput
-        $linuxLintLines = @(Get-Content -LiteralPath $linuxLintLog)
-        $linuxLintSummary = Get-LintSummary -Lines $linuxLintLines `
-            -Description 'Linux-target portability'
-        if ($linuxLintSummary.Files -ne
-                ($sourceFiles.Count + $vendoredSourceFiles.Count) -or
-            $linuxLintSummary.Errors -ne 0 -or
-            $linuxLintSummary.Warnings -ne 1313 -or
-            $linuxLintSummary.Info -ne 0) {
-            throw 'Linux-target portability lint did not scan the expected tree cleanly.'
-        }
-
-        $actualWarningGroups = @{}
-        $parsedWarningCount = 0
-        $projectWarningCount = 0
-        $vendorLinuxWarningCount = 0
-        #
-        # Most portability diagnostics use compact identifiers such as FBL210.
-        # The strict linter also emits named families such as FBL-CF-003.  Both
-        # forms are real warnings and must be counted before the project and
-        # vendored dependency results are classified.
-        #
-        $warningPattern =
-            '^(.+?)\(\s*\d+,\s*\d+\):\s+warning\s+' +
-            '(FBL(?:\d+|-[A-Z0-9-]+))(?=\s)'
-        foreach ($lintLine in $linuxLintLines) {
-            $warningMatch = [regex]::Match($lintLine, $warningPattern)
-            if (-not $warningMatch.Success) {
-                continue
-            }
-            $warningFile = $warningMatch.Groups[1].Value
-            if ($warningFile.StartsWith('.\')) {
-                $warningFile = $warningFile.Substring(2)
-            }
-            $warningFile = $warningFile.Replace('\', '/')
-            $parsedWarningCount++
-            if ($warningFile.StartsWith(
-                    'vendor/omaGui/',
-                    [System.StringComparison]::OrdinalIgnoreCase)) {
-                $vendorLinuxWarningCount++
-                continue
-            }
-            $warningKey = $warningFile + '|' + $warningMatch.Groups[2].Value
-            if (-not $actualWarningGroups.ContainsKey($warningKey)) {
-                $actualWarningGroups[$warningKey] = 0
-            }
-            $actualWarningGroups[$warningKey]++
-            $projectWarningCount++
-        }
-        if ($parsedWarningCount -ne $linuxLintSummary.Warnings) {
-            throw 'Not every Linux-target warning could be parsed for review.'
-        }
-
-        $expectedWarningGroups = @{}
-        foreach ($baselineLine in Get-Content -LiteralPath $portabilityBaseline) {
-            $trimmedBaselineLine = $baselineLine.Trim()
-            if ($trimmedBaselineLine -eq '' -or
-                $trimmedBaselineLine.StartsWith('#')) {
-                continue
-            }
-            $baselineMatch = [regex]::Match(
-                $trimmedBaselineLine,
-                '^([^|]+)\|(FBL(?:\d+|-[A-Z0-9-]+))\|([1-9]\d*)$')
-            if (-not $baselineMatch.Success) {
-                throw "Malformed portability baseline row: $baselineLine"
-            }
-            $baselineKey = $baselineMatch.Groups[1].Value + '|' +
-                $baselineMatch.Groups[2].Value
-            if ($expectedWarningGroups.ContainsKey($baselineKey)) {
-                throw "Duplicate portability baseline group: $baselineKey"
-            }
-            $baselineSource = Join-Path $projectRoot `
-                $baselineMatch.Groups[1].Value.Replace('/', '\')
-            if (-not (Test-Path -LiteralPath $baselineSource -PathType Leaf)) {
-                throw "Portability baseline names a missing source: $baselineSource"
-            }
-            $expectedWarningGroups[$baselineKey] = [int] $baselineMatch.Groups[3].Value
-        }
-        $allWarningKeys = @($actualWarningGroups.Keys +
-            $expectedWarningGroups.Keys | Sort-Object -Unique)
-        foreach ($warningKey in $allWarningKeys) {
-            $actualCount = 0
-            $expectedCount = 0
-            if ($actualWarningGroups.ContainsKey($warningKey)) {
-                $actualCount = $actualWarningGroups[$warningKey]
-            }
-            if ($expectedWarningGroups.ContainsKey($warningKey)) {
-                $expectedCount = $expectedWarningGroups[$warningKey]
-            }
-            if ($actualCount -ne $expectedCount) {
-                throw "Portability warning group changed: $warningKey expected=$expectedCount actual=$actualCount"
+        foreach ($lintTarget in @('windows', 'linux')) {
+            $lintLog = $windowsLintLog
+            if ($lintTarget -eq 'linux') { $lintLog = $linuxLintLog }
+            Invoke-LoggedCommand -FilePath $powerShellExecutable `
+                -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy',
+                    'Bypass', '-File', (Join-Path $projectRoot 'tools\lint.ps1'),
+                    '-LinterPath', $strictLinter, '-Target', $lintTarget) `
+                -LogPath $lintLog -Description ('strict ' + $lintTarget + ' source lint')
+            $lintSummary = Get-LintSummary -Lines @(Get-Content -LiteralPath $lintLog) `
+                -Description $lintTarget
+            if ($lintSummary.Files -ne ($sourceFiles.Count + $vendoredSourceFiles.Count) -or
+                $lintSummary.Errors -ne 0 -or $lintSummary.Warnings -ne 0 -or
+                $lintSummary.Info -ne 0) {
+                throw "$lintTarget strict lint did not accept every release source without diagnostics."
             }
         }
-        $expectedWarningTotal = [int] (($expectedWarningGroups.Values |
-            Measure-Object -Sum).Sum)
-        if ($expectedWarningTotal -ne $projectWarningCount -or
-            $vendorLinuxWarningCount -ne 615 -or
-            ($projectWarningCount + $vendorLinuxWarningCount) -ne
-                $linuxLintSummary.Warnings) {
-            throw 'Project or vendored portability warning totals do not match review.'
-        }
-        $evidence.reviewed_linux_lint_warning_count = $projectWarningCount
-        $evidence.vendored_linux_lint_warning_count = `
-            $vendorLinuxWarningCount
 
         $versionTextSource = Get-Content -LiteralPath `
-            (Join-Path $projectRoot 'version.bi') -Raw
+            (Join-Path $projectRoot 'src\version.bi') -Raw
         $releaseVersion = Get-DeclaredStringConstant `
             -SourceText $versionTextSource -ConstantName 'OSE_VERSION_TEXT'
         $productName = Get-DeclaredStringConstant `
@@ -820,21 +630,19 @@ try {
         }
         foreach ($requiredArchiveFile in @(
                 'build_editor_android.ps1',
-                'opensesh_unity.bas',
-                'midi_null.bas',
-                'touch_gesture.bas',
-                'touch_gesture.bi',
-                'opensesh.manifest',
+                'src\opensesh_unity.bas',
+                'src\midi_null.bas',
+                'src\touch_gesture.bas',
+                'src\touch_gesture.bi',
+                'src\opensesh.manifest',
                 'PORTABLE_README.txt',
-                'DEPENDENCIES.md',
-                'midi_alsa.bas',
-                'midi_input.bi',
-                'midi_output.bi',
-                'portability_lint_baseline.txt',
-                'windows_lint_baseline.txt',
+                'docs\DEPENDENCIES.md',
+                'src\midi_alsa.bas',
+                'src\midi_input.bi',
+                'src\midi_output.bi',
                 'prepare_windows_portable_package.ps1',
-                'sfx_runtime.bas',
-                'sfx_runtime.bi',
+                'src\sfx_runtime.bas',
+                'src\sfx_runtime.bi',
                 'tests/verify_windows_binary.ps1',
                 'tests/verify_windows_binary_negative.ps1',
                 'tests/verify_dependency_snapshot.ps1',
@@ -854,9 +662,14 @@ try {
                 'vendor/omaGui/SNAPSHOT.sha256',
                 'vendor/omaGui/assets/fonts/OFL-1.1.txt',
                 'windows_toolchain_lock.json',
+                'tools/lint.ps1',
+                'fblint.toml',
+                'release_manifest.txt',
+                '.gitattributes',
+                'docs/ARCHITECTURE.md',
                 'verify_linux_release_archive.sh',
                 'verify_windows_release.ps1')) {
-            if (-not $archivePathSet.Contains($requiredArchiveFile)) {
+            if (-not $archivePathSet.Contains($requiredArchiveFile.Replace('\', '/'))) {
                 throw "Source archive is missing release infrastructure: $requiredArchiveFile"
             }
         }

@@ -4,6 +4,9 @@
 
     File: clipboard.bas
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: Implements clipboard.bi; declarations there define the interface.
+
     Purpose:
 
         Exchange bounded plain text through a portable process-local clipboard
@@ -89,6 +92,7 @@ Const CLIPBOARD_WINDOWS_RETRY_MILLISECONDS As Integer = 1
 
 Private Function clipboard_WindowsOpen() As Integer
 
+    ' fblint: disable-next-line FBL311 REASON: The loop counter bounds repeated work; the cursor or stream state supplies each value.
     For attemptIndex As Integer = 1 To CLIPBOARD_WINDOWS_OPEN_ATTEMPTS
         If OpenClipboard(0) <> 0 Then Return 1
         Sleep CLIPBOARD_WINDOWS_RETRY_MILLISECONDS, 1
@@ -192,7 +196,7 @@ Private Function clipboard_XclipGetText() As String
     Dim As String resultText
     Dim As String chunkText
 
-    If Environ("DISPLAY") = "" Then Return clipboard_FallbackText
+    If Environ("DISPLAY") = "" Then Return clipboard_FallbackText ' fblint: disable-line FBL750 REASON: An absent DISPLAY uses the in-process clipboard fallback without invoking xclip.
     If Shell("command -v xclip >/dev/null 2>&1") <> 0 Then _
         Return clipboard_FallbackText
 
@@ -221,7 +225,7 @@ Private Sub clipboard_XclipSetText(ByVal textValue As String)
     Dim As Integer fileNumber = FreeFile
     Dim As Integer ioResult
 
-    If Environ("DISPLAY") = "" Then Exit Sub
+    If Environ("DISPLAY") = "" Then Exit Sub ' fblint: disable-line FBL750 REASON: An absent DISPLAY uses the in-process clipboard fallback without invoking xclip.
     If Shell("command -v xclip >/dev/null 2>&1") <> 0 Then Exit Sub
 
     ioResult = Open Pipe( _

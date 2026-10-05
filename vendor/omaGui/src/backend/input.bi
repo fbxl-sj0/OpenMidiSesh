@@ -3,6 +3,9 @@
     ---------------
     File: input.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for input.
+
     Purpose:
         Declare the gfxlib input and deterministic test-input interface.
 

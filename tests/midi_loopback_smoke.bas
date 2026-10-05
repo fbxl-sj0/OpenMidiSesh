@@ -4,6 +4,8 @@
 
     File: midi_loopback_smoke.bas
 
+    Module API: Test executable; process status reports failed behavioral assertions.
+
     Copyright (C) 2026 OpenSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -30,8 +32,8 @@
 
 #lang "fb"
 
-#include once "../midi_input.bi"
-#include once "../midi_output.bi"
+#include once "../src/midi_input.bi"
+#include once "../src/midi_output.bi"
 
 Private Sub test_CloseDevices()
     midiOutput_AllNotesOff()

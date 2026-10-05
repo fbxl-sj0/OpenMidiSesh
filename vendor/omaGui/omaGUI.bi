@@ -4,6 +4,9 @@
 
     File: omaGUI.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for omaGUI.
+
     Purpose:
 
         Provide the public omaGUI declarations and, when selected by one

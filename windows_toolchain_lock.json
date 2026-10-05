@@ -1,12 +1,12 @@
 {
     "schema_version":  1,
     "platform":  "windows-x86_64",
-    "compiler_banner":  "FreeBASIC Compiler - Version 1.20.4-3 (2026-10-03), built for win64 (64bit)",
+    "compiler_banner":  "FreeBASIC Compiler - Version 1.20.4-3 (2026-10-05), built for win64 (64bit)",
     "files":  [
                   {
                       "path":  "fbc.exe",
-                      "length":  3010425,
-                      "sha256":  "84e66418e27299f90f550536852c233301c76cfa7fcfb8bd1eefbc1b394936a6"
+                      "length":  2849755,
+                      "sha256":  "114377bd0d5bc042b3718b76b8aefe77a1fd389ff6b408e7111fa089c90fa13c"
                   },
                   {
                       "path":  "bin/win64/as.exe",
@@ -25,13 +25,13 @@
                   },
                   {
                       "path":  "inc/fbgfx.bi",
-                      "length":  9940,
-                      "sha256":  "2efc1421579c5abe369a9679236f80127369419173c1fd907bafe2d0af77bbb4"
+                      "length":  13553,
+                      "sha256":  "8a720629f5a82c6bd3370741cea698c12b868c882b92cf9a74131aa237de8798"
                   },
                   {
                       "path":  "inc/fbgfx3.bi",
-                      "length":  10460,
-                      "sha256":  "c3da739f036768069ea2dc3e37ba26379000c820375d3fa52b21995276e68b45"
+                      "length":  10959,
+                      "sha256":  "ebbfc0076c2d3e769ead93f888474133da788b0b57bbb128f1721d485f31374c"
                   },
                   {
                       "path":  "inc/sfxlib_effects.bi",
@@ -40,38 +40,38 @@
                   },
                   {
                       "path":  "inc/sfxlib_raw.bi",
-                      "length":  4179,
-                      "sha256":  "a5367de54a41f38dc2dc1ea1a29c3956e1b42f1d69f4f64fddb81b930d8ac58b"
+                      "length":  5076,
+                      "sha256":  "42f78788b6e56afff11183d996e5f211d5f16ff9ac353fd362959461e582d8dd"
                   },
                   {
                       "path":  "lib/win64/libfb.a",
-                      "length":  661466,
-                      "sha256":  "00824f929d1d74d8642d13ab81bec0044ceac3b3466954740b16ae8b0e46954e"
+                      "length":  819278,
+                      "sha256":  "9122e919e3e11630d835277b60644f0ccbf4e65db225d137562726c6cb905e61"
                   },
                   {
                       "path":  "lib/win64/libfbmt.a",
-                      "length":  681880,
-                      "sha256":  "d5ed4a6a6effe84112a02845dcb019d5431faad98e9a0af6ba1d70e404bae673"
+                      "length":  841370,
+                      "sha256":  "59648b5836776d932cf0b26661690e31dd91dd1dd8dfd5f06cf7ad95c312be0d"
                   },
                   {
                       "path":  "lib/win64/libfbgfx.a",
-                      "length":  301178,
-                      "sha256":  "9f1eff4159ec8cdb3bd02448b8f50f377605806982c3ba0d31878ed7419d869f"
+                      "length":  306914,
+                      "sha256":  "bd8f5b43780505692a0eb1734196e1cbd54ef0541f4a378c6b604ff2533f659e"
                   },
                   {
                       "path":  "lib/win64/libfbgfxmt.a",
-                      "length":  307624,
-                      "sha256":  "d452cfc16b60663be69942c5cd57286da7995fad201b1807e180f8b7d17616e4"
+                      "length":  313686,
+                      "sha256":  "6ce0e89fe706c2f0c339ef8243e19be217fa1d540b0de0df7bae86bac9a07c31"
                   },
                   {
                       "path":  "lib/win64/libsfx.a",
-                      "length":  536320,
-                      "sha256":  "2a9a53e907dc99dc862c035980b5026ae4f76b86a0fb38007839ce6cd8cd154e"
+                      "length":  537322,
+                      "sha256":  "6edb1928b83bb109eb78954a416f72a0812b59cd7a8e224ede170411e7a58c82"
                   },
                   {
                       "path":  "lib/win64/libsfxmt.a",
-                      "length":  536320,
-                      "sha256":  "2a9a53e907dc99dc862c035980b5026ae4f76b86a0fb38007839ce6cd8cd154e"
+                      "length":  537322,
+                      "sha256":  "6edb1928b83bb109eb78954a416f72a0812b59cd7a8e224ede170411e7a58c82"
                   }
               ]
 }

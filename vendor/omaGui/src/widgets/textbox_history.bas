@@ -4,6 +4,9 @@
 
     File: textbox_history.bas
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI textbox_history implementation imported through omaGUI.bi.
+
     Purpose:
 
         Provide bounded per-widget Undo and Redo for editable textboxes.

@@ -4,6 +4,8 @@
 
     File: score_tools_smoke.bas
 
+    Module API: Test executable; process status reports failed behavioral assertions.
+
     Copyright (C) 2026 OpenSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -29,7 +31,7 @@
 
 #lang "fb"
 
-#include once "../score_tools.bi"
+#include once "../src/score_tools.bi"
 
 Dim As ScoreAddToolState state
 scoreAddTool_Initialize state

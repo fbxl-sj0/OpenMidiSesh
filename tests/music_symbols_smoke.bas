@@ -33,7 +33,7 @@
 
 #lang "fb"
 
-#include once "../music_symbols.bi"
+#include once "../src/music_symbols.bi"
 
 ' -------------------------------------------------------------------------
 ' Deterministic backend boundary

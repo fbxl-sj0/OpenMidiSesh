@@ -1,0 +1,44 @@
+# Project: OpenSesh
+# File: .github/workflows/windows-release.yml
+# Purpose: run the complete locked Windows release gate on a trusted desktop.
+# Responsibilities: retain executable, packages and exact validation evidence.
+# This file does not execute arbitrary pull-request revisions on that desktop.
+
+name: Windows release verification
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, Windows, X64, opensesh-release]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Verify tracked inputs
+        shell: powershell
+        run: |
+          python tools/check_repository.py --tracked
+          if ($LASTEXITCODE -ne 0) { throw 'Repository integrity failed' }
+      - name: Run the complete release verifier
+        shell: powershell
+        run: |
+          $evidence = Join-Path $env:RUNNER_TEMP ('opensesh-release-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
+          "OSE_RELEASE_EVIDENCE=$evidence" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          & .\verify_windows_release.ps1 -EvidenceDirectory $evidence
+          if ($LASTEXITCODE -ne 0) { throw 'Windows release verification failed' }
+      - name: Retain release evidence
+        if: always() && env.OSE_RELEASE_EVIDENCE != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-release-${{ github.sha }}
+          path: ${{ env.OSE_RELEASE_EVIDENCE }}
+          if-no-files-found: error
+          retention-days: 14
+
+# end of .github/workflows/windows-release.yml

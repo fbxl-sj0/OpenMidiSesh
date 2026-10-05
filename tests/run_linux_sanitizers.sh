@@ -73,9 +73,9 @@ elif [ "$require_linux_midi_loopback" -ne 0 ]; then
     midi_output_index=auto
 fi
 
-sanitizer_test_count=58
+sanitizer_test_count=60
 if [ -n "$midi_input_index" ]; then
-    sanitizer_test_count=59
+    sanitizer_test_count=61
 fi
 
 for required_command in bash chmod cp grep mktemp rm tee timeout; do

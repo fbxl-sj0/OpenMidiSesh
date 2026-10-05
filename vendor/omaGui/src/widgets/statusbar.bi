@@ -4,6 +4,9 @@
 
     File: statusbar.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for statusbar.
+
     Purpose:
 
         Declare a portable Windows-style status bar with bounded panels.

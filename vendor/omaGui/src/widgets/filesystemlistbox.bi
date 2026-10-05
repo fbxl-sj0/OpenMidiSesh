@@ -4,6 +4,9 @@
 
     File: filesystemlistbox.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for filesystemlistbox.
+
     Purpose:
 
         Declare portable factories for the classic directory, drive, and file

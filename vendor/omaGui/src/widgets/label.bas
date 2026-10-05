@@ -4,6 +4,9 @@
 
     File: label.bas
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: Implements label.bi; declarations there define the interface.
+
     Purpose:
 
         Implement the noninteractive text-label widget.
@@ -11,6 +14,7 @@
     Responsibilities:
 
         - render static text with customizable colors and embedded fonts
+        - render bounded portable text styles without host font services
         - optionally fill the label's bounded client rectangle
         - wrap configured labels at measured word and path boundaries
         - limit wrapped output so variable text cannot invade later controls
@@ -52,13 +56,44 @@ End Function
 Private Sub label_PrintText( _
     ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, _
     ByRef textValue As Const String, ByVal fontId As Integer, _
-    ByVal percent As Integer _
+    ByVal percent As Integer, ByVal textStyle As Integer _
 )
     If clr = LABEL_COLOR_THEME_TEXT Then clr = theme_GetColor(GUI_COLOR_TEXT)
-    If percent = 100 Then
+    If textStyle = BACKEND_TEXT_STYLE_NORMAL AndAlso percent = 100 Then
         backend_PrintFont x, y, clr, textValue, fontId
+        Exit Sub
+    End If
+
+    ' Keep advances unchanged; styles only add ink or draw within line height.
+    If (textStyle And BACKEND_TEXT_STYLE_ITALIC) <> 0 Then
+        backend_PrintItalicFontPercent x, y, clr, textValue, fontId, percent
     Else
         backend_PrintFontPercent x, y, clr, textValue, fontId, percent
+    End If
+
+    If (textStyle And BACKEND_TEXT_STYLE_BOLD) <> 0 Then
+        Dim As Integer boldOffset = percent \ 100
+        If boldOffset < 1 Then boldOffset = 1
+        If (textStyle And BACKEND_TEXT_STYLE_ITALIC) <> 0 Then
+            backend_PrintItalicFontPercent x + boldOffset, y, clr, _
+                textValue, fontId, percent
+        Else
+            backend_PrintFontPercent x + boldOffset, y, clr, _
+                textValue, fontId, percent
+        End If
+    End If
+
+    Dim As Integer textWidth = _
+        backend_GetTextWidthFontPercent(textValue, fontId, percent)
+    Dim As Integer lineHeight = backend_GetTextHeightFontPercent( _
+        fontId, percent)
+    If textWidth > 0 AndAlso lineHeight > 1 Then
+        If (textStyle And BACKEND_TEXT_STYLE_UNDERLINE) <> 0 Then _
+            backend_Line x, y + lineHeight - 2, _
+                x + textWidth - 1, y + lineHeight - 2, clr
+        If (textStyle And BACKEND_TEXT_STYLE_STRIKEOUT) <> 0 Then _
+            backend_Line x, y + lineHeight \ 2, _
+                x + textWidth - 1, y + lineHeight \ 2, clr
     End If
 End Sub
 
@@ -181,7 +216,8 @@ Private Sub label_DrawLayoutLine( _
         Case BACKEND_ALIGN_RIGHT: drawX += w->w - textWidth
         End Select
     End If
-    label_PrintText drawX, drawY, dataValue->clr, lineText, dataValue->fontId, dataValue->fontPercent
+    label_PrintText drawX, drawY, dataValue->clr, lineText, _
+        dataValue->fontId, dataValue->fontPercent, dataValue->textStyle
 
     ' Aligned mnemonic decoration uses the same origin and embedded font as
     ' the glyphs. Draw only the first matching character across wrapped lines.
@@ -223,7 +259,8 @@ Private Function label_LayoutWrapped( _
         If renderText Then
             label_PrintText _
                 w->ax, w->ay, dataValue->clr, _
-                dataValue->text, dataValue->fontId, dataValue->fontPercent
+                dataValue->text, dataValue->fontId, dataValue->fontPercent, _
+                dataValue->textStyle
         End If
         Return IIf(Len(dataValue->text) > 0, 1, 0)
     End If
@@ -345,6 +382,7 @@ Function label_Create( _
     d->horizontalAlignment = BACKEND_ALIGN_LEFT
     d->verticalAlignment = BACKEND_ALIGN_TOP
     d->borderStyle = 0
+    d->textStyle = BACKEND_TEXT_STYLE_NORMAL
     wgt->data = d
     Return wgt
 End Function
@@ -362,6 +400,22 @@ Sub label_SetFontScalePercent(ByVal w As Widget Ptr, ByVal percent As Integer)
     If percent > 900 Then percent = 900
     Cast(LabelData Ptr, w->data)->fontPercent = percent
 End Sub
+
+
+Function label_SetTextStyle( _
+    ByVal w As Widget Ptr, ByVal textStyle As Integer _
+) As Integer
+    If w = 0 OrElse w->data = 0 OrElse w->destroy <> @label_Destroy Then Return 0
+    If (textStyle And Not BACKEND_TEXT_STYLE_ALL) <> 0 Then Return 0
+    Cast(LabelData Ptr, w->data)->textStyle = textStyle
+    Return -1
+End Function
+
+
+Function label_GetTextStyle(ByVal w As Widget Ptr) As Integer
+    If w = 0 OrElse w->data = 0 OrElse w->destroy <> @label_Destroy Then Return 0
+    Return Cast(LabelData Ptr, w->data)->textStyle
+End Function
 
 
 Function label_SetTextColor( _

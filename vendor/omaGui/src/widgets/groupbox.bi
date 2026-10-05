@@ -4,6 +4,9 @@
 
     File: groupbox.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for groupbox.
+
     Purpose:
 
         Declare a classic labeled group-frame widget.

@@ -4,6 +4,9 @@
 
     File: picturebox.bas
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: Implements picturebox.bi; declarations there define the interface.
+
     Purpose:
 
         Render a portable classic PictureBox-style display surface.
@@ -292,8 +295,9 @@ Function picturebox_SetImage( _
         End If
         For row_index As Integer = 0 To image_height - 1
             For column_index As Integer = 0 To image_width - 1
+                ' fblint: disable-next-line FBL-PTR-019 FBL525 REASON: ImageInfo validates both pitches and buffer sizes before the bounded row/column copy.
                 Cast(ULong Ptr, Cast(UByte Ptr, copy_pixels) + row_index * copy_pitch)[column_index] = _
-                    Cast(ULong Ptr, Cast(UByte Ptr, image_pixels) + row_index * image_pitch)[column_index]
+                    Cast(ULong Ptr, Cast(UByte Ptr, image_pixels) + row_index * image_pitch)[column_index] ' fblint: disable-line FBL-PTR-019 FBL525 REASON: ImageInfo validates both pitches and buffer sizes before the bounded row/column copy.
             Next column_index
         Next row_index
         copied_image->width = image_width

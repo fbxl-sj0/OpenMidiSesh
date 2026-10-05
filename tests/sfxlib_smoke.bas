@@ -4,6 +4,8 @@
 
     File: sfxlib_smoke.bas
 
+    Module API: Test executable; process status reports failed behavioral assertions.
+
     Copyright (C) 2026 OpenSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -31,7 +33,7 @@
 
 #lang "fb"
 
-#include once "../sfx_runtime.bi"
+#include once "../src/sfx_runtime.bi"
 
 Dim As LongInt captureBytes = 0
 

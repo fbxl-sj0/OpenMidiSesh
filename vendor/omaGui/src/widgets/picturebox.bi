@@ -4,6 +4,9 @@
 
     File: picturebox.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for picturebox.
+
     Purpose:
 
         Declare a framed display surface compatible with classic PictureBox

@@ -1,0 +1,37 @@
+# Project: OpenSesh
+# File: .github/ISSUE_TEMPLATE/bug_report.yml
+# Purpose: collect enough evidence to reproduce an ordinary application bug.
+# Responsibilities: identify platform, version, input and expected behavior.
+# This file does not collect private recordings or vulnerability exploits.
+name: Bug report
+description: Report a reproducible editor problem.
+body:
+  - type: markdown
+    attributes:
+      value: For security issues, follow SECURITY.md. Share only inputs you can redistribute.
+  - type: input
+    id: version
+    attributes:
+      label: Application version or commit
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system and compiler version
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include the smallest shareable input and relevant diagnostics.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and observed behavior
+    validations:
+      required: true
+# end of .github/ISSUE_TEMPLATE/bug_report.yml

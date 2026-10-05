@@ -33,16 +33,14 @@
 
 #lang "fb"
 
-#include once "../audio_tracks.bi"
-#include once "../wav_export_sfx.bi"
+#include once "../src/audio_tracks.bi"
+#include once "../src/wav_export_sfx.bi"
 
 ' The null driver has no hardware callback. These public sfxlib runtime hooks
 ' let the smoke test advance exactly one quarter-second of mixer output.
 Declare Sub fb_sfxUpdate CDecl Alias "fb_sfxUpdate" (ByVal frames As Long)
-Declare Sub fb_sfxForegroundFeedBegin CDecl _
-    Alias "fb_sfxForegroundFeedBegin" ()
-Declare Sub fb_sfxForegroundFeedEnd CDecl _
-    Alias "fb_sfxForegroundFeedEnd" ()
+Declare Sub fb_sfxForegroundFeedBegin CDecl Alias "fb_sfxForegroundFeedBegin" ()
+Declare Sub fb_sfxForegroundFeedEnd CDecl Alias "fb_sfxForegroundFeedEnd" ()
 
 Private Sub test_Fail(ByVal messageText As String)
     Print "ERROR: "; messageText

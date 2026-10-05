@@ -3,6 +3,9 @@
     ---------------
     File: backend.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for backend.
+
     Purpose:
         Declare the gfxlib graphics, text, clipping, and window interface.
 

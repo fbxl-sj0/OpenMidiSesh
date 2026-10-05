@@ -121,6 +121,12 @@ function Invoke-BoundedTest {
 
 $tests = @(
     [pscustomobject]@{
+        Name = 'omagui_safety_smoke'
+        Sources = @('tests\omagui_safety_smoke.bas')
+        Defines = @()
+        Arguments = @()
+    },
+    [pscustomobject]@{
         Name = 'atomic_file_smoke'
         Sources = @('tests\atomic_file_smoke.bas')
         Defines = @()
@@ -128,13 +134,13 @@ $tests = @(
     },
     [pscustomobject]@{
         Name = 'capture_paths_smoke'
-        Sources = @('tests\capture_paths_smoke.bas', 'capture_paths.bas')
+        Sources = @('tests\capture_paths_smoke.bas', 'src\capture_paths.bas')
         Defines = @()
         Arguments = @((Join-Path $buildRoot 'capture-paths-fixtures'))
     },
     [pscustomobject]@{
         Name = 'numeric_text_smoke'
-        Sources = @('tests\numeric_text_smoke.bas', 'numeric_text.bas')
+        Sources = @('tests\numeric_text_smoke.bas', 'src\numeric_text.bas')
         Defines = @()
         Arguments = @()
     },
@@ -142,14 +148,14 @@ $tests = @(
         Name = 'audio_formats_malformed_smoke'
         Sources = @(
             'tests\audio_formats_malformed_smoke.bas',
-            'audio_tracks.bas'
+            'src\audio_tracks.bas'
         )
         Defines = @()
         Arguments = @((Join-Path $buildRoot 'audio-formats-malformed'))
     },
     [pscustomobject]@{
         Name = 'audio_tracks_smoke'
-        Sources = @('tests\audio_tracks_smoke.bas', 'audio_tracks.bas')
+        Sources = @('tests\audio_tracks_smoke.bas', 'src\audio_tracks.bas')
         Defines = @()
         Arguments = @((Join-Path $buildRoot 'audio-tracks-smoke.ose'))
     },
@@ -157,10 +163,10 @@ $tests = @(
         Name = 'audio_sample_slots_smoke'
         Sources = @(
             'tests\audio_sample_slots_smoke.bas',
-            'audio_sample_slots.bas',
-            'audio_tracks.bas',
-            'wav_export_sfx.bas',
-            'sfx_runtime.bas'
+            'src\audio_sample_slots.bas',
+            'src\audio_tracks.bas',
+            'src\wav_export_sfx.bas',
+            'src\sfx_runtime.bas'
         )
         Defines = @()
         Arguments = @(
@@ -171,13 +177,13 @@ $tests = @(
     },
     [pscustomobject]@{
         Name = 'audio_history_smoke'
-        Sources = @('tests\audio_history_smoke.bas', 'audio_tracks.bas')
+        Sources = @('tests\audio_history_smoke.bas', 'src\audio_tracks.bas')
         Defines = @()
         Arguments = @((Join-Path $buildRoot 'audio-history-smoke.wav'))
     },
     [pscustomobject]@{
         Name = 'history_timeline_smoke'
-        Sources = @('tests\history_timeline_smoke.bas', 'history_timeline.bas')
+        Sources = @('tests\history_timeline_smoke.bas', 'src\history_timeline.bas')
         Defines = @()
         Arguments = @()
     },
@@ -185,10 +191,10 @@ $tests = @(
         Name = 'document_history_smoke'
         Sources = @(
             'tests\document_history_smoke.bas',
-            'document_history.bas',
-            'history_timeline.bas',
-            'midi_model.bas',
-            'audio_tracks.bas'
+            'src\document_history.bas',
+            'src\history_timeline.bas',
+            'src\midi_model.bas',
+            'src\audio_tracks.bas'
         )
         Defines = @()
         Arguments = @((Join-Path $buildRoot 'document-history-smoke.wav'))
@@ -197,10 +203,10 @@ $tests = @(
         Name = 'document_endurance_smoke'
         Sources = @(
             'tests\document_endurance_smoke.bas',
-            'document_history.bas',
-            'history_timeline.bas',
-            'midi_model.bas',
-            'audio_tracks.bas'
+            'src\document_history.bas',
+            'src\history_timeline.bas',
+            'src\midi_model.bas',
+            'src\audio_tracks.bas'
         )
         Defines = @()
         Arguments = @((Join-Path $buildRoot 'document-endurance-smoke.wav'))
@@ -209,15 +215,15 @@ $tests = @(
         Name = 'project_transaction_smoke'
         Sources = @(
             'tests\project_transaction_smoke.bas',
-            'project_transaction.bas',
-            'numeric_text.bas'
+            'src\project_transaction.bas',
+            'src\numeric_text.bas'
         )
         Defines = @('OSE_PROJECT_TRANSACTION_TESTING')
         Arguments = @((Join-Path $buildRoot 'project-transaction-smoke'))
     },
     [pscustomobject]@{
         Name = 'empty_document_smoke'
-        Sources = @('tests\empty_document_smoke.bas', 'midi_model.bas')
+        Sources = @('tests\empty_document_smoke.bas', 'src\midi_model.bas')
         Defines = @()
         Arguments = @((Join-Path $buildRoot 'empty-document-smoke.mid'))
     },
@@ -225,27 +231,27 @@ $tests = @(
         Name = 'midi_input_smoke'
         Sources = @(
             'tests\midi_input_smoke.bas',
-            'midi_input_win.bas',
-            'midi_input_protocol.bas'
+            'src\midi_input_win.bas',
+            'src\midi_input_protocol.bas'
         )
         Defines = @()
         Arguments = @()
     },
     [pscustomobject]@{
         Name = 'keyboard_controls_smoke'
-        Sources = @('tests\keyboard_controls_smoke.bas', 'keyboard_controls.bas')
+        Sources = @('tests\keyboard_controls_smoke.bas', 'src\keyboard_controls.bas')
         Defines = @()
         Arguments = @()
     },
     [pscustomobject]@{
         Name = 'drum_kit_smoke'
-        Sources = @('tests\drum_kit_smoke.bas', 'drum_kit.bas')
+        Sources = @('tests\drum_kit_smoke.bas', 'src\drum_kit.bas')
         Defines = @()
         Arguments = @()
     },
     [pscustomobject]@{
         Name = 'drum_phrase_smoke'
-        Sources = @('tests\drum_phrase_smoke.bas', 'drum_phrase.bas', 'drum_kit.bas', 'midi_model.bas')
+        Sources = @('tests\drum_phrase_smoke.bas', 'src\drum_phrase.bas', 'src\drum_kit.bas', 'src\midi_model.bas')
         Defines = @()
         Arguments = @((Join-Path $buildRoot 'drum-phrase-smoke.mid'))
     },
@@ -253,8 +259,8 @@ $tests = @(
         Name = 'master_effect_smoke'
         Sources = @(
             'tests\master_effect_smoke.bas',
-            'master_effect.bas',
-            'sfx_runtime.bas'
+            'src\master_effect.bas',
+            'src\sfx_runtime.bas'
         )
         Defines = @()
         Arguments = @()
@@ -263,14 +269,14 @@ $tests = @(
         Name = 'midi_input_protocol_smoke'
         Sources = @(
             'tests\midi_input_protocol_smoke.bas',
-            'midi_input_protocol.bas'
+            'src\midi_input_protocol.bas'
         )
         Defines = @()
         Arguments = @()
     },
     [pscustomobject]@{
         Name = 'mixer_meter_smoke'
-        Sources = @('tests\mixer_meter_smoke.bas', 'mixer_meter.bas')
+        Sources = @('tests\mixer_meter_smoke.bas', 'src\mixer_meter.bas')
         Defines = @()
         Arguments = @()
     },
@@ -278,21 +284,21 @@ $tests = @(
         Name = 'mixer_controls_smoke'
         Sources = @(
             'tests\mixer_controls_smoke.bas',
-            'mixer_controls.bas',
-            'ui_interaction.bas'
+            'src\mixer_controls.bas',
+            'src\ui_interaction.bas'
         )
         Defines = @()
         Arguments = @()
     },
     [pscustomobject]@{
         Name = 'mixer_state_smoke'
-        Sources = @('tests\mixer_state_smoke.bas', 'mixer_state.bas')
+        Sources = @('tests\mixer_state_smoke.bas', 'src\mixer_state.bas')
         Defines = @()
         Arguments = @()
     },
     [pscustomobject]@{
         Name = 'midi_model_smoke'
-        Sources = @('tests\midi_model_smoke.bas', 'midi_model.bas')
+        Sources = @('tests\midi_model_smoke.bas', 'src\midi_model.bas')
         Defines = @()
         Arguments = @(
             (Join-Path $buildRoot 'empty-document-smoke.mid'),
@@ -301,7 +307,7 @@ $tests = @(
     },
     [pscustomobject]@{
         Name = 'midi_history_smoke'
-        Sources = @('tests\midi_history_smoke.bas', 'midi_model.bas')
+        Sources = @('tests\midi_history_smoke.bas', 'src\midi_model.bas')
         Defines = @()
         Arguments = @()
     },
@@ -309,7 +315,7 @@ $tests = @(
         Name = 'midi_model_malformed_smoke'
         Sources = @(
             'tests\midi_model_malformed_smoke.bas',
-            'midi_model.bas'
+            'src\midi_model.bas'
         )
         Defines = @()
         Arguments = @((Join-Path $buildRoot 'midi-model-malformed.mid'))
@@ -318,7 +324,7 @@ $tests = @(
         Name = 'midi_model_fuzz_smoke'
         Sources = @(
             'tests\midi_model_fuzz_smoke.bas',
-            'midi_model.bas'
+            'src\midi_model.bas'
         )
         Defines = @()
         Arguments = @((Join-Path $buildRoot 'midi-model-fuzz'))
@@ -331,7 +337,7 @@ $tests = @(
     },
     [pscustomobject]@{
         Name = 'midi_output_smoke'
-        Sources = @('tests\midi_output_smoke.bas', 'midi_output_sfx.bas')
+        Sources = @('tests\midi_output_smoke.bas', 'src\midi_output_sfx.bas')
         Defines = @('OSE_MIDI_OUTPUT_TESTING')
         Arguments = @()
     },
@@ -339,16 +345,16 @@ $tests = @(
         Name = 'midi_playback_audio_smoke'
         Sources = @(
             'tests\midi_playback_audio_smoke.bas',
-            'midi_model.bas',
-            'audio_tracks.bas',
-            'wav_export_sfx.bas',
-            'playback_mix.bas',
-            'playback_timing.bas',
-            'soundfont_bank.bas',
-            'soundfont_synth.bas',
-            'software_synth.bas',
-            'mixer_state.bas',
-            'sfx_runtime.bas'
+            'src\midi_model.bas',
+            'src\audio_tracks.bas',
+            'src\wav_export_sfx.bas',
+            'src\playback_mix.bas',
+            'src\playback_timing.bas',
+            'src\soundfont_bank.bas',
+            'src\soundfont_synth.bas',
+            'src\software_synth.bas',
+            'src\mixer_state.bas',
+            'src\sfx_runtime.bas'
         )
         Defines = @()
         Arguments = @(
@@ -360,13 +366,13 @@ $tests = @(
         Name = 'playback_endurance_smoke'
         Sources = @(
             'tests\playback_endurance_smoke.bas',
-            'audio_tracks.bas',
-            'wav_export_sfx.bas',
-            'playback_mix.bas',
-            'soundfont_bank.bas',
-            'soundfont_synth.bas',
-            'software_synth.bas',
-            'sfx_runtime.bas'
+            'src\audio_tracks.bas',
+            'src\wav_export_sfx.bas',
+            'src\playback_mix.bas',
+            'src\soundfont_bank.bas',
+            'src\soundfont_synth.bas',
+            'src\software_synth.bas',
+            'src\sfx_runtime.bas'
         )
         Defines = @()
         Arguments = @((Join-Path $buildRoot 'playback-endurance-smoke.wav'))
@@ -375,8 +381,8 @@ $tests = @(
         Name = 'music_export_smoke'
         Sources = @(
             'tests\music_export_smoke.bas',
-            'midi_model.bas',
-            'music_export.bas'
+            'src\midi_model.bas',
+            'src\music_export.bas'
         )
         Defines = @()
         Arguments = @((Join-Path $buildRoot 'music-export-smoke.mod'))
@@ -385,15 +391,15 @@ $tests = @(
         Name = 'music_symbols_smoke'
         Sources = @(
             'tests\music_symbols_smoke.bas',
-            'music_symbols.bas',
-            'numeric_text.bas'
+            'src\music_symbols.bas',
+            'src\numeric_text.bas'
         )
         Defines = @()
         Arguments = @((Join-Path $buildRoot 'music-screen-glyphs.mask'))
     },
     [pscustomobject]@{
         Name = 'notation_duration_smoke'
-        Sources = @('tests\notation_duration_smoke.bas', 'midi_model.bas')
+        Sources = @('tests\notation_duration_smoke.bas', 'src\midi_model.bas')
         Defines = @()
         Arguments = @((Join-Path $buildRoot 'notation-duration-smoke.mid'))
     },
@@ -401,8 +407,8 @@ $tests = @(
         Name = 'note_selection_smoke'
         Sources = @(
             'tests\note_selection_smoke.bas',
-            'note_selection.bas',
-            'midi_model.bas'
+            'src\note_selection.bas',
+            'src\midi_model.bas'
         )
         Defines = @()
         Arguments = @()
@@ -411,10 +417,10 @@ $tests = @(
         Name = 'selected_note_playback_smoke'
         Sources = @(
             'tests\selected_note_playback_smoke.bas',
-            'selected_note_playback.bas',
-            'note_selection.bas',
-            'midi_model.bas',
-            'playback_timing.bas'
+            'src\selected_note_playback.bas',
+            'src\note_selection.bas',
+            'src\midi_model.bas',
+            'src\playback_timing.bas'
         )
         Defines = @()
         Arguments = @()
@@ -423,32 +429,32 @@ $tests = @(
         Name = 'pitch_transcriber_smoke'
         Sources = @(
             'tests\pitch_transcriber_smoke.bas',
-            'pitch_transcriber.bas'
+            'src\pitch_transcriber.bas'
         )
         Defines = @()
         Arguments = @((Join-Path $buildRoot 'pitch-transcriber-smoke.wav'))
     },
     [pscustomobject]@{
         Name = 'playback_mix_smoke'
-        Sources = @('tests\playback_mix_smoke.bas', 'playback_mix.bas')
+        Sources = @('tests\playback_mix_smoke.bas', 'src\playback_mix.bas')
         Defines = @()
         Arguments = @()
     },
     [pscustomobject]@{
         Name = 'playback_state_smoke'
-        Sources = @('tests\playback_state_smoke.bas', 'playback_state.bas')
+        Sources = @('tests\playback_state_smoke.bas', 'src\playback_state.bas')
         Defines = @()
         Arguments = @()
     },
     [pscustomobject]@{
         Name = 'playback_timing_smoke'
-        Sources = @('tests\playback_timing_smoke.bas', 'playback_timing.bas')
+        Sources = @('tests\playback_timing_smoke.bas', 'src\playback_timing.bas')
         Defines = @()
         Arguments = @()
     },
     [pscustomobject]@{
         Name = 'ui_frame_pacing_smoke'
-        Sources = @('tests\ui_frame_pacing_smoke.bas', 'ui_frame_pacing.bas')
+        Sources = @('tests\ui_frame_pacing_smoke.bas', 'src\ui_frame_pacing.bas')
         Defines = @()
         Arguments = @()
     },
@@ -456,39 +462,39 @@ $tests = @(
         Name = 'score_controls_smoke'
         Sources = @(
             'tests\score_controls_smoke.bas',
-            'score_controls.bas',
-            'ui_interaction.bas'
+            'src\score_controls.bas',
+            'src\ui_interaction.bas'
         )
         Defines = @()
         Arguments = @()
     },
     [pscustomobject]@{
         Name = 'score_layout_smoke'
-        Sources = @('tests\score_layout_smoke.bas', 'score_layout.bas')
+        Sources = @('tests\score_layout_smoke.bas', 'src\score_layout.bas')
         Defines = @()
         Arguments = @()
     },
     [pscustomobject]@{
         Name = 'score_scroll_smoke'
-        Sources = @('tests\score_scroll_smoke.bas', 'score_scroll.bas')
+        Sources = @('tests\score_scroll_smoke.bas', 'src\score_scroll.bas')
         Defines = @()
         Arguments = @()
     },
     [pscustomobject]@{
         Name = 'score_tools_smoke'
-        Sources = @('tests\score_tools_smoke.bas', 'score_tools.bas')
+        Sources = @('tests\score_tools_smoke.bas', 'src\score_tools.bas')
         Defines = @()
         Arguments = @()
     },
     [pscustomobject]@{
         Name = 'sfxlib_smoke'
-        Sources = @('tests\sfxlib_smoke.bas', 'sfx_runtime.bas')
+        Sources = @('tests\sfxlib_smoke.bas', 'src\sfx_runtime.bas')
         Defines = @()
         Arguments = @((Join-Path $buildRoot 'sfxlib-capture-smoke.wav'))
     },
     [pscustomobject]@{
         Name = 'midi_running_status_smoke'
-        Sources = @('tests\midi_running_status_smoke.bas', 'midi_model.bas')
+        Sources = @('tests\midi_running_status_smoke.bas', 'src\midi_model.bas')
         Defines = @()
         Arguments = @((Join-Path $buildRoot 'midi-running-status.mid'))
     },
@@ -500,7 +506,7 @@ $tests = @(
     },
     [pscustomobject]@{
         Name = 'soundfont_shutdown_smoke'
-        Sources = @('tests\soundfont_shutdown_smoke.bas', 'soundfont_synth.bas')
+        Sources = @('tests\soundfont_shutdown_smoke.bas', 'src\soundfont_synth.bas')
         Defines = @()
         Arguments = @()
     },
@@ -514,10 +520,10 @@ $tests = @(
         Name = 'soundfont_smoke'
         Sources = @(
             'tests\soundfont_smoke.bas',
-            'soundfont_bank.bas',
-            'soundfont_synth.bas',
-            'playback_mix.bas',
-            'sfx_runtime.bas'
+            'src\soundfont_bank.bas',
+            'src\soundfont_synth.bas',
+            'src\playback_mix.bas',
+            'src\sfx_runtime.bas'
         )
         Defines = @()
         Arguments = @(
@@ -528,25 +534,25 @@ $tests = @(
     },
     [pscustomobject]@{
         Name = 'touch_gesture_smoke'
-        Sources = @('tests\touch_gesture_smoke.bas', 'touch_gesture.bas')
+        Sources = @('tests\touch_gesture_smoke.bas', 'src\touch_gesture.bas')
         Defines = @()
         Arguments = @()
     },
     [pscustomobject]@{
         Name = 'ui_interaction_smoke'
-        Sources = @('tests\ui_interaction_smoke.bas', 'ui_interaction.bas')
+        Sources = @('tests\ui_interaction_smoke.bas', 'src\ui_interaction.bas')
         Defines = @()
         Arguments = @()
     },
     [pscustomobject]@{
         Name = 'ui_style_smoke'
-        Sources = @('tests\ui_style_smoke.bas', 'ui_style.bas')
+        Sources = @('tests\ui_style_smoke.bas', 'src\ui_style.bas')
         Defines = @()
         Arguments = @()
     },
     [pscustomobject]@{
         Name = 'ui_icons_smoke'
-        Sources = @('tests\ui_icons_smoke.bas', 'ui_icons.bas')
+        Sources = @('tests\ui_icons_smoke.bas', 'src\ui_icons.bas')
         Defines = @()
         Arguments = @()
     },
@@ -554,8 +560,8 @@ $tests = @(
         Name = 'user_preferences_smoke'
         Sources = @(
             'tests\user_preferences_smoke.bas',
-            'user_preferences.bas',
-            'ui_interaction.bas'
+            'src\user_preferences.bas',
+            'src\ui_interaction.bas'
         )
         Defines = @()
         Arguments = @((Join-Path $buildRoot 'user-preferences-smoke.conf'))
@@ -570,8 +576,8 @@ $tests = @(
         Name = 'wav_export_smoke'
         Sources = @(
             'tests\wav_export_smoke.bas',
-            'audio_tracks.bas',
-            'wav_export_sfx.bas'
+            'src\audio_tracks.bas',
+            'src\wav_export_sfx.bas'
         )
         Defines = @()
         Arguments = @((Join-Path $buildRoot 'wav-export-smoke.wav'))
@@ -584,7 +590,7 @@ $tests = @(
     },
     [pscustomobject]@{
         Name = 'wav_export_failure_smoke'
-        Sources = @('tests\wav_export_failure_smoke.bas', 'wav_export_sfx.bas')
+        Sources = @('tests\wav_export_failure_smoke.bas', 'src\wav_export_sfx.bas')
         Defines = @()
         Arguments = @((Join-Path $buildRoot 'wav-export-failure.wav'))
     }
@@ -595,9 +601,9 @@ if ($IncludeMidiLoopback) {
         Name = 'midi_loopback_smoke'
         Sources = @(
             'tests\midi_loopback_smoke.bas',
-            'midi_input_win.bas',
-            'midi_input_protocol.bas',
-            'midi_output_sfx.bas'
+            'src\midi_input_win.bas',
+            'src\midi_input_protocol.bas',
+            'src\midi_output_sfx.bas'
         )
         Defines = @()
         Arguments = @([string] $MidiInputIndex, [string] $MidiOutputIndex)
@@ -643,7 +649,7 @@ foreach ($test in $tests) {
     $outputFile = Join-Path $buildRoot ($test.Name + '.exe')
     # Test programs which link the SoundFont worker must use one consistent
     # thread-safe runtime across every translated source module.
-    $compilerArguments = @('-i', $omaGuiRoot, '-mt')
+    $compilerArguments = @('-i', $omaGuiRoot, '-mt', '-w', 'all')
 
     foreach ($define in $test.Defines) {
         $compilerArguments += @('-d', $define)
@@ -658,8 +664,12 @@ foreach ($test in $tests) {
     $compilerArguments += @('-x', $outputFile)
 
     Write-Output ("BUILD " + $test.Name)
-    & $compilerPath @compilerArguments
+    $compilerOutput = @(& $compilerPath @compilerArguments 2>&1)
     $compileExit = $LASTEXITCODE
+    $compilerOutput | ForEach-Object { Write-Output $_ }
+    if (@($compilerOutput | Where-Object {
+        [string] $_ -match '(?i)\bwarning\s+\d+'
+    }).Count -gt 0) { $compileExit = 1 }
     if ($compileExit -ne 0) {
         $failedTests.Add($test.Name + ' (compile)')
         Write-Output ("FAIL  " + $test.Name + " compile_exit=" + $compileExit)

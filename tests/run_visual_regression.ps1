@@ -80,7 +80,7 @@ if ([string]::IsNullOrWhiteSpace($FixturePath)) {
     $FixturePath = Join-Path $buildRoot 'visual-fixture.mid'
     & $compilerPath `
         (Join-Path $projectRoot 'tests\empty_document_smoke.bas') `
-        (Join-Path $projectRoot 'midi_model.bas') `
+        (Join-Path $projectRoot 'src\midi_model.bas') `
         '-x' $fixtureGenerator
     if ($LASTEXITCODE -ne 0) {
         throw "Visual MIDI fixture generator failed to compile: $LASTEXITCODE"

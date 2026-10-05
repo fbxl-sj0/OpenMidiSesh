@@ -21,6 +21,21 @@ ui-*.png
 # Build and test runners recreate these directories from reviewed source.
 build/
 tests/build/
+dist/
 .codex-*/
+
+# The local shared GUI tree also contains nonredistributable historical assets.
+# Already tracked snapshot files remain tracked. Add new reviewed payloads
+# explicitly after updating and verifying SNAPSHOT.sha256.
+/vendor/omaGui/**
+
+# Local recordings, compiler output and credentials are not release inputs.
+*.sf2
+*.log
+*.asm
+.env
+.env.*
+__pycache__/
+*.py[cod]
 
 # end of .gitignore

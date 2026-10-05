@@ -32,6 +32,7 @@ param(
 )
 
 $projectRoot = [System.IO.Path]::GetFullPath($PSScriptRoot)
+$sourceRoot = Join-Path $projectRoot 'src'
 if ([string]::IsNullOrWhiteSpace($OmaGuiPath)) {
     $OmaGuiPath = Join-Path $projectRoot 'vendor\omaGui'
 }
@@ -42,8 +43,12 @@ if ([string]::IsNullOrWhiteSpace($OutputPath)) {
 $compilerPath = [System.IO.Path]::GetFullPath($FreeBasicPath)
 $omaGuiRoot = [System.IO.Path]::GetFullPath($OmaGuiPath)
 $outputFile = [System.IO.Path]::GetFullPath($OutputPath)
-$resourceFile = Join-Path $projectRoot 'opensesh.rc'
-$manifestFile = Join-Path $projectRoot 'opensesh.manifest'
+$outputDirectory = Split-Path -Parent $outputFile
+if (-not (Test-Path -LiteralPath $outputDirectory -PathType Container)) {
+    [System.IO.Directory]::CreateDirectory($outputDirectory) | Out-Null
+}
+$resourceFile = Join-Path $projectRoot 'src\opensesh.rc'
+$manifestFile = Join-Path $projectRoot 'src\opensesh.manifest'
 
 if (-not (Test-Path -LiteralPath $compilerPath -PathType Leaf)) {
     throw "FreeBASIC compiler was not found: $compilerPath"
@@ -75,49 +80,49 @@ if ([string]::IsNullOrWhiteSpace($ResourceCompilerPath) -or
 $resourceCompiler = [System.IO.Path]::GetFullPath($ResourceCompilerPath)
 
 $sourceFiles = @(
-    'opensesh.bas',
-    'omagui_runtime.bas',
-    'midi_model.bas',
-    'history_timeline.bas',
-    'document_history.bas',
-    'project_transaction.bas',
-    'note_selection.bas',
-    'selected_note_playback.bas',
-    'score_tools.bas',
-    'score_controls.bas',
-    'numeric_text.bas',
-    'capture_paths.bas',
-    'score_scroll.bas',
-    'score_layout.bas',
-    'mixer_meter.bas',
-    'mixer_controls.bas',
-    'mixer_state.bas',
-    'keyboard_controls.bas',
-    'drum_kit.bas',
-    'drum_phrase.bas',
-    'playback_mix.bas',
-    'playback_timing.bas',
-    'ui_frame_pacing.bas',
-    'soundfont_bank.bas',
-    'soundfont_synth.bas',
-    'software_synth.bas',
-    'playback_state.bas',
-    'master_effect.bas',
-    'sfx_runtime.bas',
-    'ui_style.bas',
-    'ui_icons.bas',
-    'ui_interaction.bas',
-    'touch_gesture.bas',
-    'user_preferences.bas',
-    'music_export.bas',
-    'wav_export_sfx.bas',
-    'audio_tracks.bas',
-    'audio_sample_slots.bas',
-    'midi_input_protocol.bas',
-    'midi_input_win.bas',
-    'midi_output_sfx.bas',
-    'pitch_transcriber.bas',
-    'music_symbols.bas'
+    'src\opensesh.bas',
+    'src\omagui_runtime.bas',
+    'src\midi_model.bas',
+    'src\history_timeline.bas',
+    'src\document_history.bas',
+    'src\project_transaction.bas',
+    'src\note_selection.bas',
+    'src\selected_note_playback.bas',
+    'src\score_tools.bas',
+    'src\score_controls.bas',
+    'src\numeric_text.bas',
+    'src\capture_paths.bas',
+    'src\score_scroll.bas',
+    'src\score_layout.bas',
+    'src\mixer_meter.bas',
+    'src\mixer_controls.bas',
+    'src\mixer_state.bas',
+    'src\keyboard_controls.bas',
+    'src\drum_kit.bas',
+    'src\drum_phrase.bas',
+    'src\playback_mix.bas',
+    'src\playback_timing.bas',
+    'src\ui_frame_pacing.bas',
+    'src\soundfont_bank.bas',
+    'src\soundfont_synth.bas',
+    'src\software_synth.bas',
+    'src\playback_state.bas',
+    'src\master_effect.bas',
+    'src\sfx_runtime.bas',
+    'src\ui_style.bas',
+    'src\ui_icons.bas',
+    'src\ui_interaction.bas',
+    'src\touch_gesture.bas',
+    'src\user_preferences.bas',
+    'src\music_export.bas',
+    'src\wav_export_sfx.bas',
+    'src\audio_tracks.bas',
+    'src\audio_sample_slots.bas',
+    'src\midi_input_protocol.bas',
+    'src\midi_input_win.bas',
+    'src\midi_output_sfx.bas',
+    'src\pitch_transcriber.bas',
+    'src\music_symbols.bas'
 )
 
 foreach ($relativeFile in $sourceFiles) {
@@ -137,7 +142,7 @@ $objectFiles = [System.Collections.Generic.List[string]]::new()
 $compileExit = 1
 try {
     & $resourceCompiler '--input-format=rc' '--output-format=coff' `
-        '--include-dir' $projectRoot `
+        '--include-dir' $sourceRoot `
         '--input' $resourceFile '--output' $resourceObject
     $resourceExit = $LASTEXITCODE
     if ($resourceExit -ne 0 -or
@@ -161,15 +166,22 @@ try {
             # The SoundFont renderer owns an audio worker. Every object must
             # therefore use FreeBASIC's thread-safe runtime, including objects
             # which do not call the threading API directly.
-            $sourceArguments = @('-i', $omaGuiRoot, '-O', '2', '-mt', '-c')
-            If ($relativeFile -eq 'opensesh.bas') {
+            $sourceArguments = @('-i', $omaGuiRoot, '-O', '2', '-mt', '-w', 'all', '-c')
+            If ($relativeFile -eq 'src\opensesh.bas') {
                 $sourceArguments += @('-m', 'opensesh', '-s', 'gui')
             }
             $sourceArguments += @($sourceFile, '-o', $objectFile)
-            & $compilerPath @sourceArguments
-            if ($LASTEXITCODE -ne 0 -or
+            $compilerOutput = @(& $compilerPath @sourceArguments 2>&1)
+            $sourceExit = $LASTEXITCODE
+            $compilerOutput | ForEach-Object { Write-Output $_ }
+            # fbc has no warning-as-error switch. A release object is accepted
+            # only when the compiler succeeds without a warning diagnostic.
+            $hasWarnings = @($compilerOutput | Where-Object {
+                [string] $_ -match '(?i)\bwarning\s+\d+'
+            }).Count -gt 0
+            if ($sourceExit -ne 0 -or $hasWarnings -or
                 -not (Test-Path -LiteralPath $objectFile -PathType Leaf)) {
-                $compileExit = $LASTEXITCODE
+                $compileExit = $sourceExit
                 if ($compileExit -eq 0) {
                     $compileExit = 1
                 }

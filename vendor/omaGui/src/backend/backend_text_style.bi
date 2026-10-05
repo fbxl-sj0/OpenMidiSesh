@@ -1,12 +1,18 @@
 /'
     Project: omaGUI
     File: backend_text_style.bi
+
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for backend_text_style.
     Purpose: Render optional styles using the embedded bitmap glyph coverage.
     Responsibilities:
         - synthesize bold and italic without platform font dependencies
         - draw underline and strikeout within the existing line height
         - preserve advance widths, clipping, and the ordinary rendering path
-    This file intentionally does NOT contain widget state or text layout.
+
+    This file intentionally does NOT contain:
+
+        - widget state or text layout
     Private implementation include for backend_gfxlib.bas. Drawing stays on the
     GUI thread and borrows immutable glyph tables from backend_FontGlyph.
 '/
@@ -18,6 +24,7 @@ Sub backend_PrintStyled( _
     ByVal text As String, ByVal text_style As Integer, _
     ByVal font_id As Integer _
 )
+    ' fblint: disable-next-line FBL310 REASON: The including backend translation unit declares this GUI implementation symbol.
     If backend_HeadlessActive Then Exit Sub
     If (text_style And Not BACKEND_TEXT_STYLE_ALL) <> 0 Then Exit Sub
     If text_style = BACKEND_TEXT_STYLE_NORMAL Then
@@ -35,6 +42,7 @@ Sub backend_PrintStyled( _
     Dim As Integer bold_extra = IIf(text_style And BACKEND_TEXT_STYLE_BOLD, 1, 0)
     For character_index As Integer = 0 To Len(text) - 1
         If current_x >= clip_x + clip_width Then Exit For
+        ' fblint: disable-next-line FBL525 REASON: The glyph header and bounded row/column loops limit reads to the validated coverage block.
         Dim As UByte Ptr glyph = backend_FontGlyph(font_id, text[character_index])
         If glyph = 0 Then Continue For
         ' The embedded generator owns each block: byte width, byte height,

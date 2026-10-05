@@ -4,6 +4,9 @@
 
     File: raster_image.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for raster_image.
+
     Purpose:
 
         Declare a small content-sniffing raster image loader for omaGUI.

@@ -4,6 +4,9 @@
 
     File: button.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for button.
+
     Purpose:
 
         Declare the classic push-button widget.

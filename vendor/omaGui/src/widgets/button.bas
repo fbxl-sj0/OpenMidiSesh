@@ -4,6 +4,9 @@
 
     File: button.bas
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: Implements button.bi; declarations there define the interface.
+
     Purpose:
 
         Implement the classic push-button widget.

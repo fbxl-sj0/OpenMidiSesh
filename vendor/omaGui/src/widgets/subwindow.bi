@@ -4,6 +4,9 @@
 
     File: subwindow.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for subwindow.
+
     Purpose:
         Declare movable, resizable, ordered, closable child windows.
 

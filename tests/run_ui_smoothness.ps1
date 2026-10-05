@@ -99,7 +99,22 @@ if ($CaseNames.Count -gt 0) {
 
 function Test-CompilerContention {
     $matchingProcesses = @(Get-Process -ErrorAction SilentlyContinue |
-        Where-Object { $contentionProcessNames -contains $_.ProcessName })
+        Where-Object {
+            # Private validator/compiler candidates use suffixes while sharing
+            # the same workload. They can disturb presentation just as much as
+            # the installed executable. Exited handles are not active work.
+            $isCompiler = (
+                $contentionProcessNames -contains $_.ProcessName -or
+                $_.ProcessName -like 'fb_linter.*' -or
+                $_.ProcessName -like 'fbc.*' -or
+                $_.ProcessName -eq 'fbc64')
+            if (-not $isCompiler) { return $false }
+            try { return -not $_.HasExited }
+            catch {
+                # An inaccessible compiler cannot certify a quiet desktop.
+                return $true
+            }
+        })
     return $matchingProcesses.Count -gt 0
 }
 

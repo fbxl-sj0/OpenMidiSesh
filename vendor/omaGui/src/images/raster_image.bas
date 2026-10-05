@@ -4,6 +4,14 @@
 
     File: raster_image.bas
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: Implements raster_image.bi; declarations there define the interface.
+    Ownership:
+
+        Decoders stage bounded pixel arrays and codec scratch buffers.
+        A successful decode transfers the image to its caller; failure
+        releases temporary allocations and leaves no partial image.
+
     Purpose:
 
         Load the small raster format set used by omaGUI technical documents.
@@ -153,8 +161,11 @@ End Function
 Function rasterimage_DetectFormat( _
     bytes() As UByte, ByVal byteCount As LongInt _
 ) As Integer
+    ' Dimension zero is the runtime's safe allocation query, including empty arrays.
+    If UBound(bytes, 0) <> 1 Then Return RASTERIMAGE_FORMAT_UNKNOWN ' fblint: disable-line FBL-ARR-004 REASON: Dimension zero safely queries allocation before querying element bounds.
+    ' fblint: disable-next-line FBL-ARR-004 REASON: The dimension-count guard rejects unallocated byte arrays before these bound queries.
     If LBound(bytes) <> 0 OrElse byteCount < 1 OrElse _
-       byteCount > CLngInt(UBound(bytes)) + 1 Then Return RASTERIMAGE_FORMAT_UNKNOWN
+       byteCount > CLngInt(UBound(bytes)) + 1 Then Return RASTERIMAGE_FORMAT_UNKNOWN ' fblint: disable-line FBL-ARR-004 REASON: The dimension-count guard rejects unallocated byte arrays before these bound queries.
     If byteCount >= 8 Then
         If bytes(0) = &h89 AndAlso bytes(1) = Asc("P") AndAlso _
            bytes(2) = Asc("N") AndAlso bytes(3) = Asc("G") AndAlso _
@@ -409,6 +420,7 @@ Private Function rastergif_CollectSubBlocks( _
 End Function
 
 
+' fblint: disable-next-line FBL110 FBL111 REASON: The bounded GIF state machine owns one code table and staged frame buffer.
 Private Function rastergif_Decode( _
     bytes() As UByte, ByVal byteCount As LongInt, _
     ByRef loadedImage As RasterImage Ptr, _
@@ -1056,6 +1068,7 @@ Private Function rasterjpeg_ConsumeRestart( _
 End Function
 
 
+' fblint: disable-next-line FBL110 FBL111 REASON: The staged JPEG decoder shares component buffers and one failure cleanup path.
 Private Function rasterjpeg_Decode( _
     bytes() As UByte, ByVal byteCount As LongInt, _
     ByRef loadedImage As RasterImage Ptr, _
@@ -1417,9 +1430,11 @@ Private Function rasterjpeg_Decode( _
             errorMessage = "JPEG component plane exceeds the pixel safety limit"
             GoTo JpegFailure
         End If
+        ' fblint: disable-next-line FBL800 REASON: The following branch checks the component allocation before any sample access.
         components(componentIndex).samples = Callocate(sampleCount)
         If components(componentIndex).samples = 0 Then
             errorMessage = "unable to allocate a JPEG component plane"
+            ' fblint: disable-next-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
             GoTo JpegFailure
         End If
     Next componentIndex
@@ -1475,6 +1490,7 @@ Private Function rasterjpeg_Decode( _
                     reader, &hD0 + (restartIndex And 7) _
                 ) Then
                     errorMessage = "JPEG restart marker is missing or out of order"
+                    ' fblint: disable-next-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
                     GoTo JpegFailure
                 End If
                 restartIndex += 1
@@ -1490,6 +1506,7 @@ Private Function rasterjpeg_Decode( _
     )
     If imagePixels = 0 Then
         errorMessage = "unable to allocate the JPEG pixel buffer"
+        ' fblint: disable-next-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
         GoTo JpegFailure
     End If
     If ImageInfo( _
@@ -1497,6 +1514,7 @@ Private Function rasterjpeg_Decode( _
         pixelData, imageBufferSize _
     ) <> 0 OrElse bytesPerPixel <> 4 OrElse pixelData = 0 Then
         errorMessage = "gfxlib returned an invalid JPEG pixel buffer"
+        ' fblint: disable-next-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
         GoTo JpegFailure
     End If
 
@@ -1668,9 +1686,9 @@ Private Function rasterimage_CreateScratchDirectory( _
     Dim As ULong timerPart
 
     scratchDirectory = ""
-    rootCandidates(0) = Environ("TMPDIR")
-    rootCandidates(1) = Environ("TEMP")
-    rootCandidates(2) = Environ("TMP")
+    rootCandidates(0) = Environ("TMPDIR") ' fblint: disable-line FBL750 REASON: Empty environment candidates are skipped; CurDir is the final scratch-directory fallback.
+    rootCandidates(1) = Environ("TEMP") ' fblint: disable-line FBL750 REASON: Empty environment candidates are skipped; CurDir is the final scratch-directory fallback.
+    rootCandidates(2) = Environ("TMP") ' fblint: disable-line FBL750 REASON: Empty environment candidates are skipped; CurDir is the final scratch-directory fallback.
     rootCandidates(3) = CurDir
     timerPart = CULng(CLngInt(Timer * 1000.0) And &h7FFFFFFF)
 
@@ -1906,8 +1924,9 @@ Function rasterimage_ScaleToFit( _
                     Cast(ULong Ptr, Cast(UByte Ptr, sourcePixels) + nextY * sourcePitch), _
                     smoothX, nextX, coordinateX - smoothX, coordinateY - smoothY)
             Else
+                ' fblint: disable-next-line FBL525 REASON: Validated ImageInfo dimensions and bounded target coordinates keep this row access inside its buffer.
                 targetRow[targetX] = Cast(ULong Ptr, _
-                    Cast(UByte Ptr, sourcePixels) + sourceY * sourcePitch)[sourceX]
+                    Cast(UByte Ptr, sourcePixels) + sourceY * sourcePitch)[sourceX] ' fblint: disable-line FBL-PTR-019 FBL525 REASON: Validated ImageInfo dimensions and bounded target coordinates keep this row access inside its buffer.
             End If
         Next targetX
     Next targetY

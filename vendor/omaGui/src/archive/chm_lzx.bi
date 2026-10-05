@@ -4,6 +4,9 @@
 
     File: chm_lzx.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for chm_lzx.
+
     Purpose:
 
         Declare the bounded LZX decompressor used by CHM archive reads.
@@ -21,7 +24,7 @@
 
     The decoder follows the LZX format and the FreeBASIC port is based on
     the LGPL-2.1-or-later libmspack implementation. See LICENSES/LGPL-2.1.txt.
-'/ 
+'/
 
 #ifndef __OMAGUI_CHM_LZX_BI__
 #define __OMAGUI_CHM_LZX_BI__

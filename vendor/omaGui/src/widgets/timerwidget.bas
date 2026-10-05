@@ -4,6 +4,9 @@
 
     File: timerwidget.bas
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: Implements timerwidget.bi; declarations there define the interface.
+
     Purpose:
 
         Implement a portable nonvisual interval timer through the FreeBASIC

@@ -4,6 +4,8 @@
 
     File: tests/playback_state_smoke.bas
 
+    Module API: Test executable; process status reports failed behavioral assertions.
+
     Copyright (C) 2026 OpenSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -28,7 +30,7 @@
 
 #lang "fb"
 
-#include once "../playback_state.bi"
+#include once "../src/playback_state.bi"
 
 Private Sub test_Fail(ByVal messageText As String)
     Print "FAIL: "; messageText

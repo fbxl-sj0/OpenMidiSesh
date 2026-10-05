@@ -3,6 +3,9 @@
     ---------------
     File: checkbox.bas
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: Implements checkbox.bi; declarations there define the interface.
+
     Purpose:
         Checkbox widget implementation.
 

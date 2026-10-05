@@ -4,6 +4,9 @@
 
     File: wildcard.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for wildcard.
+
     Purpose:
 
         Declare the shared, platform-independent filename wildcard matcher.

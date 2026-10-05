@@ -86,7 +86,7 @@ elif [ "$require_linux_midi_loopback" -ne 0 ]; then
 fi
 
 for required_command in \
-    sha256sum unzip mktemp awk wc rm mkdir dirname basename bash cat grep; do
+    sha256sum unzip mktemp awk wc rm mkdir dirname basename bash cat grep python3; do
     if ! command -v "$required_command" >/dev/null 2>&1; then
         echo "Required verification command was not found: $required_command" >&2
         exit 1
@@ -137,6 +137,15 @@ if [ "${actual_sha,,}" != "${expected_sha,,}" ]; then
 fi
 echo "source_archive_sha256=$actual_sha"
 
+# ZIP paths alone do not reveal Unix links or special-file attributes. Inspect
+# those before unzip can materialize them, using the verifier's trusted helper.
+verifier_root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if ! python3 "$verifier_root/tools/check_source_archive.py" \
+    "$archive_path" "$expected_entry_count"; then
+    echo 'Source archive metadata validation failed.' >&2
+    exit 1
+fi
+
 if ! unzip -tq "$archive_path"; then
     echo 'Source archive compression or structure validation failed.' >&2
     exit 1
@@ -184,6 +193,11 @@ if [ ! -f "$project_root/tests/run_tests.sh" ] || \
     exit 1
 fi
 
+if ! python3 "$project_root/tools/check_repository.py"; then
+    echo 'Extracted source inventory or dependency identity failed.' >&2
+    exit 1
+fi
+
 test_timeout_seconds=${TEST_TIMEOUT_SECONDS:-90}
 linux_test_log="$work_root/linux-tests.log"
 if ! OSE_MIDI_INPUT_INDEX="$midi_input_index" \
@@ -197,9 +211,9 @@ if ! OSE_MIDI_INPUT_INDEX="$midi_input_index" \
 fi
 cat "$linux_test_log"
 
-expected_linux_tests=58
+expected_linux_tests=60
 if [ -n "$midi_input_index" ]; then
-    expected_linux_tests=59
+    expected_linux_tests=61
 fi
 if ! grep -Fqx "tests_passed=$expected_linux_tests" "$linux_test_log" || \
    ! grep -Fqx 'tests_failed=0' "$linux_test_log"; then

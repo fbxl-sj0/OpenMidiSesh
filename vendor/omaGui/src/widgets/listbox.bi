@@ -4,6 +4,9 @@
 
     File: listbox.bi
 
+    Targets: FreeBASIC fb dialect; the including application selects the native backend.
+    Module API: omaGUI declarations and implementation for listbox.
+
     Purpose:
 
         Declare the fixed-capacity scrolling list widget used by editor
