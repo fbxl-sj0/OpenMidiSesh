@@ -717,7 +717,9 @@ End Sub
 ' -------------------------------------------------------------------------
 
 Sub input_ResetForTest()
-    useMockTouch = 0
+    ' A test reset owns every input source. Native mouse-as-touch contacts
+    ' must not override mocked coordinates on targets such as Haiku.
+    useMockTouch = 1
     mockTouchContactCount = 0
     inputTouchContactCount = 0
     inputTouchPointerActive = 0

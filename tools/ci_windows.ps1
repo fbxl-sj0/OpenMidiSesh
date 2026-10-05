@@ -29,6 +29,14 @@ if ($LASTEXITCODE -ne 0) { throw 'Native Windows tests failed.' }
     -OutputPath (Join-Path $projectRoot 'build/ci/opensesh.exe') 2>&1 |
     Tee-Object -FilePath 'build/ci/logs/build.log'
 if ($LASTEXITCODE -ne 0) { throw 'Native Windows build failed.' }
+& powershell -NoProfile -File tests/verify_windows_binary.ps1 `
+    -ExecutablePath build/ci/opensesh.exe -RequireUnsignedDevelopmentBuild 2>&1 |
+    Tee-Object -FilePath 'build/ci/logs/pe.log'
+if ($LASTEXITCODE -ne 0) { throw 'Windows binary or system DLL boundary failed.' }
+& powershell -NoProfile -File tests/verify_windows_manifest.ps1 `
+    -ExecutablePath build/ci/opensesh.exe 2>&1 |
+    Tee-Object -FilePath 'build/ci/logs/manifest.log'
+if ($LASTEXITCODE -ne 0) { throw 'Windows manifest checks failed.' }
 & python tools/ci_editor_smoke.py build/ci/opensesh.exe build/ci/editor
 if ($LASTEXITCODE -ne 0) { throw 'Native Windows editor launch checks failed.' }
 & python tools/package_platform.py build/ci/opensesh.exe build/ci/logs/tests.log build/packages
