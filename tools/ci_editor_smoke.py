@@ -21,6 +21,7 @@ import wave
 def check_editor(executable: Path, output: Path) -> None:
     executable = executable.resolve(strict=True)
     output.mkdir(parents=True, exist_ok=True)
+    failures = []
     with tempfile.TemporaryDirectory(prefix="opensesh-ci-window-") as directory:
         work = Path(directory)
         midi = work / "example.mid"
@@ -56,7 +57,7 @@ def check_editor(executable: Path, output: Path) -> None:
             required = {"status=ok", "total_controls=324", "behavior_checks=508",
                         "startup_interaction=" + mode, "persisted_interaction=" + mode}
             if not required <= lines:
-                raise ValueError("Native " + mode + " editor audit failed: " + str(report))
+                failures.append("Native " + mode + " editor audit failed: " + str(report))
         environment = base_environment.copy()
         snapshot = output / "native-frame.bmp"
         environment.update(OSE_TEST_SNAPSHOT=str(snapshot.resolve()),
@@ -70,6 +71,14 @@ def check_editor(executable: Path, output: Path) -> None:
                 or struct.unpack_from("<ii", image, 18) != (800, 600)
                 or struct.unpack_from("<H", image, 28)[0] != 24):
             raise ValueError("Native framebuffer capture is not an 800x600 24-bit BMP.")
+        pixel_offset = struct.unpack_from("<I", image, 10)[0]
+        if (pixel_offset < 54 or len(image) != pixel_offset + 800 * 600 * 3
+                or len(set(image[pixel_offset:])) < 16):
+            raise ValueError("Native framebuffer pixels are missing or blank.")
+        # Preserve both mode reports and the real framebuffer when an audit
+        # fails, so native geometry/input problems remain reviewable in CI.
+        if failures:
+            raise ValueError("; ".join(failures))
         (output / "editor-smoke.json").write_text(json.dumps({
             "status": "pass", "native_editor_launches": 3,
             "control_contracts": 648, "behavior_checks": 1016,

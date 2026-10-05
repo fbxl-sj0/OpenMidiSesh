@@ -3400,7 +3400,11 @@ Private Sub session_AuditSemanticDrumPointerControls( _
         input_MouseY() = session_DrumSoftButton->ay + _
             session_DrumSoftButton->h \ 2 AndAlso _
         (input_MouseButtons() And 1) = 0, _
-        "Primary touch did not activate the generated Soft button at its contact", _
+        "Primary touch did not activate the generated Soft button at its contact" + _
+            " pointer=" + Str(input_MouseX()) + "," + Str(input_MouseY()) + _
+            " face=" + Str(session_DrumSoftButton->ax) + "," + _
+            Str(session_DrumSoftButton->ay) + "," + _
+            Str(session_DrumSoftButton->w) + "," + Str(session_DrumSoftButton->h), _
         behaviorCheckCount, errorText
     session_SetDrumVelocity OSE_DRUM_VELOCITY_MEDIUM
     input_ResetForTest()
@@ -3931,6 +3935,9 @@ Private Function session_WriteControlAudit(ByVal reportFilename As String) As In
     End If
 
     Dim As String errorText
+    Dim As Integer auditStartupWidth
+    Dim As Integer auditStartupHeight
+    backend_GetSize auditStartupWidth, auditStartupHeight
     Dim As Integer widgetActionCount = 0
     Dim As Integer textControlCount = 0
     Dim As Integer listControlCount = 0
@@ -4114,6 +4121,8 @@ Private Function session_WriteControlAudit(ByVal reportFilename As String) As In
         Return 0
     End If
     Print #fileNumber, "status=" + IIf(errorText = "", "ok", "failed")
+    Print #fileNumber, "audit_width=" + LTrim(Str(auditStartupWidth))
+    Print #fileNumber, "audit_height=" + LTrim(Str(auditStartupHeight))
     Print #fileNumber, "widget_actions=" + LTrim(Str(widgetActionCount))
     Print #fileNumber, "text_controls=" + LTrim(Str(textControlCount))
     Print #fileNumber, "list_controls=" + LTrim(Str(listControlCount))
