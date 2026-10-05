@@ -1,0 +1,32 @@
+# Project: OpenSesh
+# File: 
+windows_lint_baseline.txt
+# Purpose: Reviewed 
+Windows
+ strict fblint warning groups.
+# Format: relative source path|rule|count. New or changed groups fail release verification.
+# The scan uses --no-semantic to avoid compiler header diagnostics.
+# Reviewed with fb-linter 1.0.0 ruleset 2026.10.036.
+# Vendored omaGUI findings are counted separately by the release verifier.
+#
+atomic_file_internal.bi|FBL311|1
+audio_tracks.bas|FBL-CASE-010|1
+drum_phrase.bas|FBL-CASE-010|1
+midi_alsa.bas|FBL311|1
+midi_input_protocol.bas|FBL310|2
+midi_model.bas|FBL110|1
+midi_model.bas|FBL311|1
+opensesh.bas|FBL110|1
+opensesh.bas|FBL311|4
+opensesh.bas|FBL-CASE-010|2
+opensesh.bas|FBL-NUM-013|1
+score_tools.bas|FBL311|1
+score_tools.bas|FBL-CASE-010|1
+soundfont_synth.bas|FBL310|1
+tests/audio_sample_slots_smoke.bas|FBL311|1
+tests/document_endurance_smoke.bas|FBL-CASE-010|1
+tests/generated_voice_stop_smoke.bas|FBL311|1
+tests/playback_timing_smoke.bas|FBL311|1
+tests/ui_frame_pacing_smoke.bas|FBL311|1
+
+# end of windows_lint_baseline.txt

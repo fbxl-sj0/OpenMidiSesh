@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+    Project: OpenSesh
+    ============================
+
+    File: opensesh.manifest
+
+    Purpose:
+
+        Declare the Windows process compatibility contract used by the editor.
+
+    Responsibilities:
+
+        - run with the launching user's privileges
+        - declare the system-DPI model already used by the gfxlib backend
+        - identify Windows 10 and later as the supported Windows generation
+
+    This file intentionally does NOT contain:
+
+        - installer privileges
+        - per-monitor scaling claims
+        - application version metadata
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+    <assemblyIdentity
+        name="OpenSesh.opensesh"
+        processorArchitecture="amd64"
+        type="win32"
+        version="0.9.0.0" />
+
+    <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+        <security>
+            <requestedPrivileges>
+                <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+            </requestedPrivileges>
+        </security>
+    </trustInfo>
+
+    <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+        <application>
+            <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
+        </application>
+    </compatibility>
+
+    <application xmlns="urn:schemas-microsoft-com:asm.v3">
+        <windowsSettings>
+            <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true</dpiAware>
+            <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">System</dpiAwareness>
+        </windowsSettings>
+    </application>
+</assembly>
+
+<!-- end of opensesh.manifest -->

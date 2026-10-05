@@ -1,0 +1,26 @@
+# Project: OpenSesh
+# File: .gitignore
+#
+# Keep generated executables, edited MIDI output, and local test output out of
+# a source distribution. Recovered Midisoft material is outside this tree and
+# is intentionally not covered by this release ignore file.
+
+*.exe
+*.mid
+*.mod
+*.o
+*.ose
+*.wav
+*.zip
+*.fbc-*.asm
+*.fbc-*.c
+music-screen-glyphs.mask
+ui-*.bmp
+ui-*.png
+
+# Build and test runners recreate these directories from reviewed source.
+build/
+tests/build/
+.codex-*/
+
+# end of .gitignore

@@ -1,0 +1,106 @@
+# Project: OpenSesh
+# File: 
+portability_lint_baseline.txt
+# Purpose: Reviewed 
+Linux
+ strict fblint warning groups.
+# Format: relative source path|rule|count. New or changed groups fail release verification.
+# The scan uses --no-semantic to avoid compiler header diagnostics.
+# Reviewed with fb-linter 1.0.0 ruleset 2026.10.036.
+# Vendored omaGUI findings are counted separately by the release verifier.
+#
+atomic_file_internal.bi|FBL311|1
+atomic_file_internal.bi|FBL423|3
+audio_sample_slots.bas|FBL930|1
+audio_tracks.bas|FBL406|1
+audio_tracks.bas|FBL423|14
+audio_tracks.bas|FBL-CASE-010|1
+capture_paths.bas|FBL007|1
+drum_phrase.bas|FBL423|4
+drum_phrase.bas|FBL-CASE-010|1
+history_timeline.bas|FBL406|1
+history_timeline.bi|FBL910|1
+master_effect.bas|FBL930|1
+midi_alsa.bas|FBL311|1
+midi_alsa.bas|FBL423|17
+midi_alsa.bas|FBL930|1
+midi_alsa.bas|FBL931|28
+midi_input_protocol.bas|FBL310|2
+midi_input_protocol.bas|FBL423|11
+midi_input_win.bas|FBL423|2
+midi_model.bas|FBL110|1
+midi_model.bas|FBL311|1
+midi_model.bas|FBL406|1
+midi_model.bas|FBL423|46
+midi_output_sfx.bas|FBL423|1
+music_export.bas|FBL406|1
+music_export.bas|FBL423|5
+music_symbols.bas|FBL423|2
+note_selection.bas|FBL423|5
+numeric_text.bas|FBL423|9
+opensesh.bas|FBL110|1
+opensesh.bas|FBL311|4
+opensesh.bas|FBL406|5
+opensesh.bas|FBL423|316
+opensesh.bas|FBL750|34
+opensesh.bas|FBL-CASE-010|2
+opensesh.bas|FBL-NUM-013|1
+pitch_transcriber.bas|FBL423|26
+project_transaction.bas|FBL423|2
+score_scroll.bas|FBL423|6
+score_tools.bas|FBL311|1
+score_tools.bas|FBL423|1
+score_tools.bas|FBL-CASE-010|1
+selected_note_playback.bas|FBL423|3
+sfx_runtime.bas|FBL930|1
+software_synth.bas|FBL930|1
+soundfont_bank.bas|FBL423|22
+soundfont_synth.bas|FBL310|1
+soundfont_synth.bas|FBL423|5
+soundfont_synth.bas|FBL930|1
+tests/atomic_file_smoke.bas|FBL423|1
+tests/audio_history_smoke.bas|FBL423|3
+tests/audio_sample_slots_smoke.bas|FBL311|1
+tests/audio_sample_slots_smoke.bas|FBL423|5
+tests/audio_sample_slots_smoke.bas|FBL931|2
+tests/audio_tracks_smoke.bas|FBL423|2
+tests/capture_paths_smoke.bas|FBL007|1
+tests/document_endurance_smoke.bas|FBL-CASE-010|1
+tests/document_history_smoke.bas|FBL423|1
+tests/drum_phrase_smoke.bas|FBL423|2
+tests/generated_voice_stop_smoke.bas|FBL311|1
+tests/generated_voice_stop_smoke.bas|FBL423|1
+tests/generated_voice_stop_smoke.bas|FBL750|1
+tests/midi_input_protocol_smoke.bas|FBL423|2
+tests/midi_loopback_smoke.bas|FBL423|3
+tests/midi_model_fuzz_smoke.bas|FBL423|1
+tests/midi_model_malformed_smoke.bas|FBL423|1
+tests/midi_model_smoke.bas|FBL423|13
+tests/midi_playback_audio_smoke.bas|FBL423|8
+tests/midi_playback_audio_smoke.bas|FBL750|2
+tests/midi_playback_audio_smoke.bas|FBL931|2
+tests/music_export_smoke.bas|FBL423|2
+tests/notation_duration_smoke.bas|FBL423|3
+tests/note_selection_smoke.bas|FBL423|1
+tests/numeric_text_smoke.bas|FBL423|3
+tests/pitch_transcriber_smoke.bas|FBL423|2
+tests/playback_timing_smoke.bas|FBL311|1
+tests/project_transaction_smoke.bas|FBL423|1
+tests/score_scroll_smoke.bas|FBL423|4
+tests/score_tools_smoke.bas|FBL423|1
+tests/selected_note_playback_smoke.bas|FBL423|1
+tests/sfxlib_smoke.bas|FBL423|1
+tests/soundfont_smoke.bas|FBL750|1
+tests/ui_frame_pacing_smoke.bas|FBL311|1
+tests/user_preferences_smoke.bas|FBL007|1
+tests/user_preferences_smoke.bas|FBL423|1
+tests/wav_export_failure_smoke.bas|FBL423|2
+tests/wav_export_smoke.bas|FBL423|3
+tests/wav_export_smoke.bas|FBL931|2
+user_preferences.bas|FBL423|1
+user_preferences.bas|FBL750|4
+wav_export_sfx.bas|FBL423|3
+wav_export_sfx.bas|FBL930|1
+wav_export_sfx.bas|FBL931|6
+
+# end of portability_lint_baseline.txt

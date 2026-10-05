@@ -1,0 +1,77 @@
+{
+    "schema_version":  1,
+    "platform":  "windows-x86_64",
+    "compiler_banner":  "FreeBASIC Compiler - Version 1.20.4-3 (2026-10-03), built for win64 (64bit)",
+    "files":  [
+                  {
+                      "path":  "fbc.exe",
+                      "length":  3010425,
+                      "sha256":  "84e66418e27299f90f550536852c233301c76cfa7fcfb8bd1eefbc1b394936a6"
+                  },
+                  {
+                      "path":  "bin/win64/as.exe",
+                      "length":  1975744,
+                      "sha256":  "85b4d99c741cd2f14c361e9680b66e22a9fd6ffc0e81fc5b2c30e917c4a7cd78"
+                  },
+                  {
+                      "path":  "bin/win64/ld.exe",
+                      "length":  1936889,
+                      "sha256":  "ceeb5869a347a51c0b201bbb0b232c5b6353f69bc10adec578fe28b3f6c0cfcf"
+                  },
+                  {
+                      "path":  "bin/win64/windres.exe",
+                      "length":  1386625,
+                      "sha256":  "0735184706376284f01ae409ada3636616e256c4475b19b609b02114c2430e01"
+                  },
+                  {
+                      "path":  "inc/fbgfx.bi",
+                      "length":  9940,
+                      "sha256":  "2efc1421579c5abe369a9679236f80127369419173c1fd907bafe2d0af77bbb4"
+                  },
+                  {
+                      "path":  "inc/fbgfx3.bi",
+                      "length":  10460,
+                      "sha256":  "c3da739f036768069ea2dc3e37ba26379000c820375d3fa52b21995276e68b45"
+                  },
+                  {
+                      "path":  "inc/sfxlib_effects.bi",
+                      "length":  1427,
+                      "sha256":  "75faa6b4f60792778fdb013d00217e9725712d36b1068793ae4f410804887cc0"
+                  },
+                  {
+                      "path":  "inc/sfxlib_raw.bi",
+                      "length":  4179,
+                      "sha256":  "a5367de54a41f38dc2dc1ea1a29c3956e1b42f1d69f4f64fddb81b930d8ac58b"
+                  },
+                  {
+                      "path":  "lib/win64/libfb.a",
+                      "length":  661466,
+                      "sha256":  "00824f929d1d74d8642d13ab81bec0044ceac3b3466954740b16ae8b0e46954e"
+                  },
+                  {
+                      "path":  "lib/win64/libfbmt.a",
+                      "length":  681880,
+                      "sha256":  "d5ed4a6a6effe84112a02845dcb019d5431faad98e9a0af6ba1d70e404bae673"
+                  },
+                  {
+                      "path":  "lib/win64/libfbgfx.a",
+                      "length":  301178,
+                      "sha256":  "9f1eff4159ec8cdb3bd02448b8f50f377605806982c3ba0d31878ed7419d869f"
+                  },
+                  {
+                      "path":  "lib/win64/libfbgfxmt.a",
+                      "length":  307624,
+                      "sha256":  "d452cfc16b60663be69942c5cd57286da7995fad201b1807e180f8b7d17616e4"
+                  },
+                  {
+                      "path":  "lib/win64/libsfx.a",
+                      "length":  536320,
+                      "sha256":  "2a9a53e907dc99dc862c035980b5026ae4f76b86a0fb38007839ce6cd8cd154e"
+                  },
+                  {
+                      "path":  "lib/win64/libsfxmt.a",
+                      "length":  536320,
+                      "sha256":  "2a9a53e907dc99dc862c035980b5026ae4f76b86a0fb38007839ce6cd8cd154e"
+                  }
+              ]
+}
