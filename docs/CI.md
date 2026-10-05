@@ -15,11 +15,16 @@ the Haiku desktop. Nothing runs public contributions on a trusted workstation.
 | Archive | Native qualification host | Runtime requirements |
 | --- | --- | --- |
 | Windows x86_64 ZIP | Windows Server 2025 | 64-bit Windows 10 or newer |
-| Linux x86_64 tar.gz | Ubuntu 26.04 | glibc 2.43, X11 and ALSA libraries |
-| FreeBSD x86_64 tar.gz | FreeBSD 15.1 | X11 desktop and system audio libraries |
-| NetBSD x86_64 tar.gz | NetBSD 11.0 | X11 desktop and system audio libraries |
-| OpenBSD x86_64 tar.gz | OpenBSD 7.8 | X11 desktop and system audio libraries |
-| Haiku x86_64 tar.gz | Haiku r1beta6 | Native app_server desktop, fixed editor window |
+| Linux x86_64 tar.gz | Ubuntu 26.04 | glibc 2.43, X11, ALSA, PulseAudio client and terminfo libraries |
+| FreeBSD x86_64 tar.gz | FreeBSD 15.1 | X11 desktop and base ncursesw/terminfo libraries |
+| NetBSD x86_64 tar.gz | NetBSD 11.0 | Base X11 sets and pkgsrc ncurses (`libncurses.so.6`) |
+| OpenBSD x86_64 tar.gz | OpenBSD 7.8 | Base system and X11 sets |
+| Haiku x86_64 tar.gz | Haiku r1beta6 | Native desktop, ncurses6, fixed editor window |
+
+Each archive contains runtime installation commands in `README.txt`, also
+recorded in its build evidence. No compiler is needed to run the executable.
+The requirements were checked against native executable library imports;
+review them whenever the pinned compiler or target OS changes.
 
 The public FreeBASIC 1.20.4 packages are pinned by name, length and SHA-256 in
 `tools/ci_toolchains.toml`. BSD and Haiku use `midi_null.bas`, which explicitly

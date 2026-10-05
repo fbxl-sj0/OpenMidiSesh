@@ -32,6 +32,41 @@ SYSTEMS = {"Windows": "windows", "Linux": "linux", "FreeBSD": "freebsd",
            "NetBSD": "netbsd", "OpenBSD": "openbsd", "Haiku": "haiku"}
 EPOCH = 946684800  # Fixed 2000-01-01 UTC, independent of the build clock.
 
+# These requirements were checked against DT_NEEDED in the qualified native
+# executables. Review them when changing the pinned compiler or target OS.
+RUNTIME_NOTES = {
+    "windows": "Requires 64-bit Windows 10 or newer; only system DLLs are used.\n",
+    "linux": (
+        "Requires Ubuntu 26.04 or compatible glibc 2.43 and an X11 desktop.\n"
+        "ALSA, PulseAudio client and terminfo libraries must be installed.\n"
+        "On Ubuntu 26.04, install the runtime packages with:\n"
+        "  sudo apt install libasound2t64 libpulse0 libtinfo6 libx11-6 libxext6 "
+        "libxpm4 libxrandr2 libxrender1\n"
+    ),
+    "freebsd": (
+        "Requires FreeBSD 15.1 and an X11 desktop with libX11, libXext, libXpm,\n"
+        "libXrandr and libXrender. The base ncursesw/terminfo libraries are used.\n"
+        "If these X11 libraries are missing, install them as root with:\n"
+        "  pkg install libX11 libXext libXpm libXrandr libXrender\n"
+    ),
+    "netbsd": (
+        "Requires NetBSD 11.0 with the base X11 sets and pkgsrc ncurses.\n"
+        "The executable needs libncurses.so.6 in addition to base system libraries.\n"
+        "Install ncurses as root with:\n"
+        "  pkgin install ncurses\n"
+    ),
+    "openbsd": (
+        "Requires OpenBSD 7.8 with its X11 sets installed.\n"
+        "Audio, curses and threading libraries are supplied by the base system.\n"
+    ),
+    "haiku": (
+        "Requires Haiku r1beta6 x86_64, its native desktop and ncurses6.\n"
+        "Install the ncurses runtime with:\n"
+        "  pkgman install ncurses6\n"
+        "The editor uses a fixed window on this pinned runtime.\n"
+    ),
+}
+
 
 def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
@@ -129,6 +164,7 @@ def package(executable: Path, tests: Path, destination: Path) -> None:
         "source_commit": commit, "system": system, "architecture": "x86_64",
         "native_os_release": platform.release(), "compiler": banner,
         "compiler_downloads": locks[system]["files"],
+        "runtime_requirements": RUNTIME_NOTES[system],
         "tests_passed": int(passed[0]), "tests_failed": 0,
         "built_editor": built_smoke,
         "external_midi": system in ("windows", "linux"),
@@ -145,10 +181,7 @@ def package(executable: Path, tests: Path, destination: Path) -> None:
         "OpenSesh " + version + " for " + system + " x86_64\n\n"
         "Extract this entire archive, then run " + native_name + ".\n"
         "Source, build instructions and user documentation are in opensesh-source.zip.\n"
-        "Linux requires Ubuntu 26.04 or compatible glibc 2.43, X11 and ALSA libraries.\n"
-        "BSD packages require an X11 desktop and the system audio libraries.\n"
-        "Haiku requires r1beta6 x86_64 and uses a fixed editor window.\n"
-        "Windows requires 64-bit Windows 10 or newer.\n"
+        + RUNTIME_NOTES[system] + "\n"
         "BSD and Haiku have editing and software synthesis; external MIDI endpoints\n"
         "are currently unavailable. SoundFonts are supplied by the user.\n"
         "See BUILD-INFO.json for the exact native OS, compiler, source and checks.\n"

@@ -10,6 +10,8 @@
   checksums, licenses and per-target build evidence on version tags.
 - Select the unavailable-endpoint MIDI adapter on BSD and Haiku and test its
   rejection and output-clearing contracts.
+- Include target-specific runtime dependency installation commands in each
+  native download and its build evidence.
 
 The 0.9.0 development editor is published on GitHub. Native downloadable
 packages are being qualified. Release validation and platform claims are recorded with
