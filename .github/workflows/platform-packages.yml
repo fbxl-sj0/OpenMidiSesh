@@ -120,10 +120,12 @@ jobs:
           cpu_count: 2
       - name: Provision native compiler and display
         shell: cpa.sh {0}
-        run: sh tools/install_ci_unix.sh
+        # Haiku's login environment clears forwarded variables. The workflow
+        # supplies the runner guard explicitly at this guest command boundary.
+        run: env GITHUB_ACTIONS=true sh tools/install_ci_unix.sh
       - name: Build, test and exercise packaged editor
         shell: cpa.sh {0}
-        run: bash tools/ci_native.sh
+        run: env GITHUB_ACTIONS=true bash tools/ci_native.sh
       - name: Retain native diagnostics
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

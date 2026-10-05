@@ -36,7 +36,7 @@ case "$(uname -s)" in
         ;;
     OpenBSD)
         target=openbsd
-        as_root pkg_add -I bash coreutils curl python%3.12 gcc-11.2.0p19 g++-11.2.0p19 libffi
+        as_root pkg_add -I bash coreutils curl python-3.12.11 gcc-11.2.0p19 g++-11.2.0p19 libffi
         ;;
     Haiku)
         target=haiku
@@ -51,7 +51,7 @@ download_root=$(mktemp -d "${TMPDIR:-/tmp}/opensesh-toolchain.XXXXXXXX")
 trap 'rm -rf -- "$download_root"' EXIT
 "$python" "$root/tools/fetch_ci_toolchain.py" "$target" "$download_root"
 case "$target" in
-    freebsd) as_root pkg add "$download_root/"*.pkg ;;
+    freebsd) as_root pkg install -y "$download_root/"*.pkg ;;
     netbsd) as_root pkg_add "$download_root/"*.tgz ;;
     openbsd) as_root pkg_add -D unsigned "$download_root/"*.tgz ;;
     haiku) pkgman install -y "$download_root/"*.hpkg ;;

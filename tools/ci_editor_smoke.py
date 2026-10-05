@@ -24,7 +24,9 @@ def check_editor(executable: Path, output: Path) -> None:
     with tempfile.TemporaryDirectory(prefix="opensesh-ci-window-") as directory:
         work = Path(directory)
         midi = work / "example.mid"
-        track = bytes.fromhex("00ff510307a12000903c648360803c0000ff2f00")
+        # The selected-phrase audit requires two real notes, at different ticks.
+        track = bytes.fromhex("00ff510307a12000903c648360803c0000904064"
+                              "836080400000ff2f00")
         midi.write_bytes(b"MThd" + struct.pack(">IHHH", 6, 0, 1, 480)
                          + b"MTrk" + struct.pack(">I", len(track)) + track)
         audio = work / "example.wav"

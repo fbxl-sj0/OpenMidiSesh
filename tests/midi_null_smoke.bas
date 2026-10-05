@@ -3,7 +3,8 @@
     File: midi_null_smoke.bas
     Purpose: verify the external-MIDI capability boundary on unsupported hosts.
     Responsibilities: reject opens and sends; clear poll and clock output safely.
-    This file does not emulate a device or test software synthesis.
+    This file intentionally does NOT contain:
+        - device emulation or software synthesis tests
     Copyright (C) 2026 OpenSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
     Targets: FreeBASIC fb dialect; native BSD, Haiku, and Android capability adapter.
@@ -28,6 +29,7 @@ For deviceIndex As Integer = -1 To 1
     End If
 Next deviceIndex
 Dim As OseMidiInputMessage message
+' Nonzero sentinels make a missing reset observable without requiring a device.
 message.deviceIndex = 123
 Dim As ULong timestampMilliseconds = 123
 If midiInput_Poll(message) <> 0 OrElse message.deviceIndex <> -1 OrElse _

@@ -23,12 +23,16 @@ if ($LASTEXITCODE -ne 0) { throw 'Windows compiler extraction failed.' }
 # Keep one extracted toolchain. The large Winlibs download is not a cache.
 Remove-Item -LiteralPath $archive[0].FullName
 $candidates = @(Get-ChildItem -LiteralPath (Join-Path $taskRoot 'compiler') `
-    -Recurse -File -Filter 'fbc.exe' | Where-Object {
+    -Recurse -File -Filter 'fbc64.exe' | Where-Object {
         Test-Path -LiteralPath (Join-Path $_.DirectoryName 'lib\win64\libfbmt.a')
     })
 if ($candidates.Count -ne 1) { throw 'Expected one complete native Win64 compiler.' }
-$compiler = $candidates[0].FullName
 $compilerRoot = $candidates[0].DirectoryName
+# The public combined 32/64-bit distribution names this binary fbc64.exe.
+# Give the existing fourteen-file verifier its canonical name in private staging.
+$compiler = Join-Path $compilerRoot 'fbc.exe'
+if (Test-Path -LiteralPath $compiler) { throw 'Canonical compiler path already exists.' }
+Copy-Item -LiteralPath $candidates[0].FullName -Destination $compiler
 $banner = @(& $compiler -version)[0]
 if ($LASTEXITCODE -ne 0 -or $banner -notmatch 'Version 1\.20\.4') {
     throw 'Unexpected public compiler version.'
