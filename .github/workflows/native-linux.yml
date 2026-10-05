@@ -38,6 +38,9 @@ jobs:
         run: bash tools/install_ci_freebasic.sh
       - name: Verify the tracked source boundary
         run: |
+          # Checkout and shell steps use different HOME directories in a job
+          # container. Trust only this runner-provided workspace for Git.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           python3 tools/check_repository.py --tracked
           python3 tests/source_archive_safety.py
           bash tests/dependency_snapshot_negative.sh
