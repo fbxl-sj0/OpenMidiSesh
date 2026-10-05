@@ -237,6 +237,7 @@ try {
             $diagnosticKeys = @(
                 'average_fps', 'interval_p95_ms', 'interval_p99_ms',
                 'interval_max_ms', 'work_p95_ms', 'input_p95_ms',
+                'application_render_p95_ms', 'presentation_p95_ms',
                 'hitches_over_33_34_ms', 'hitches_over_50_ms',
                 'rejected_samples', 'workload_valid',
                 'score_scroll_updates', 'mixer_drag_updates',

@@ -41,7 +41,7 @@ records both corrections:
 - FBL750 matched `Environment` inside ordinary identifiers. It now recognizes
   the `Environ` token. An actual environment read still produces the warning.
 
-With the corrected validator, select `FBL423,FBL422,FBL750` and lint the two
+With the corrected validator, use `--target linux`, select `FBL423,FBL422,FBL750` and lint the two
 fixtures under `tools/fblint`. The safe fixture must have zero findings; the
 boundary fixture must produce exactly one FBL422 and one FBL750 finding and
 fail a warning gate. Compile and run the safe fixture as well. These are
@@ -53,5 +53,11 @@ release evidence. The locally verified correction uses fblint 1.0.0, ruleset
 `13a0689f3118f8e85ace480018bcff76e3f660779a7c423c4bf71a7f2f7f1c0c`.
 A newer validator needs a fresh regression and full strict scan. Do not treat
 the version number alone as proof that a correction is present.
+
+The safe/boundary fixtures and both complete strict target scans also pass
+with ruleset 2026.10.059, built 2026-10-05 08:53:03, executable SHA-256
+`1b23d127f61dac67987648aa93483b487b20a69e769c2a01fe483ca803af0e66`.
+Retain a private copy of the selected executable for release verification
+when other tasks may update the shared installation.
 
 <!-- end of docs/LINTING.md -->
