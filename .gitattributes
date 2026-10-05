@@ -1,7 +1,7 @@
 # Project: OpenSesh
 # File: .gitattributes
 # Keep scripts portable while preserving byte-pinned third-party payloads.
-* text=auto
+* text=auto eol=lf
 *.bas text eol=lf
 *.bi text eol=lf
 *.md text eol=lf
@@ -12,7 +12,7 @@
 *.png binary
 *.ogf binary
 # SNAPSHOT.sha256 records exact upstream bytes, including line endings.
-vendor/** -text
+vendor/** -text -eol
 
 # Preserve byte-pinned license text and the mandatory blank context lines in
 # unified patches. Application source still receives normal whitespace checks.
