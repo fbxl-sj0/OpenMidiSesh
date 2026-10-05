@@ -1,0 +1,167 @@
+# Project: OpenSesh
+# File: .github/workflows/platform-packages.yml
+# Purpose: qualify downloadable packages by executing on each native OS.
+# Responsibilities: build, test, launch and publish only a complete passing set.
+# This file does not execute public changes on persistent or self-hosted machines.
+
+name: Native platform packages
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: packages-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 40
+    steps:
+      - name: Preserve portable source bytes
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Install verified public compiler
+        run: tools/install_ci_windows.ps1
+      - name: Build, test and exercise packaged editor
+        run: tools/ci_windows.ps1
+      - name: Retain native diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-diagnostics-${{ github.sha }}
+          path: |
+            build/ci/logs/
+            build/ci/editor/
+            build/ci/packaged-editor/
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Retain qualified package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: package-windows
+          path: build/packages/
+          if-no-files-found: error
+          retention-days: 14
+
+  linux:
+    runs-on: ubuntu-24.04
+    container: ubuntu:26.04@sha256:f144425ff09be612d6d9ad965196e9cdc23dae1f42110a8a11a3e9a8198759f7
+    timeout-minutes: 25
+    steps:
+      - name: Bootstrap checkout tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Provision native compiler and display
+        run: sh tools/install_ci_unix.sh
+      - name: Build, test and exercise packaged editor
+        run: bash tools/ci_native.sh
+      - name: Retain native diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-diagnostics-${{ github.sha }}
+          path: |
+            build/ci/logs/
+            build/ci/editor/
+            build/ci/packaged-editor/
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Retain qualified package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: package-linux
+          path: build/packages/
+          if-no-files-found: error
+          retention-days: 14
+
+  unix:
+    name: ${{ matrix.os }} native
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: freebsd
+            version: '15.1'
+          - os: netbsd
+            version: '11.0'
+          - os: openbsd
+            version: '7.8'
+          - os: haiku
+            version: 'r1beta6'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Start native x86_64 guest
+        uses: cross-platform-actions/action@e0b9770014ba65d5e0815f15b74031c3a635f641 # v1.6.0
+        with:
+          operating_system: ${{ matrix.os }}
+          version: ${{ matrix.version }}
+          architecture: x86-64
+          memory: 3G
+          cpu_count: 2
+      - name: Provision native compiler and display
+        shell: cpa.sh {0}
+        run: sh tools/install_ci_unix.sh
+      - name: Build, test and exercise packaged editor
+        shell: cpa.sh {0}
+        run: bash tools/ci_native.sh
+      - name: Retain native diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.os }}-diagnostics-${{ github.sha }}
+          path: |
+            build/ci/logs/
+            build/ci/editor/
+            build/ci/packaged-editor/
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Retain qualified package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: package-${{ matrix.os }}
+          path: build/packages/
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish complete native package set
+    needs: [windows, linux, unix]
+    if: startsWith(github.ref, 'refs/tags/v') && github.repository == 'fbxl-sj0/OpenMidiSesh'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: package-*
+          path: build/packages
+          merge-multiple: true
+      - name: Verify and publish all six native packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/publish_packages.py build/packages
+
+# end of .github/workflows/platform-packages.yml

@@ -2352,9 +2352,12 @@ Public Sub session_OnMidiInput(ByVal source As Widget Ptr)
     #if defined(__FB_LINUX__)
         child = session_CreateEditorLabel("midi_input_hint", _
             "Select an ALSA Sequencer source port.", 10, 224)
-    #else
+    #elseif defined(__FB_WIN32__)
         child = session_CreateEditorLabel("midi_input_hint", _
             "Select a WinMM device. sfxlib MIDI is output-only.", 10, 224)
+    #else
+        child = session_CreateEditorLabel("midi_input_hint", _
+            "External MIDI input is unavailable on this platform.", 10, 224)
     #endif
     session_MidiInputAddChild child
 

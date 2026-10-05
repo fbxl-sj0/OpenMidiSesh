@@ -7,7 +7,7 @@
     Copyright (C) 2026 OpenSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
-    Targets: FreeBASIC fb dialect; verified Windows/Linux x64 and Android ARM/AArch64/x86_64 runtime exports.
+    Targets: FreeBASIC fb dialect; native desktop and Android sfxlib runtimes.
 
     Module API: Internal generatedVoiceStop_Channel plus verified sfxlib C stop/lock bindings.
 
@@ -24,9 +24,9 @@
     API and ownership:
 
         These are exported sfxlib C entrypoints, not documented BASIC STOP
-        keywords. Their symbols are present in the supported Windows x64,
-        Linux x64, and Android ARM/AArch64/x86_64 runtime archives. The runtime
-        exports are a release dependency to recheck on toolchain upgrades.
+        keywords. Native CI must link and execute generated_voice_stop_smoke
+        against each platform's runtime before packaging. These exports are a
+        release dependency to recheck on toolchain upgrades.
         This helper keeps no voice pointers and runs only on the application's
         UI/transport owner. Both stop calls share the runtime's recursive lock
         with its mixer and the application's SoundFont rendering worker. The
@@ -42,8 +42,10 @@
 #ifndef __OSE_GENERATED_VOICE_STOP_INTERNAL_BI__
 #define __OSE_GENERATED_VOICE_STOP_INTERNAL_BI__
 
-#If Not Defined(__FB_WIN32__) And Not Defined(__FB_LINUX__) And Not Defined(__FB_ANDROID__)
-    #Error OpenSesh generated-voice stopping requires a verified Windows, Linux, or Android sfxlib runtime
+#If Not Defined(__FB_WIN32__) And Not Defined(__FB_LINUX__) And Not Defined(__FB_ANDROID__) And _
+    Not Defined(__FB_FREEBSD__) And Not Defined(__FB_NETBSD__) And _
+    Not Defined(__FB_OPENBSD__) And Not Defined(__FB_HAIKU__)
+    #Error OpenSesh generated-voice stopping requires a supported native sfxlib runtime
 #EndIf
 
 ' Modern FB on both 32- and 64-bit targets: the C ABI uses a 32-bit int.

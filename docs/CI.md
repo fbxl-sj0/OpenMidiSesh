@@ -8,6 +8,50 @@
 
 # Continuous integration
 
+`platform-packages.yml` runs on public branches, pull requests and version tags.
+All builds execute on disposable native hosts or full native OS guests, including
+the Haiku desktop. Nothing runs public contributions on a trusted workstation.
+
+| Archive | Native qualification host | Runtime requirements |
+| --- | --- | --- |
+| Windows x86_64 ZIP | Windows Server 2025 | 64-bit Windows 10 or newer |
+| Linux x86_64 tar.gz | Ubuntu 26.04 | glibc 2.43, X11 and ALSA libraries |
+| FreeBSD x86_64 tar.gz | FreeBSD 15.1 | X11 desktop and system audio libraries |
+| NetBSD x86_64 tar.gz | NetBSD 11.0 | X11 desktop and system audio libraries |
+| OpenBSD x86_64 tar.gz | OpenBSD 7.8 | X11 desktop and system audio libraries |
+| Haiku x86_64 tar.gz | Haiku r1beta6 | Native app_server desktop |
+
+The public FreeBASIC 1.20.4 packages are pinned by name, length and SHA-256 in
+`tools/ci_toolchains.toml`. BSD and Haiku use `midi_null.bas`, which explicitly
+reports unavailable external MIDI endpoints. Editing, software synthesis and
+file exports remain available. No separate original BeOS package is built.
+
+Each job checks source integrity and archive/download failure fixtures, compiles
+with all warnings enabled, and runs the deterministic native tests. The Windows
+hosted profile uses `-CoreOnly`; its public compiler archive is hash-verified and
+the same fourteen linked toolchain inputs are checked against a generated lock.
+The default Windows test profile still includes desktop timing and reviewed pixels.
+
+Every package job launches the real editor in Desktop and Touch modes, checks
+648 control contracts and 1016 behaviors, and captures a native framebuffer.
+It repeats those checks with the executable extracted from the verified package.
+Linux and BSD use Xvfb; Haiku uses app_server. These checks do not certify physical
+presentation timing, devices or human accessibility. Diagnostics are retained for
+fourteen days; only passing jobs upload packages.
+
+A tag release requires all six jobs to pass. The publisher verifies every package
+hash and source commit, requires identical corresponding-source hashes, and
+publishes archives, per-target evidence, `CI-SUMMARY.json` and `SHA256SUMS.txt`.
+It never replaces an existing release. Package revisions can retain the same
+application version; the release notes identify both versions explicitly.
+Each archive includes GPL/LGPL license text, notices and the complete reviewed
+corresponding source. SoundFonts and personal recordings are user supplied.
+
+Provisioners refuse execution outside GitHub Actions. They use ephemeral guest
+package managers and private compiler staging, never the developer's C:\FreeBASIC.
+Python 3.11 or newer is required for the package tools. Windows provisioning
+deletes the large compiler download after extracting it and does not retain a cache.
+
 `native-linux.yml` builds pull requests, `main` and version tags on disposable
 GitHub-hosted Linux runners. Its Ubuntu 26.04 container matches the published
 FreeBASIC 1.20.4-3 package ABI. Four package downloads are SHA-256 verified

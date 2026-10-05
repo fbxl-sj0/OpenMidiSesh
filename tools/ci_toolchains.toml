@@ -1,0 +1,54 @@
+# Project: OpenSesh
+# File: tools/ci_toolchains.toml
+# Purpose: lock public native compiler downloads before CI executes them.
+# Responsibilities: record exact names, byte lengths and SHA-256 identities.
+# This file does not install packages or describe runtime hardware support.
+
+base_url = "https://github.com/jasonkfirth/fbc/releases/download/v1.20.4"
+
+[[windows.files]]
+name = "FreeBASIC-1.20.4-winlibs-gcc-16.2.0.zip"
+size = 828875984
+sha256 = "dcbe846563755fad147b156d8afbecc270b2669cd343c34f0a89ae1e131a3a13"
+
+[[linux.files]]
+name = "linux-matrix-linux-ubuntu-resolute-amd64-freebasic-bindings_1.20.4-3_all.deb"
+size = 2695844
+sha256 = "f1ac655e11a1ba0d5eb2d3e457d89c62dbc263d9470fedb0c76e5cfa120df73b"
+
+[[linux.files]]
+name = "linux-matrix-linux-ubuntu-resolute-amd64-freebasic-dev_1.20.4-3_all.deb"
+size = 12536
+sha256 = "3851d786930f96e8a0e3d2c639517c7c4033d2fa677065e2a51d6722faf60cfb"
+
+[[linux.files]]
+name = "linux-matrix-linux-ubuntu-resolute-amd64-freebasic-runtime_1.20.4-3_all.deb"
+size = 12546
+sha256 = "68a6424b444ffeab1d3313c2280d30f12653fd210d08c47b994cb6bd7e58ba2f"
+
+[[linux.files]]
+name = "linux-matrix-linux-ubuntu-resolute-amd64-freebasic_1.20.4-3_amd64.deb"
+size = 1961610
+sha256 = "e87ec88154daee837b54f5a7b2efa0f0afffd9dd589a7f08b2ddcc2cdf25f020"
+
+[[freebsd.files]]
+name = "extended-platforms-fbc-xl-platform-package-freebsd-amd64-freebasic-1.20.4_3.pkg"
+size = 6461121
+sha256 = "9ebfdaf0bf613c1d9cd33c28ee7da93737a635aa57d012d7d090ecc0349c81d0"
+
+[[netbsd.files]]
+name = "extended-platforms-fbc-xl-platform-package-netbsd-amd64-freebasic-1.20.4.3.tgz"
+size = 9313360
+sha256 = "042dbdae4aa77d2ce5539ca0afc1da3b5ab3e5e1ae8638e562a00fb6153fadfc"
+
+[[openbsd.files]]
+name = "extended-platforms-fbc-xl-platform-package-openbsd-amd64-freebasic-1.20.4.3.tgz"
+size = 8311316
+sha256 = "ef627de95c86cf6082d5b655ab65110ea1b6601b800748b462878e0f9f8c973c"
+
+[[haiku.files]]
+name = "freebasic-1.20.4-3-x86_64.hpkg"
+size = 8733961
+sha256 = "8ce97b272e5a2c5bd5c0b4b45160cd9ff2b8866e9902056227a194db6ca49279"
+
+# end of tools/ci_toolchains.toml

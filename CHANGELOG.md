@@ -4,6 +4,13 @@
 
 ## Unreleased
 
+- Add native package CI for Windows, Linux, FreeBSD, NetBSD, OpenBSD and Haiku
+  x86_64, including tests, native editor launches and extracted-package checks.
+- Publish a complete passing package set with matching corresponding source,
+  checksums, licenses and per-target build evidence on version tags.
+- Select the unavailable-endpoint MIDI adapter on BSD and Haiku and test its
+  rejection and output-clearing contracts.
+
 The first GitHub release is being prepared from the existing 0.9.0 development
 editor. Release validation and supported-platform claims are recorded with
 the release artifacts; historical review notes describe earlier snapshots.

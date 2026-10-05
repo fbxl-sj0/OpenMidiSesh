@@ -50,6 +50,14 @@ Const ATOMIC_FILE_WRITE_THROUGH As ULong = &H8
 
 #include once "crt/stdio.bi"
 
+#ElseIf Defined(__FB_FREEBSD__) Or Defined(__FB_NETBSD__) Or Defined(__FB_OPENBSD__)
+
+#include once "crt/stdio.bi"
+#include once "crt/sys/types.bi"
+' These CRT snapshots provide pid_t but no BSD unistd.bi dispatcher. Bind only
+' the required POSIX function, using the target's own C return type.
+Declare Function atomicFile_NativeProcessId CDecl Alias "getpid" () As pid_t
+
 #Else
 
 #include once "crt/stdio.bi"
@@ -72,6 +80,10 @@ Private Function atomicFile_ProcessId() As ULong
         a crash.
     '/
     Return CULng(Timer * 1000.0)
+#ElseIf Defined(__FB_FREEBSD__) Or Defined(__FB_NETBSD__) Or Defined(__FB_OPENBSD__)
+    Dim As pid_t processId = atomicFile_NativeProcessId()
+    If processId < 0 Then Return 0
+    Return CULng(processId)
 #Else
     Dim As Integer processId = getpid()
     If processId < 0 Then Return 0

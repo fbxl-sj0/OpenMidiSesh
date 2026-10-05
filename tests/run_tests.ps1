@@ -31,6 +31,8 @@ param(
     [string] $FreeBasicPath = 'C:\FreeBASIC\fbc.exe',
     [string] $OmaGuiPath = '',
     [string] $BuildDirectory = '',
+    [string] $ToolchainLockPath = '',
+    [switch] $CoreOnly,
     [switch] $IncludeMidiLoopback,
     [int] $MidiInputIndex = -1,
     [int] $MidiOutputIndex = -1,
@@ -635,7 +637,7 @@ $windowsToolchainName = 'windows_toolchain_smoke'
 Write-Output ("RUN   " + $windowsToolchainName)
 try {
     & (Join-Path $projectRoot 'tests\verify_windows_toolchain.ps1') `
-        -FreeBasicPath $compilerPath
+        -FreeBasicPath $compilerPath -LockPath $ToolchainLockPath
     $passedTests++
     Write-Output ("PASS  " + $windowsToolchainName)
 }
@@ -687,6 +689,21 @@ foreach ($test in $tests) {
 
     $passedTests++
     Write-Output ("PASS  " + $test.Name)
+}
+
+# Hosted runners use the same functional tests and toolchain identity checks.
+# Their package job runs real editor/window audits separately; desktop timing
+# and reviewed pixels remain in this script's unchanged default profile.
+if ($CoreOnly) {
+    Write-Output ("test_build_directory=" + $buildRoot)
+    Write-Output ("tests_passed=" + $passedTests)
+    Write-Output ("tests_failed=" + $failedTests.Count)
+    Write-Output 'desktop_timing_and_baselines=not_run_in_core_profile'
+    foreach ($failedTest in $failedTests) {
+        Write-Output ("failed_test=" + $failedTest)
+    }
+    if ($failedTests.Count -gt 0) { exit 1 }
+    exit 0
 }
 
 # The default Windows sound backend has its own process-lifecycle gate. This

@@ -7,7 +7,7 @@
 #
 # Purpose:
 #
-#     Compile the native FreeBASIC editor on Linux with the ALSA MIDI backend.
+#     Compile the native FreeBASIC editor with the host's MIDI capability adapter.
 #
 # Responsibilities:
 #
@@ -27,6 +27,14 @@ project_root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 compiler_path=${FREEBASIC_PATH:-fbc}
 omagui_root=${OMAGUI_PATH:-"$project_root/vendor/omaGui"}
 output_file=${OUTPUT_PATH:-"$project_root/opensesh"}
+
+# Only Linux exposes the ALSA ABI. Other supported Unix hosts retain software
+# synthesis and editing, but must report unavailable external MIDI honestly.
+case "$(uname -s)" in
+    Linux) midi_backend=src/midi_alsa.bas ;;
+    FreeBSD|NetBSD|OpenBSD|Haiku) midi_backend=src/midi_null.bas ;;
+    *) echo 'This native build supports Linux, the BSDs, and Haiku.' >&2; exit 1 ;;
+esac
 
 if ! command -v "$compiler_path" >/dev/null 2>&1; then
     echo "FreeBASIC compiler was not found: $compiler_path" >&2
@@ -77,7 +85,7 @@ source_files=(
     src/audio_tracks.bas
     src/audio_sample_slots.bas
     src/midi_input_protocol.bas
-    src/midi_alsa.bas
+    "$midi_backend"
     src/pitch_transcriber.bas
     src/music_symbols.bas
 )

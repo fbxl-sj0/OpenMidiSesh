@@ -30,6 +30,12 @@ omagui_root=${OMAGUI_PATH:-"$project_root/vendor/omaGui"}
 build_root=${BUILD_DIRECTORY:-"${TMPDIR:-/tmp}/opensesh-tests-$$"}
 test_timeout_seconds=${TEST_TIMEOUT_SECONDS:-60}
 
+case "$(uname -s)" in
+    Linux) midi_backend=src/midi_alsa.bas ;;
+    FreeBSD|NetBSD|OpenBSD|Haiku) midi_backend=src/midi_null.bas ;;
+    *) echo 'Unsupported native Unix test host.' >&2; exit 1 ;;
+esac
+
 if ! command -v "$compiler_path" >/dev/null 2>&1; then
     echo "FreeBASIC compiler was not found: $compiler_path" >&2
     exit 1
@@ -181,7 +187,7 @@ run_test empty_document_smoke \
     tests/empty_document_smoke.bas src/midi_model.bas -- \
     "$build_root/empty-document-smoke.mid"
 run_test midi_input_smoke \
-    tests/midi_input_smoke.bas src/midi_alsa.bas src/midi_input_protocol.bas --
+    tests/midi_input_smoke.bas "$midi_backend" src/midi_input_protocol.bas --
 run_test keyboard_controls_smoke \
     tests/keyboard_controls_smoke.bas src/keyboard_controls.bas --
 run_test drum_kit_smoke \
@@ -215,9 +221,13 @@ run_test midi_running_status_smoke \
     tests/midi_running_status_smoke.bas src/midi_model.bas -- \
     "$build_root/midi-running-status.mid"
 run_test document_save_routing_smoke tests/document_save_routing_smoke.bas --
-run_test midi_output_smoke \
-    define:OSE_MIDI_OUTPUT_TESTING \
-    tests/midi_output_smoke.bas src/midi_alsa.bas src/midi_input_protocol.bas --
+if [ "$midi_backend" = src/midi_alsa.bas ]; then
+    run_test midi_output_smoke \
+        define:OSE_MIDI_OUTPUT_TESTING \
+        tests/midi_output_smoke.bas "$midi_backend" src/midi_input_protocol.bas --
+else
+    run_test midi_null_smoke tests/midi_null_smoke.bas "$midi_backend" --
+fi
 run_test midi_playback_audio_smoke \
     tests/midi_playback_audio_smoke.bas src/midi_model.bas src/audio_tracks.bas \
     src/wav_export_sfx.bas src/playback_mix.bas src/playback_timing.bas src/soundfont_bank.bas \
@@ -296,6 +306,10 @@ run_test binary_file_smoke tests/binary_file_smoke.bas -- \
     "$build_root/binary-file-smoke.bin"
 
 if [ -n "${OSE_MIDI_INPUT_INDEX:-}" ] || [ -n "${OSE_MIDI_OUTPUT_INDEX:-}" ]; then
+    if [ "$midi_backend" != src/midi_alsa.bas ]; then
+        echo 'External MIDI loopback is unavailable on this target.' >&2
+        exit 1
+    fi
     if [ -z "${OSE_MIDI_INPUT_INDEX:-}" ] || [ -z "${OSE_MIDI_OUTPUT_INDEX:-}" ]; then
         echo 'Both OSE_MIDI_INPUT_INDEX and OSE_MIDI_OUTPUT_INDEX are required.' >&2
         exit 1

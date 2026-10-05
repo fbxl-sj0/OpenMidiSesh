@@ -21,8 +21,13 @@ software synthesis, and native MIDI endpoints in one desktop application.
 - Create drum phrases, use the performance keyboard, and work with Desktop or
   Touch controls in Light, Dark, or Black themes.
 
-The current version is **0.9.0-dev**. Windows and Linux have native build and
-test runners. Android has a separate packaging path; external Android MIDI
+The current version is **0.9.0-dev**. Native package CI targets Windows, Linux,
+FreeBSD, NetBSD, OpenBSD and Haiku x86_64. [GitHub releases](https://github.com/fbxl-sj0/OpenMidiSesh/releases)
+provide archives with the executable, licenses, corresponding source and checksums.
+Extract the complete archive for your system, then run `opensesh.exe` on Windows
+or `opensesh` elsewhere. See [platform requirements](docs/CI.md) before downloading.
+BSD and Haiku currently support editing and software synthesis without external
+MIDI endpoints. Android has a separate packaging path; external Android MIDI
 endpoints are unavailable. Development builds have not completed every
 physical-device, accessibility, or signing check listed in the release checklist.
 
