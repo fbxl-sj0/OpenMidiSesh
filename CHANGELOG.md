@@ -4,6 +4,10 @@
 
 ## Unreleased
 
+- Restore the score background when note-tool cursors move or disappear, and
+  clip notation to the score body so notes cannot overwrite the title bar.
+- Compare retained score pixels with fresh native rendering on both work pages
+  in the Desktop and Touch control audits.
 - Add native package CI for Windows, Linux, FreeBSD, NetBSD, OpenBSD and Haiku
   x86_64, including tests, native editor launches and extracted-package checks.
 - Publish a complete passing package set with matching corresponding source,

@@ -2597,6 +2597,32 @@ Private Function session_ScoreVisualFingerprint( _
             CULngInt(CUInt(session_ScoreMarqueeCurrentY)))
     End If
 
+    /'
+        Tool cursors belong to the retained score pixels on each work page.
+        Movement or disappearance must rebuild the background before drawing
+        another cursor. Ignore pointer movement outside the editable region;
+        a stationary cursor reuses its pixels instead of blending them again.
+    '/
+    Dim As Integer cursorVisible = 0
+    Dim As Integer mouseX = input_MouseX()
+    Dim As Integer mouseY = input_MouseY()
+    If session_IsModalOpen() = 0 AndAlso _
+        session_ActiveScoreTool <> SESSION_SCORE_TOOL_SELECT Then
+        Dim As Integer editLeft, editTop, editRight, editBottom
+        session_ScoreEditBounds screenWidth, screenHeight, editLeft, editTop, _
+            editRight, editBottom
+        cursorVisible = mouseX >= editLeft AndAlso mouseX <= editRight AndAlso _
+            mouseY >= editTop AndAlso mouseY <= editBottom
+    End If
+    fingerprint = session_VisualFingerprintMix( _
+        fingerprint, CULngInt(cursorVisible And &H1))
+    If cursorVisible <> 0 Then
+        fingerprint = session_VisualFingerprintMix( _
+            fingerprint, CULngInt(session_ActiveScoreTool))
+        fingerprint = session_VisualFingerprintMix(fingerprint, CULngInt(mouseX))
+        fingerprint = session_VisualFingerprintMix(fingerprint, CULngInt(mouseY))
+    End If
+
     fingerprint = session_VisualFingerprintMix( _
         fingerprint, CULngInt(session_Summary.timeSignatureCount))
     For signatureIndex As Integer = 0 To _
@@ -2862,6 +2888,14 @@ Private Sub session_DrawScore(ByVal screenWidth As Integer, ByVal screenHeight A
         session_ScoreHeaderPageValid(workPage) = -1
     End If
 
+    /'
+        Keep the score body inside its paper, below the cached title bar.
+        omaGUI clips are balanced pushes and pops; notation shapes may add a
+        narrower clip without losing this outer boundary.
+    '/
+    backend_SetClip SESSION_SCORE_LEFT + 1, SESSION_SCORE_TOP + 24, _
+        scoreWidth - 2, scoreHeight - 25
+
     ' Alternating rows keep dense arrangements readable. The selected row uses
     ' the same accent family as its mixer strip so the two views stay related.
     Dim As Integer rowLeft = IIf( _
@@ -2948,6 +2982,10 @@ Private Sub session_DrawScore(ByVal screenWidth As Integer, ByVal screenHeight A
             scoreSectionClock, Timer)
         scoreSectionClock = Timer
     End If
+    ' Dynamic notation must stay inside the region cleared on a partial redraw.
+    ' This also protects the retained clefs and labels from long ledger lines.
+    backend_SetClip dynamicScoreLeft, SESSION_SCORE_TOP + 24, _
+        SESSION_SCORE_LEFT + scoreWidth - 1 - dynamicScoreLeft, scoreHeight - 25
     session_DrawScoreRests noteScoreLeft, noteScoreRight, screenHeight, _
         firstStaffY, staffGap, ticksPerView
     If session_SmoothnessProfilingActive <> 0 Then
@@ -2963,6 +3001,9 @@ Private Sub session_DrawScore(ByVal screenWidth As Integer, ByVal screenHeight A
     End If
     session_DrawAudioClips noteScoreLeft, noteScoreRight, scoreHeight, ticksPerView
     session_DrawScoreMarquee()
+    session_DrawScoreToolCursor screenWidth, screenHeight
+    backend_ResetClip()
+    backend_ResetClip()
     session_ScorePageFingerprint(workPage) = visualFingerprint
     session_ScorePageValid(workPage) = -1
 End Sub
@@ -4026,7 +4067,6 @@ Private Sub session_DrawApplication(ByVal screenWidth As Integer, ByVal screenHe
     End If
     session_DrawScoreToolRail screenHeight
     session_DrawAddNotePalette()
-    session_DrawScoreToolCursor screenWidth, screenHeight
     If session_SmoothnessProfilingActive <> 0 Then
         session_SmoothnessScoreToolRenderMs = _
             uiFramePacing_ElapsedMilliseconds(smoothnessSectionClock, Timer)

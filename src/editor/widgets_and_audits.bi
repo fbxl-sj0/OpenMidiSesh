@@ -3928,6 +3928,134 @@ Private Sub session_AuditGeneratedControls( _
 End Sub
 
 
+Private Function session_AuditScorePixelFingerprint( _
+    ByVal scoreWidth As Integer, ByVal scoreHeight As Integer _
+) As ULongInt
+    Dim As ULongInt fingerprint = &hcbf29ce484222325ull
+    For pixelY As Integer = SESSION_SCORE_TOP To _
+        SESSION_SCORE_TOP + scoreHeight - 1
+        For pixelX As Integer = SESSION_SCORE_LEFT To _
+            SESSION_SCORE_LEFT + scoreWidth - 1
+            fingerprint = session_VisualFingerprintMix( _
+                fingerprint, CULngInt(Point(pixelX, pixelY)))
+        Next pixelX
+    Next pixelY
+    Return fingerprint
+End Function
+
+
+Private Sub session_AuditScoreRendering( _
+    ByRef renderCheckCount As Integer, ByRef errorText As String _
+)
+    /'
+        Compare retained pixels with a fresh rendering of the same scene on
+        the native work page. Each flip visits the other buffer, so movement,
+        disappearance and repeated stationary drawing exercise both caches.
+        The reference includes the header and gutter to catch notation that
+        escapes the region erased by a subsequent partial score redraw.
+
+        This is the last document audit in the environment-only test process.
+        It owns a new in-memory fixture and never saves it to a user file.
+    '/
+    Dim As Integer screenWidth, screenHeight
+    backend_GetSize screenWidth, screenHeight
+    If session_CreateNewDocument() = 0 Then
+        session_AppendControlAuditError errorText, "score render fixture failed"
+        Exit Sub
+    End If
+    input_ResetForTest()
+    session_ActiveScoreTool = SESSION_SCORE_TOOL_SELECT
+    session_AddPaletteVisible = 0
+    session_InvalidateInterfaceCaches()
+
+    Dim As Integer scoreWidth = screenWidth - SESSION_SCORE_LEFT - 4
+    Dim As Integer scoreHeight = screenHeight - SESSION_TOP_HEIGHT - _
+        SESSION_MIXER_HEIGHT - 8
+    Dim As Integer editLeft, editTop, editRight, editBottom
+    session_ScoreEditBounds screenWidth, screenHeight, editLeft, editTop, _
+        editRight, editBottom
+    Dim As Integer pointerX(0 To 7) = { _
+        editLeft + 60, editLeft + 100, editLeft + 100, editLeft, _
+        editRight, editLeft + 80, -1, editLeft + 80 _
+    }
+    Dim As Integer pointerY(0 To 7) = { _
+        editTop + 50, editTop + 70, editTop + 70, editTop, _
+        editBottom, editTop, -1, editBottom _
+    }
+
+    ' Warm both pages with a clean score before drawing any transient cursor.
+    input_MockMouse -1, -1, 0
+    input_Update()
+    For pageVisit As Integer = 0 To 1 ' fblint: disable-line FBL311 REASON: This counter bounds visits to both native work pages; the backend selects the page.
+        session_DrawApplication screenWidth, screenHeight
+        backend_Flip()
+    Next pageVisit
+
+    For toolIndex As Integer = SESSION_SCORE_TOOL_ADD_NOTE To _
+        SESSION_SCORE_TOOL_PASTE
+        session_ActiveScoreTool = toolIndex
+        For positionIndex As Integer = 0 To UBound(pointerX)
+            input_MockMouse pointerX(positionIndex), pointerY(positionIndex), 0
+            input_Update()
+            For pageVisit As Integer = 0 To 1
+                Dim As Integer workPage = backend_GetWorkPage()
+                session_DrawApplication screenWidth, screenHeight
+                Dim As ULongInt retainedPixels = _
+                    session_AuditScorePixelFingerprint(scoreWidth, scoreHeight)
+                session_ScoreStaticPageWidth(workPage) = 0
+                session_ScorePageValid(workPage) = 0
+                session_DrawApplication screenWidth, screenHeight
+                session_AuditBehavior (retainedPixels = _
+                    session_AuditScorePixelFingerprint(scoreWidth, scoreHeight)), _
+                    "retained score cursor differs from fresh rendering: tool " + _
+                    Str(toolIndex) + " position " + Str(positionIndex) + _
+                    " page " + Str(workPage), renderCheckCount, errorText
+                backend_Flip()
+            Next pageVisit
+        Next positionIndex
+    Next toolIndex
+
+    ' Leaving a tool must erase the cursor even when the pointer stays put.
+    session_ActiveScoreTool = SESSION_SCORE_TOOL_SELECT
+    For pageVisit As Integer = 0 To 1
+        Dim As Integer workPage = backend_GetWorkPage()
+        session_DrawApplication screenWidth, screenHeight
+        Dim As ULongInt retainedPixels = _
+            session_AuditScorePixelFingerprint(scoreWidth, scoreHeight)
+        session_ScoreStaticPageWidth(workPage) = 0
+        session_ScorePageValid(workPage) = 0
+        session_DrawApplication screenWidth, screenHeight
+        session_AuditBehavior (retainedPixels = _
+            session_AuditScorePixelFingerprint(scoreWidth, scoreHeight)), _
+            "score tool switch left cursor pixels", renderCheckCount, errorText
+        backend_Flip()
+    Next pageVisit
+
+    ' High ledger lines and stems can cross the header while notes are dragged.
+    ' Removing the fixture must restore the same empty score on both pages.
+    Dim As ULongInt emptyPixels = _
+        session_AuditScorePixelFingerprint(scoreWidth, scoreHeight)
+    Dim As Integer noteIndex = midi_AddEditableNote(session_Summary, 0, _
+        0, CULngInt(session_Summary.division), 127, 0, 100)
+    session_AuditBehavior noteIndex >= 0, "high-note fixture failed", _
+        renderCheckCount, errorText
+    For pageVisit As Integer = 0 To 1
+        session_DrawApplication screenWidth, screenHeight
+        backend_Flip()
+    Next pageVisit
+    session_AuditBehavior midi_RemoveEditableNote(session_Summary, noteIndex) <> 0, _
+        "high-note fixture removal failed", renderCheckCount, errorText
+    For pageVisit As Integer = 0 To 1
+        session_DrawApplication screenWidth, screenHeight
+        session_AuditBehavior (emptyPixels = _
+            session_AuditScorePixelFingerprint(scoreWidth, scoreHeight)), _
+            "removed high note left pixels outside the score timeline", _
+            renderCheckCount, errorText
+        backend_Flip()
+    Next pageVisit
+End Sub
+
+
 Private Function session_WriteControlAudit(ByVal reportFilename As String) As Integer
     reportFilename = Left(Trim(reportFilename), 4096)
     If reportFilename = "" Then
@@ -3942,6 +4070,7 @@ Private Function session_WriteControlAudit(ByVal reportFilename As String) As In
     Dim As Integer textControlCount = 0
     Dim As Integer listControlCount = 0
     Dim As Integer behaviorCheckCount = 0
+    Dim As Integer renderCheckCount = 0
     Dim As String buttonNames(0 To 16) = { _
         "new", "open", "save", "stop", "pause", "rewind", "play", _
         "fast_forward", "live_record", "step_record", "apply_tempo", _
@@ -4116,6 +4245,8 @@ Private Function session_WriteControlAudit(ByVal reportFilename As String) As In
     session_Dirty = originalDirty
     session_QuitRequested = originalQuitRequested
 
+    session_AuditScoreRendering renderCheckCount, errorText
+
     Dim As Integer fileNumber = FreeFile()
     If Open(reportFilename For Output As #fileNumber) <> 0 Then
         Return 0
@@ -4129,6 +4260,7 @@ Private Function session_WriteControlAudit(ByVal reportFilename As String) As In
     Print #fileNumber, "scroll_controls=" + LTrim(Str(scrollControlCount))
     Print #fileNumber, "custom_controls=" + LTrim(Str(customControlCount))
     Print #fileNumber, "behavior_checks=" + LTrim(Str(behaviorCheckCount))
+    Print #fileNumber, "score_render_checks=" + LTrim(Str(renderCheckCount))
     Print #fileNumber, "startup_theme=" + _
         uiStyle_ThemeName(session_StartupThemeMode)
     Print #fileNumber, "startup_interaction=" + _

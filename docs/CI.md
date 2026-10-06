@@ -41,7 +41,10 @@ the same fourteen linked toolchain inputs are checked against a generated lock.
 The default Windows test profile still includes desktop timing and reviewed pixels.
 
 Every package job launches the real editor in Desktop and Touch modes, checks
-648 control contracts and 1016 behaviors, and captures a native framebuffer.
+648 control contracts, 1016 behaviors and 140 retained-score rendering checks,
+and captures a native framebuffer. The score checks compare moving and hidden
+tool cursors with fresh pixels on both work pages and test note removal near
+the header boundary.
 It repeats those checks with the executable extracted from the verified package.
 Linux and BSD use Xvfb; Haiku uses app_server. These checks do not certify physical
 presentation timing, devices or human accessibility. Diagnostics are retained for

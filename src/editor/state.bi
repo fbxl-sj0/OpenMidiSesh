@@ -693,6 +693,10 @@ Declare Sub session_DrawRaisedPanel( _
     ByVal panelHeight As Integer, _
     ByVal faceColor As ULong _
 )
+Declare Sub session_DrawScoreToolCursor( _
+    ByVal screenWidth As Integer, _
+    ByVal screenHeight As Integer _
+)
 Declare Sub session_DrawRoundedControl( _
     ByVal controlLeft As Integer, _
     ByVal controlTop As Integer, _
