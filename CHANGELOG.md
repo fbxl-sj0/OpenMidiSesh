@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Capture score pixels in bulk during native rendering audits so Haiku checks
+  retain their full coverage within the existing editor timeout.
 - Restore the score background when note-tool cursors move or disappear, and
   clip notation to the score body so notes cannot overwrite the title bar.
 - Compare retained score pixels with fresh native rendering on both work pages

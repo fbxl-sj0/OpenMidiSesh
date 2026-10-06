@@ -31,6 +31,8 @@
 #ifndef __OSE_EDITOR_WIDGETS_AND_AUDITS_BI__
 #define __OSE_EDITOR_WIDGETS_AND_AUDITS_BI__
 
+#include once "crt/mem.bi"
+
 
 ' -------------------------------------------------------------------------
 ' Widget assembly and application loop
@@ -3928,19 +3930,67 @@ Private Sub session_AuditGeneratedControls( _
 End Sub
 
 
-Private Function session_AuditScorePixelFingerprint( _
-    ByVal scoreWidth As Integer, ByVal scoreHeight As Integer _
-) As ULongInt
-    Dim As ULongInt fingerprint = &hcbf29ce484222325ull
-    For pixelY As Integer = SESSION_SCORE_TOP To _
-        SESSION_SCORE_TOP + scoreHeight - 1
-        For pixelX As Integer = SESSION_SCORE_LEFT To _
-            SESSION_SCORE_LEFT + scoreWidth - 1
-            fingerprint = session_VisualFingerprintMix( _
-                fingerprint, CULngInt(Point(pixelX, pixelY)))
-        Next pixelX
-    Next pixelY
-    Return fingerprint
+Private Function session_AuditScorePixels( _
+    ByVal scoreWidth As Integer, ByVal scoreHeight As Integer, _
+    ByRef errorText As String _
+) As String
+    /'
+        GET copies the active work page in one gfxlib operation. Calling POINT
+        for every pixel takes too long on the native Haiku CI guest. The owned
+        string retains every captured byte, including embedded zeroes, so the
+        audit compares exact pixels without reducing them to a hash.
+
+        This runs on the GUI thread between drawing and flipping the page.
+        The temporary gfxlib image is released after its pixels are copied.
+    '/
+    Dim As Integer screenWidth, screenHeight
+    backend_GetSize screenWidth, screenHeight
+    If scoreWidth < 1 OrElse scoreHeight < 1 OrElse _
+        SESSION_SCORE_LEFT < 0 OrElse SESSION_SCORE_TOP < 0 OrElse _
+        scoreWidth > screenWidth - SESSION_SCORE_LEFT OrElse _
+        scoreHeight > screenHeight - SESSION_SCORE_TOP Then
+        session_AppendControlAuditError errorText, "invalid score capture bounds"
+        Return ""
+    End If
+
+    ' The native backend uses 32-bit pixels; the caller owns this capture image.
+    Dim As Any Ptr captureImage = backend_CreateImage(scoreWidth, scoreHeight, 0, 32)
+    If captureImage = 0 Then
+        session_AppendControlAuditError errorText, "score capture allocation failed"
+        Return ""
+    End If
+    Get (SESSION_SCORE_LEFT, SESSION_SCORE_TOP)- _
+        (SESSION_SCORE_LEFT + scoreWidth - 1, SESSION_SCORE_TOP + scoreHeight - 1), _
+        captureImage
+    ' GET reports errors through ERR; IMAGEINFO would replace that status.
+    If Err <> 0 Then
+        ImageDestroy captureImage
+        session_AppendControlAuditError errorText, "score capture failed"
+        Return ""
+    End If
+
+    Dim As Integer captureWidth, captureHeight, bytesPerPixel, pitch, bufferSize
+    Dim As Any Ptr pixelData
+    If ImageInfo(captureImage, captureWidth, captureHeight, bytesPerPixel, _
+        pitch, pixelData, bufferSize) <> 0 OrElse pixelData = 0 OrElse _
+        captureWidth <> scoreWidth OrElse captureHeight <> scoreHeight OrElse _
+        bytesPerPixel <> 4 OrElse pitch < CLngInt(scoreWidth) * 4 Then
+        ImageDestroy captureImage
+        session_AppendControlAuditError errorText, "invalid score capture image"
+        Return ""
+    End If
+    Dim As LongInt byteCount = CLngInt(pitch) * CLngInt(captureHeight) ' fblint: disable-line FBL-NUM-002 REASON: Both operands are converted to 64 bits before multiplication.
+    ' A 64 MiB ceiling bounds copied data even if image metadata is malformed.
+    If byteCount < 1 OrElse byteCount > bufferSize OrElse _
+        byteCount > 64LL * 1024 * 1024 Then
+        ImageDestroy captureImage
+        session_AppendControlAuditError errorText, "invalid score capture size"
+        Return ""
+    End If
+    Dim As String pixels = String(CInt(byteCount), Chr(0))
+    memcpy StrPtr(pixels), pixelData, CUInt(byteCount)
+    ImageDestroy captureImage
+    Return pixels
 End Function
 
 
@@ -4000,13 +4050,13 @@ Private Sub session_AuditScoreRendering( _
             For pageVisit As Integer = 0 To 1
                 Dim As Integer workPage = backend_GetWorkPage()
                 session_DrawApplication screenWidth, screenHeight
-                Dim As ULongInt retainedPixels = _
-                    session_AuditScorePixelFingerprint(scoreWidth, scoreHeight)
+                Dim As String retainedPixels = _
+                    session_AuditScorePixels(scoreWidth, scoreHeight, errorText)
                 session_ScoreStaticPageWidth(workPage) = 0
                 session_ScorePageValid(workPage) = 0
                 session_DrawApplication screenWidth, screenHeight
                 session_AuditBehavior (retainedPixels = _
-                    session_AuditScorePixelFingerprint(scoreWidth, scoreHeight)), _
+                    session_AuditScorePixels(scoreWidth, scoreHeight, errorText)), _
                     "retained score cursor differs from fresh rendering: tool " + _
                     Str(toolIndex) + " position " + Str(positionIndex) + _
                     " page " + Str(workPage), renderCheckCount, errorText
@@ -4020,21 +4070,21 @@ Private Sub session_AuditScoreRendering( _
     For pageVisit As Integer = 0 To 1
         Dim As Integer workPage = backend_GetWorkPage()
         session_DrawApplication screenWidth, screenHeight
-        Dim As ULongInt retainedPixels = _
-            session_AuditScorePixelFingerprint(scoreWidth, scoreHeight)
+        Dim As String retainedPixels = _
+            session_AuditScorePixels(scoreWidth, scoreHeight, errorText)
         session_ScoreStaticPageWidth(workPage) = 0
         session_ScorePageValid(workPage) = 0
         session_DrawApplication screenWidth, screenHeight
         session_AuditBehavior (retainedPixels = _
-            session_AuditScorePixelFingerprint(scoreWidth, scoreHeight)), _
+            session_AuditScorePixels(scoreWidth, scoreHeight, errorText)), _
             "score tool switch left cursor pixels", renderCheckCount, errorText
         backend_Flip()
     Next pageVisit
 
     ' High ledger lines and stems can cross the header while notes are dragged.
     ' Removing the fixture must restore the same empty score on both pages.
-    Dim As ULongInt emptyPixels = _
-        session_AuditScorePixelFingerprint(scoreWidth, scoreHeight)
+    Dim As String emptyPixels = _
+        session_AuditScorePixels(scoreWidth, scoreHeight, errorText)
     Dim As Integer noteIndex = midi_AddEditableNote(session_Summary, 0, _
         0, CULngInt(session_Summary.division), 127, 0, 100)
     session_AuditBehavior noteIndex >= 0, "high-note fixture failed", _
@@ -4048,7 +4098,7 @@ Private Sub session_AuditScoreRendering( _
     For pageVisit As Integer = 0 To 1
         session_DrawApplication screenWidth, screenHeight
         session_AuditBehavior (emptyPixels = _
-            session_AuditScorePixelFingerprint(scoreWidth, scoreHeight)), _
+            session_AuditScorePixels(scoreWidth, scoreHeight, errorText)), _
             "removed high note left pixels outside the score timeline", _
             renderCheckCount, errorText
         backend_Flip()
