@@ -3963,7 +3963,7 @@ Private Function session_AuditScorePixels( _
         (SESSION_SCORE_LEFT + scoreWidth - 1, SESSION_SCORE_TOP + scoreHeight - 1), _
         captureImage
     ' GET reports errors through ERR; IMAGEINFO would replace that status.
-    If Err <> 0 Then
+    If Err <> 0 Then ' fblint: disable-line FBL613 REASON: Gfxlib sets ERR on both capture success and failure without ON ERROR.
         ImageDestroy captureImage
         session_AppendControlAuditError errorText, "score capture failed"
         Return ""
