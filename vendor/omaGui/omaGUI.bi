@@ -35,6 +35,7 @@
 #include once "src/backend/clipboard.bi"
 #include once "src/backend/font_data.bi"
 #include once "src/system/filesystem.bi"
+#include once "src/system/byte_span.bi"
 #include once "src/images/raster_image.bi"
 #include once "src/archive/chmarchive.bi"
 
@@ -68,6 +69,7 @@
 #include once "src/widgets/splitter.bi"
 #include once "src/widgets/linewidget.bi"
 #include once "src/widgets/rectwidget.bi"
+#include once "src/widgets/themeframe.bi"
 #include once "src/widgets/circlewidget.bi"
 #include once "src/widgets/curvewidget.bi"
 #include once "src/widgets/canvas.bi"
@@ -120,6 +122,7 @@
     #include once "src/widgets/radiobox.bas"
     #include once "src/widgets/linewidget.bas"
     #include once "src/widgets/rectwidget.bas"
+    #include once "src/widgets/themeframe.bas"
     #include once "src/widgets/circlewidget.bas"
     #include once "src/widgets/curvewidget.bas"
     #include once "src/widgets/canvas.bas"

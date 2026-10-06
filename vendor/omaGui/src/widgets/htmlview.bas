@@ -903,8 +903,9 @@ Private Function htmlview_CssSelectorMatches( _
     If Left(selectorText, 1) = "#" Then
         If Len(selectorText) < 2 Then Return 0
         attributeValue = LCase(htmlview_GetAttribute(attributeText, "id"))
-        ' fblint: disable-next-line FBL513 REASON: The selector prefix and length are validated before the positive one-based Mid position.
-        Return IIf(attributeValue = Mid(selectorText, 2), -1, 0)
+        Return IIf( _
+            "#" & attributeValue = selectorText, -1, 0 _
+        )
     End If
     Return IIf(selectorText = LCase(tagName), -1, 0)
 

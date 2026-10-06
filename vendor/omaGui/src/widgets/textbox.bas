@@ -42,6 +42,7 @@
 
 #lang "fb"
 
+#include once "crt/string.bi"
 #include once "src/widgets/textbox.bi"
 #include once "src/widgets/menu.bi"
 #include once "src/widgets/scrollbar.bi"
@@ -97,6 +98,32 @@ Dim Shared As Widget Ptr active_textbox = 0
 ' Internal helpers
 ' -------------------------------------------------------------------------
 
+Private Function textbox_IsMasked(ByVal text_data As TextBoxData Ptr) As Integer
+    If text_data = 0 Then Return 0
+    ' FB-LINTER: DISABLE-NEXT-LINE FBL008 FBL-SEC-004 REASON: This reads the display-mode flag only.
+    Return text_data->password_character <> 0
+End Function
+
+Private Function textbox_MaskCharacter(ByVal text_data As TextBoxData Ptr) As Integer
+    If text_data = 0 Then Return 0
+    ' FB-LINTER: DISABLE-NEXT-LINE FBL008 FBL-SEC-004 REASON: This returns the selected display glyph only.
+    Return text_data->password_character
+End Function
+
+Private Function textbox_MaskedText( _
+    ByVal text_data As TextBoxData Ptr _
+) ByRef As String
+    ' FB-LINTER: DISABLE-NEXT-LINE FBL008 FBL-SEC-004 REASON: This checks the cached mask string length only.
+    If Len(text_data->password_display) <> Len(text_data->text) Then
+        ' FB-LINTER: DISABLE-NEXT-LINE FBL008 FBL-SEC-004 REASON: The cache stores repeated mask glyphs, not source text.
+        text_data->password_display = String( _
+            Len(text_data->text), textbox_MaskCharacter(text_data) _
+        )
+    End If
+    ' FB-LINTER: DISABLE-NEXT-LINE FBL008 FBL-SEC-004 REASON: The returned cache contains only mask glyphs.
+    Return text_data->password_display
+End Function
+
 Private Function textbox_VisualText( _
     ByVal textData As TextBoxData Ptr _
 ) ByRef As String
@@ -108,8 +135,7 @@ Private Function textbox_VisualText( _
         transforms use change_serial because comparing the whole source for
         every visual row makes long documents unnecessarily expensive.
     '/
-    ' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
-    If textData->password_character = 0 Then
+    If textbox_IsMasked(textData) = 0 Then
         If textData->text_display_handler = 0 Then Return textData->text
         If textData->display_valid <> 0 AndAlso _
            textData->display_change_serial = textData->change_serial AndAlso _
@@ -163,14 +189,7 @@ Private Function textbox_VisualText( _
         textData->display_valid = -1
         Return textData->display_text
     End If
-    ' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
-    If Len(textData->password_display) <> Len(textData->text) Then
-        textData->password_display = String( _ ' fblint: disable-line FBL-SEC-004 FBL008 REASON: This buffer contains masked display text, not a credential literal.
-            Len(textData->text), textData->password_character _ ' fblint: disable-line FBL-SEC-004 FBL008 REASON: This is a text masking character, not a credential literal.
-        )
-    End If
-    ' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
-    Return textData->password_display
+    Return textbox_MaskedText(textData)
 End Function
 
 
@@ -276,7 +295,7 @@ Private Sub textbox_PrintStyled( _
     End If
 End Sub
 
-Declare Function textbox_ClampPosition(ByVal textValue As String, ByVal position As Integer) As Integer
+Declare Function textbox_ClampPosition(ByRef textValue As Const String, ByVal position As Integer) As Integer
 Declare Sub textbox_CollapseSelection(ByVal textData As TextBoxData Ptr, ByVal position As Integer)
 Declare Sub textbox_ExtendSelection(ByVal textData As TextBoxData Ptr, ByVal position As Integer)
 Declare Sub textbox_DeleteSelection(ByVal textData As TextBoxData Ptr)
@@ -291,10 +310,10 @@ Declare Function textbox_ControlShortcutJustPressed( _
     ByVal keyCode As Integer, _
     ByVal keyMask As Integer _
 ) As Integer
-Declare Function textbox_LineStart(ByVal textValue As String, ByVal position As Integer) As Integer
-Declare Function textbox_LineEnd(ByVal textValue As String, ByVal position As Integer) As Integer
+Declare Function textbox_LineStart(ByRef textValue As Const String, ByVal position As Integer) As Integer
+Declare Function textbox_LineEnd(ByRef textValue As Const String, ByVal position As Integer) As Integer
 Declare Function textbox_LineStartByIndex( _
-    ByVal textValue As String, _
+    ByRef textValue As Const String, _
     ByVal lineIndex As Integer _
 ) As Integer
 Declare Function textbox_NextVisualLine( _
@@ -307,20 +326,21 @@ Declare Function textbox_NextVisualLine( _
     ByVal textData As TextBoxData Ptr = 0 _
 ) As Integer
 Declare Function textbox_CountVisualLines( _
-    ByVal textValue As String, _
+    ByRef textValue As Const String, _
     ByVal wordwrap As Integer, _
     ByVal contentWidth As Integer, _
-    ByVal textData As TextBoxData Ptr = 0 _
+    ByVal textData As TextBoxData Ptr = 0, _
+    ByVal buildRowIndex As Integer = 0 _
 ) As Integer
 Declare Function textbox_VisualLineForPosition( _
-    ByVal textValue As String, _
+    ByRef textValue As Const String, _
     ByVal position As Integer, _
     ByVal wordwrap As Integer, _
     ByVal contentWidth As Integer, _
     ByVal textData As TextBoxData Ptr = 0 _
 ) As Integer
 Declare Function textbox_VisualLineBounds( _
-    ByVal textValue As String, _
+    ByRef textValue As Const String, _
     ByVal targetLine As Integer, _
     ByVal wordwrap As Integer, _
     ByVal contentWidth As Integer, _
@@ -1485,7 +1505,9 @@ Private Sub textbox_RenderSyntaxLine( _
 End Sub
 
 
-Private Function textbox_ClampPosition(ByVal textValue As String, ByVal position As Integer) As Integer
+' Read-only position helpers borrow the source. Copying an entire document
+' for each caret clamp or row lookup makes otherwise small edits expensive.
+Private Function textbox_ClampPosition(ByRef textValue As Const String, ByVal position As Integer) As Integer
 
     If position < 0 Then Return 0
     If position > Len(textValue) Then Return Len(textValue)
@@ -1746,10 +1768,11 @@ End Function
 
 
 Private Function textbox_CountVisualLines( _
-    ByVal textValue As String, _
+    ByRef textValue As Const String, _
     ByVal wordwrap As Integer, _
     ByVal contentWidth As Integer, _
-    ByVal textData As TextBoxData Ptr _
+    ByVal textData As TextBoxData Ptr, _
+    ByVal buildRowIndex As Integer _
 ) As Integer
     Dim As Integer lineEnd
     Dim As Integer lineStart
@@ -1757,12 +1780,30 @@ Private Function textbox_CountVisualLines( _
     Dim As Integer visualLines
     Dim As Integer sourceLineNumber, sourceLineStart
     Dim As Integer rowLineNumber, rowLineStart
+    Dim As Integer nextCheckpoint, checkpointStride
+    If buildRowIndex <> 0 AndAlso textData <> 0 Then
+        textData->metrics_row_count = 0
+        If wordwrap <> 0 OrElse Len(textValue) < 4096 Then
+            buildRowIndex = 0
+        Else
+            checkpointStride = Len(textValue) \ 31 + 1
+        End If
+    End If
 
     While textbox_NextVisibleVisualLine( _
         textValue, scanPosition, wordwrap, contentWidth, _
         lineStart, lineEnd, textData, _
         sourceLineNumber, sourceLineStart, rowLineNumber, rowLineStart _
     )
+        If buildRowIndex <> 0 AndAlso lineStart >= nextCheckpoint AndAlso _
+           textData->metrics_row_count < 32 Then
+            Dim As Integer entryIndex = textData->metrics_row_count
+            textData->metrics_row_index(entryIndex) = visualLines
+            textData->metrics_row_position(entryIndex) = lineStart
+            textData->metrics_row_source_number(entryIndex) = rowLineNumber
+            textData->metrics_row_count += 1
+            nextCheckpoint = lineStart + checkpointStride
+        End If
         visualLines += 1
     Wend
 
@@ -1770,9 +1811,75 @@ Private Function textbox_CountVisualLines( _
     Return visualLines
 End Function
 
+/'
+    Render row index
+
+    Call only after textbox_UpdateScrollMetrics validated the exact source,
+    dimensions, font generation and application visibility observation. No
+    string or syntax state is cached here. A lexer provider must still restore
+    syntax state independently; declining it retains ordinary replay from zero.
+'/
+Private Sub textbox_RestoreRenderRow( _
+    ByVal textData As TextBoxData Ptr, ByVal targetRow As Integer, _
+    ByRef rowIndex As Integer, ByRef scanPosition As Integer, _
+    ByRef sourceLineNumber As Integer, ByRef sourceLineStart As Integer _
+)
+    #If Defined(OMAGUI_DISABLE_ROW_INDEX)
+        Exit Sub
+    #EndIf
+    If textData = 0 OrElse textData->wordwrap <> 0 OrElse _
+       textData->metrics_row_count < 1 OrElse textData->metrics_row_count > 32 Then Exit Sub
+    For entryIndex As Integer = textData->metrics_row_count - 1 To 0 Step -1
+        If textData->metrics_row_index(entryIndex) <= targetRow Then
+            rowIndex = textData->metrics_row_index(entryIndex)
+            scanPosition = textData->metrics_row_position(entryIndex)
+            sourceLineNumber = textData->metrics_row_source_number(entryIndex)
+            sourceLineStart = scanPosition
+            Exit Sub
+        End If
+    Next entryIndex
+End Sub
+
+
+/'
+    Input helpers may run before the next metrics refresh. Validate the exact
+    text retained at the end of metrics_key before borrowing its row index.
+    This also catches legacy direct writes which bypass the change serial.
+    Callback layouts require the same callback identity and visibility key,
+    or the existing explicit viewport_dirty contract for opt-in caching.
+'/
+Private Function textbox_CanRestoreRow( _
+    ByVal textData As TextBoxData Ptr, ByRef textValue As Const String _
+) As Integer
+    #If Defined(OMAGUI_DISABLE_ROW_INDEX)
+        Return 0
+    #EndIf
+    If textData = 0 OrElse textData->metrics_valid = 0 OrElse _
+       textData->wordwrap <> 0 OrElse textData->metrics_row_count < 1 OrElse _
+       textData->metrics_row_count > 32 Then Return 0
+    Dim As Integer sourceLength = Len(textValue)
+    Dim As Integer keyLength = Len(textData->metrics_key)
+    If sourceLength <> textData->metrics_row_source_length OrElse _
+       sourceLength < 4096 OrElse keyLength < sourceLength Then Return 0
+    If textData->line_visibility_handler <> textData->metrics_row_visibility_handler OrElse _
+       textData->metrics_state_handler <> textData->metrics_row_state_handler Then Return 0
+    If textData->line_visibility_handler <> 0 Then
+        If textData->metrics_state_handler <> 0 Then
+            If textData->metrics_state_handler(textData->owner) <> _
+               textData->metrics_row_visibility_key Then Return 0
+        ElseIf textData->metrics_cache_callbacks = 0 OrElse textData->viewport_dirty <> 0 Then
+            Return 0
+        End If
+    End If
+    Dim As Integer comparison = oma_BytesEqual( _
+        StrPtr(textData->metrics_key) + keyLength - sourceLength, _
+        StrPtr(textValue), sourceLength _
+    )
+    Return IIf(comparison <> 0, -1, 0)
+End Function
 
 Private Function textbox_VisualLineForPosition( _
-    ByVal textValue As String, _
+    ByRef textValue As Const String, _
     ByVal position As Integer, _
     ByVal wordwrap As Integer, _
     ByVal contentWidth As Integer, _
@@ -1786,6 +1893,18 @@ Private Function textbox_VisualLineForPosition( _
     Dim As Integer rowLineNumber, rowLineStart
 
     position = textbox_ClampPosition(textValue, position)
+
+    If wordwrap = 0 AndAlso textbox_CanRestoreRow(textData, textValue) <> 0 Then
+        For entryIndex As Integer = textData->metrics_row_count - 1 To 0 Step -1
+            If textData->metrics_row_position(entryIndex) <= position Then
+                lineIndex = textData->metrics_row_index(entryIndex)
+                scanPosition = textData->metrics_row_position(entryIndex)
+                sourceLineNumber = textData->metrics_row_source_number(entryIndex)
+                sourceLineStart = scanPosition
+                Exit For
+            End If
+        Next entryIndex
+    End If
 
     While textbox_NextVisibleVisualLine( _
         textValue, scanPosition, wordwrap, contentWidth, _
@@ -1802,7 +1921,7 @@ End Function
 
 
 Private Function textbox_VisualLineBounds( _
-    ByVal textValue As String, _
+    ByRef textValue As Const String, _
     ByVal targetLine As Integer, _
     ByVal wordwrap As Integer, _
     ByVal contentWidth As Integer, _
@@ -1816,6 +1935,11 @@ Private Function textbox_VisualLineBounds( _
     Dim As Integer rowLineNumber, rowLineStart
 
     If targetLine < 0 Then targetLine = 0
+
+    If wordwrap = 0 AndAlso textbox_CanRestoreRow(textData, textValue) <> 0 Then
+        textbox_RestoreRenderRow textData, targetLine, _
+            lineIndex, scanPosition, sourceLineNumber, sourceLineStart
+    End If
 
     While textbox_NextVisibleVisualLine( _
         textValue, scanPosition, wordwrap, contentWidth, _
@@ -1967,6 +2091,213 @@ Private Function textbox_ContentWidth( _
 End Function
 
 
+/'
+    A single unwrapped row edit can retain line counts and scrollbar geometry.
+    Prove the unchanged layout header and both source ends byte for byte. Never
+    reuse a width when the former widest row shrinks, or when line breaks or
+    unmanaged visibility callbacks could change the layout. The ordinary full
+    walk remains the fallback; no document history or extra snapshot is kept.
+'/
+#Ifdef OMAGUI_PROFILE_METRICS
+' Qualification counters are GUI-thread owned and absent from production.
+Private Dim Shared As Integer textbox_ProfileMetricsFull, textbox_ProfileMetricsRow
+#EndIf
+
+Private Const TEXTBOX_METRICS_COMPARE_BLOCK_BYTES As Integer = 4096
+
+Private Function textbox_MatchingPrefixLength( _
+    ByVal oldBytes As UByte Ptr, ByVal newBytes As UByte Ptr, _
+    ByVal compareLength As Integer _
+) As Integer
+    Dim As Integer prefixLength
+    Dim As Integer low
+    Dim As Integer high
+
+    ' Fixed blocks avoid repeatedly rescanning long prefixes on DOS.
+    While compareLength - prefixLength >= TEXTBOX_METRICS_COMPARE_BLOCK_BYTES
+        If oma_BytesEqual(oldBytes + prefixLength, newBytes + prefixLength, _
+            TEXTBOX_METRICS_COMPARE_BLOCK_BYTES) = 0 Then Exit While
+        prefixLength += TEXTBOX_METRICS_COMPARE_BLOCK_BYTES
+    Wend
+
+    high = compareLength - prefixLength
+    If high > TEXTBOX_METRICS_COMPARE_BLOCK_BYTES Then _
+        high = TEXTBOX_METRICS_COMPARE_BLOCK_BYTES
+    While low < high
+        Dim As Integer middle = low + (high - low + 1) \ 2
+        If oma_BytesEqual(oldBytes + prefixLength, newBytes + prefixLength, middle) <> 0 Then
+            low = middle
+        Else
+            high = middle - 1
+        End If
+    Wend
+
+    Return prefixLength + low
+End Function
+
+Private Function textbox_MatchingSuffixLength( _
+    ByVal oldBytes As UByte Ptr, ByVal newBytes As UByte Ptr, _
+    ByVal oldLength As Integer, ByVal newLength As Integer, _
+    ByVal compareLength As Integer, ByVal prefixLength As Integer _
+) As Integer
+    Dim As Integer suffixLength
+    Dim As Integer remainingLength = compareLength - prefixLength
+    Dim As Integer low
+    Dim As Integer high
+
+    While remainingLength - suffixLength >= TEXTBOX_METRICS_COMPARE_BLOCK_BYTES
+        If oma_BytesEqual(oldBytes + oldLength - suffixLength - _
+            TEXTBOX_METRICS_COMPARE_BLOCK_BYTES, _
+            newBytes + newLength - suffixLength - _
+            TEXTBOX_METRICS_COMPARE_BLOCK_BYTES, _
+            TEXTBOX_METRICS_COMPARE_BLOCK_BYTES) = 0 Then Exit While
+        suffixLength += TEXTBOX_METRICS_COMPARE_BLOCK_BYTES
+    Wend
+
+    high = remainingLength - suffixLength
+    If high > TEXTBOX_METRICS_COMPARE_BLOCK_BYTES Then _
+        high = TEXTBOX_METRICS_COMPARE_BLOCK_BYTES
+    While low < high
+        Dim As Integer middle = low + (high - low + 1) \ 2
+        If oma_BytesEqual(oldBytes + oldLength - suffixLength - middle, _
+            newBytes + newLength - suffixLength - middle, middle) <> 0 Then
+            low = middle
+        Else
+            high = middle - 1
+        End If
+    Wend
+
+    Return suffixLength + low
+End Function
+
+Private Function textbox_ChangedRangeHasNoNewlines( _
+    ByVal oldBytes As UByte Ptr, ByVal newBytes As UByte Ptr, _
+    ByVal prefixLength As Integer, ByVal oldChangedEnd As Integer, _
+    ByVal newChangedEnd As Integer _
+) As Integer
+    If memchr(oldBytes + prefixLength, 10, _
+        oldChangedEnd - prefixLength) <> 0 OrElse _
+       memchr(oldBytes + prefixLength, 13, _
+        oldChangedEnd - prefixLength) <> 0 OrElse _
+       memchr(newBytes + prefixLength, 10, _
+        newChangedEnd - prefixLength) <> 0 OrElse _
+       memchr(newBytes + prefixLength, 13, _
+        newChangedEnd - prefixLength) <> 0 Then Return 0
+    Return -1
+End Function
+
+Private Function textbox_ChangedLineIsVisible( _
+    ByVal textData As TextBoxData Ptr, ByVal oldBytes As UByte Ptr, _
+    ByVal lineStart As Integer _
+) As Integer
+    If textData->line_visibility_handler = 0 Then Return -1
+
+    Dim As Integer position
+    Dim As Integer sourceRow
+    For entryIndex As Integer = textData->metrics_row_count - 1 To 0 Step -1
+        If textData->metrics_row_position(entryIndex) <= lineStart Then
+            position = textData->metrics_row_position(entryIndex)
+            sourceRow = textData->metrics_row_source_number(entryIndex)
+            Exit For
+        End If
+    Next entryIndex
+
+    ' Unwrapped checkpoint positions are source-line starts. Count intervening
+    ' CR, LF, and CRLF sequences to restore the callback's original row number.
+    While position < lineStart
+        If oldBytes[position] = 13 Then
+            sourceRow += 1
+            If position + 1 < lineStart AndAlso oldBytes[position + 1] = 10 Then _
+                position += 1
+        ElseIf oldBytes[position] = 10 Then
+            sourceRow += 1
+        End If
+        position += 1
+    Wend
+
+    Return IIf(textData->line_visibility_handler( _
+        textData->owner, sourceRow, lineStart _
+    ) <> 0, -1, 0)
+End Function
+
+Private Function textbox_TryUpdateLineMetrics(ByVal textData As TextBoxData Ptr, _
+    ByRef displayText As Const String, ByRef metricsKey As Const String) As Integer
+#Ifdef OMAGUI_DISABLE_INCREMENTAL_METRICS
+    Return 0
+#Else
+    If textData->metrics_valid = 0 OrElse textData->wordwrap <> 0 OrElse _
+       textData->multiline = 0 OrElse textData->metrics_row_count < 1 OrElse _
+       textData->metrics_row_count > 32 Then Return 0
+    If textData->line_visibility_handler <> 0 AndAlso textData->metrics_state_handler = 0 Then Return 0
+    If textData->metrics_key = metricsKey Then Return 0
+    Dim As Integer oldLength = textData->metrics_row_source_length
+    Dim As Integer newLength = Len(displayText)
+    Dim As Integer oldHeader = Len(textData->metrics_key) - oldLength
+    Dim As Integer newHeader = Len(metricsKey) - newLength
+    If oldLength < 4096 OrElse newLength < 4096 OrElse oldHeader < 0 OrElse oldHeader <> newHeader Then Return 0
+    If oma_BytesEqual(StrPtr(textData->metrics_key), StrPtr(metricsKey), oldHeader) = 0 Then Return 0
+    Dim As UByte Ptr oldBytes = StrPtr(textData->metrics_key) + oldHeader
+    Dim As Const UByte Ptr newBytes = StrPtr(displayText)
+    Dim As Integer minimumLength = IIf(oldLength < newLength, oldLength, newLength)
+    Dim As Integer prefixLength = textbox_MatchingPrefixLength( _
+        oldBytes, Cast(UByte Ptr, newBytes), minimumLength _
+    )
+    Dim As Integer suffixLength = textbox_MatchingSuffixLength( _
+        oldBytes, Cast(UByte Ptr, newBytes), oldLength, newLength, _
+        minimumLength, prefixLength _
+    )
+    Dim As Integer oldChangedEnd = oldLength - suffixLength
+    Dim As Integer newChangedEnd = newLength - suffixLength
+    If prefixLength = oldLength AndAlso prefixLength = newLength Then Return 0
+    If textbox_ChangedRangeHasNoNewlines( _
+        oldBytes, Cast(UByte Ptr, newBytes), prefixLength, _
+        oldChangedEnd, newChangedEnd _
+    ) = 0 Then Return 0
+    Dim As Integer lineStart = prefixLength
+    Dim As Integer oldLineEnd = oldChangedEnd
+    Dim As Integer newLineEnd = newChangedEnd
+    While lineStart > 0
+        If oldBytes[lineStart - 1] = 10 OrElse oldBytes[lineStart - 1] = 13 Then Exit While
+        lineStart -= 1
+    Wend
+    While oldLineEnd < oldLength
+        If oldBytes[oldLineEnd] = 10 OrElse oldBytes[oldLineEnd] = 13 Then Exit While
+        oldLineEnd += 1
+    Wend
+    While newLineEnd < newLength
+        If newBytes[newLineEnd] = 10 OrElse newBytes[newLineEnd] = 13 Then Exit While
+        newLineEnd += 1
+    Wend
+    If textbox_ChangedLineIsVisible(textData, oldBytes, lineStart) = 0 Then Return 0
+    ' MID reads only this row. The old document stays borrowed from metrics_key.
+    Dim As Integer oldWidth = textbox_TextWidth(textData, _
+        Mid(textData->metrics_key, oldHeader + lineStart + 1, oldLineEnd - lineStart))
+    Dim As Integer newWidth = textbox_TextWidth(textData, _
+        Mid(displayText, lineStart + 1, newLineEnd - lineStart))
+    If oldWidth >= textData->metrics_maximum_width AndAlso newWidth < oldWidth Then Return 0
+    Dim As Integer maximumWidth = textData->metrics_maximum_width
+    If newWidth > maximumWidth Then maximumWidth = newWidth
+    ' A bar appearing or disappearing changes the client area. Let the full
+    ' two-pass layout handle that transition, including automatic vertical bars.
+    If textData->horizontal_scrollbar_mode = TEXTBOX_SCROLLBAR_AUTO Then
+        Dim As Integer needsBar = IIf(maximumWidth > textbox_ContentWidth(textData->owner, textData), -1, 0)
+        If needsBar <> textData->metrics_horizontal_visible Then Return 0
+    End If
+    Dim As Integer lengthDelta = newLength - oldLength
+    For entryIndex As Integer = 0 To textData->metrics_row_count - 1
+        If textData->metrics_row_position(entryIndex) > oldLineEnd Then _
+            textData->metrics_row_position(entryIndex) += lengthDelta
+    Next entryIndex
+    textData->metrics_row_source_length = newLength
+    textData->metrics_maximum_width = maximumWidth
+    textData->metrics_key = metricsKey
+#Ifdef OMAGUI_PROFILE_METRICS
+    textbox_ProfileMetricsRow += 1
+#EndIf
+    Return -1
+#EndIf
+End Function
+
 Private Sub textbox_UpdateScrollMetrics( _
     ByVal w As Widget Ptr, ByVal textData As TextBoxData Ptr _
 )
@@ -1998,6 +2329,7 @@ Private Sub textbox_UpdateScrollMetrics( _
         textData->horizontal_scrollbar_mode = horizontalMode
     End If
 
+    Dim As String visibilityKey
     Dim As String metricsKey = MKLongInt(w->w) & MKLongInt(w->h) & _
         MKLongInt(backend_GetFontGeneration())
     #define METRICS_FIELD(field) metricsKey &= MKLongInt(textData->field)
@@ -2016,12 +2348,27 @@ Private Sub textbox_UpdateScrollMetrics( _
     #undef METRICS_FIELD
     ' Pointer-sized conversion supports ARM32 while preserving 8-byte key fields.
     metricsKey &= MKLongInt(CLngInt(CUInt(textData->line_visibility_handler)))
-    If textData->line_visibility_handler <> 0 Then _
-        metricsKey &= MKLongInt(textData->cursor_pos)
+    metricsKey &= MKLongInt(CLngInt(CUInt(textData->metrics_state_handler)))
+    If textData->line_visibility_handler <> 0 Then
+        If textData->metrics_state_handler <> 0 Then
+            visibilityKey = textData->metrics_state_handler(w)
+            metricsKey &= MKLongInt(Len(visibilityKey)) & visibilityKey
+        Else
+            metricsKey &= MKLongInt(textData->cursor_pos)
+        End If
+    End If
     metricsKey &= displayText
-    If textData->metrics_valid <> 0 AndAlso textData->viewport_dirty = 0 AndAlso _
+    Dim As Integer retainedRowMetrics = textbox_TryUpdateLineMetrics(textData, displayText, metricsKey)
+    ' With exact source/layout state, viewport_dirty requests caret placement,
+    ' not another full measurement. Unmanaged opt-in callbacks still use that
+    ' flag as their explicit invalidation contract.
+    Dim As Integer exactLayoutState = IIf(textData->line_visibility_handler = 0 OrElse _
+        textData->metrics_state_handler <> 0, -1, 0)
+    If textData->metrics_valid <> 0 AndAlso (textData->viewport_dirty = 0 OrElse _
+       retainedRowMetrics <> 0 OrElse exactLayoutState <> 0) AndAlso _
        (textData->line_visibility_handler = 0 OrElse _
-        textData->metrics_cache_callbacks <> 0) AndAlso _
+        textData->metrics_cache_callbacks <> 0 OrElse _
+        textData->metrics_state_handler <> 0) AndAlso _
        textData->metrics_key = metricsKey Then
         maximumLineWidth = textData->metrics_maximum_width
         textData->line_number_gutter_width = textData->metrics_gutter_width
@@ -2031,11 +2378,18 @@ Private Sub textbox_UpdateScrollMetrics( _
         contentWidth = textbox_ContentWidth(w, textData)
         visibleLines = textbox_VisibleLineCount(w, textData)
     Else
+        textData->metrics_row_source_length = Len(displayText)
+        textData->metrics_row_visibility_key = visibilityKey
+        textData->metrics_row_visibility_handler = textData->line_visibility_handler
+        textData->metrics_row_state_handler = textData->metrics_state_handler
         textData->line_number_gutter_width = _
             textbox_LineNumberGutterWidth(textData)
 
         textData->scrollbar_visible = 0
         textData->horizontal_scrollbar_visible = 0
+#Ifdef OMAGUI_PROFILE_METRICS
+        textbox_ProfileMetricsFull += 1
+#EndIf
         maximumLineWidth = textbox_MaximumLineWidth(displayText, textData)
 
         /'
@@ -2073,8 +2427,11 @@ Private Sub textbox_UpdateScrollMetrics( _
 
         contentWidth = textbox_ContentWidth(w, textData)
         visibleLines = textbox_VisibleLineCount(w, textData)
+        textData->metrics_row_count = 0
+        Dim As Integer buildRowIndex = IIf(textData->line_visibility_handler = 0 OrElse _
+            textData->metrics_cache_callbacks <> 0 OrElse textData->metrics_state_handler <> 0, -1, 0)
         textData->total_visual_lines = textbox_CountVisualLines( _
-            displayText, textData->wordwrap, contentWidth, textData _
+            displayText, textData->wordwrap, contentWidth, textData, buildRowIndex _
         )
         textData->metrics_key = metricsKey
         textData->metrics_valid = -1
@@ -2576,7 +2933,7 @@ Private Function textbox_ControlShortcutJustPressed( _
 End Function
 
 
-Private Function textbox_LineStart(ByVal textValue As String, ByVal position As Integer) As Integer
+Private Function textbox_LineStart(ByRef textValue As Const String, ByVal position As Integer) As Integer
 
     position = textbox_ClampPosition(textValue, position)
 
@@ -2593,7 +2950,7 @@ Private Function textbox_LineStart(ByVal textValue As String, ByVal position As 
 End Function
 
 
-Private Function textbox_LineEnd(ByVal textValue As String, ByVal position As Integer) As Integer
+Private Function textbox_LineEnd(ByRef textValue As Const String, ByVal position As Integer) As Integer
 
     position = textbox_ClampPosition(textValue, position)
 
@@ -2611,7 +2968,7 @@ End Function
 
 
 Private Function textbox_LineStartByIndex( _
-    ByVal textValue As String, _
+    ByRef textValue As Const String, _
     ByVal lineIndex As Integer _
 ) As Integer
 
@@ -2949,7 +3306,7 @@ Private Sub textbox_RenderIndicators( _
         Dim As Integer characterWidth = textbox_TextWidth( _
             textData, Mid(displayLine, bytePosition + 1, characterLength) _
         )
-        Dim As Integer active
+        Dim As Integer active = 0
         Dim As Integer currentAlpha = 255
         Dim As Integer currentStyle = TEXTBOX_INDICATOR_STYLE_BOX
         Dim As ULong currentColor
@@ -3242,7 +3599,7 @@ Private Sub textbox_RenderLine( _
         selectedEnd = lineStart + Len(lineText)
 
     If selectedEnd <= selectedStart Then
-        If textData->password_character = 0 AndAlso _ ' fblint: disable-line FBL-SEC-004 FBL008 REASON: This flag selects text masking, not a credential literal.
+        If textbox_IsMasked(textData) = 0 AndAlso _
            textData->syntax_mode = TEXTBOX_SYNTAX_FREEBASIC Then
             textbox_RenderSyntaxLine _
                 w, textData, drawX, drawY, lineStart, lineText, _
@@ -3254,8 +3611,7 @@ Private Sub textbox_RenderLine( _
         Exit Sub
     End If
 
-    ' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
-    If textData->password_character = 0 AndAlso _
+    If textbox_IsMasked(textData) = 0 AndAlso _
        textData->syntax_mode = TEXTBOX_SYNTAX_FREEBASIC Then
         textbox_RenderSyntaxLine _
             w, textData, drawX, drawY, lineStart, lineText, _
@@ -3717,8 +4073,7 @@ Private Sub textbox_HandleMouseInput( _
     ' fblint: disable-next-line FBL008 REASON: This implements masked text input; the source contains no credential literal.
     ' The ordinary menu offers Copy and Cut. Password fields retain pointer
     ' selection above, but do not open this unrestricted editor menu.
-    ' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
-    If textData->password_character <> 0 Then Exit Sub
+    If textbox_IsMasked(textData) Then Exit Sub
 
     textData->active = 1
     active_textbox = w
@@ -3908,10 +4263,28 @@ End Function
 Function textbox_GetPasswordChar(ByVal w As Widget Ptr) As Integer
     If w = 0 OrElse w->destroy <> @textbox_Destroy OrElse _
        w->data = 0 Then Return 0
-    ' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
-    Return Cast(TextBoxData Ptr, w->data)->password_character
+    Return textbox_MaskCharacter(Cast(TextBoxData Ptr, w->data))
 End Function
 
+
+Function textbox_SetPlaceholder( _
+    ByVal w As Widget Ptr, ByRef placeholder_text As Const String _
+) As Integer
+    Dim As TextBoxData Ptr text_data
+
+    If w = 0 OrElse w->data = 0 OrElse _
+       w->destroy <> @textbox_Destroy Then Return 0
+    If Len(placeholder_text) > TEXTBOX_PLACEHOLDER_MAX_LENGTH Then Return 0
+    text_data = Cast(TextBoxData Ptr, w->data)
+    text_data->placeholder_text = placeholder_text
+    Return -1
+End Function
+
+Function textbox_GetPlaceholder(ByVal w As Widget Ptr) As String
+    If w = 0 OrElse w->data = 0 OrElse _
+       w->destroy <> @textbox_Destroy Then Return ""
+    Return Cast(TextBoxData Ptr, w->data)->placeholder_text
+End Function
 
 ' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
 Function textbox_SetPasswordChar( _
@@ -3927,11 +4300,10 @@ Function textbox_SetPasswordChar( _
        (character_code < 33 OrElse character_code > 126) Then Return 0
     textData = Cast(TextBoxData Ptr, w->data)
     If character_code <> 0 AndAlso textData->multiline <> 0 Then Return 0
-    ' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
-    If textData->password_character = character_code Then Return -1
+    If textbox_MaskCharacter(textData) = character_code Then Return -1
 
-    ' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
-    If textData->password_character = 0 Then
+    If textbox_IsMasked(textData) = 0 Then
+        ' FB-LINTER: DISABLE-NEXT-LINE FBL008 FBL-SEC-004 REASON: The field retains the prior wrapping setting for mask mode.
         textData->password_saved_wordwrap = textData->wordwrap ' fblint: disable-line FBL-SEC-004 FBL008 REASON: This stores a layout flag for text masking, not a credential literal.
     End If
     ' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
@@ -4352,8 +4724,7 @@ Function textbox_Copy(ByVal w As Widget Ptr) As Integer
 
     If w = 0 OrElse w->data = 0 Then Return 0
     textData = Cast(TextBoxData Ptr, w->data)
-    ' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
-    If textData->password_character <> 0 Then Return 0
+    If textbox_IsMasked(textData) Then Return 0
     selectedText = textbox_SelectedText(textData)
     If Len(selectedText) = 0 Then Return 0
     clipboard_SetText selectedText
@@ -4367,8 +4738,7 @@ Function textbox_Cut(ByVal w As Widget Ptr) As Integer
 
     If w = 0 OrElse w->data = 0 OrElse w->enabled = 0 Then Return 0
     textData = Cast(TextBoxData Ptr, w->data)
-    ' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
-    If textData->password_character <> 0 Then Return 0
+    If textbox_IsMasked(textData) Then Return 0
     If textData->read_only <> 0 Then Return 0
     selectedText = textbox_SelectedText(textData)
     If Len(selectedText) = 0 Then Return 0
@@ -4415,6 +4785,16 @@ Function textbox_Create( _
         Delete wgt
         Return 0
     End If
+
+    textData->metrics_valid = 0
+    textData->metrics_key = ""
+    textData->metrics_cache_callbacks = 0
+    textData->metrics_state_handler = 0
+    textData->metrics_row_count = 0
+    textData->metrics_row_source_length = 0
+    textData->metrics_row_visibility_key = ""
+    textData->metrics_row_visibility_handler = 0
+    textData->metrics_row_state_handler = 0
 
     wgt->name = nm
     wgt->x = x
@@ -4549,12 +4929,6 @@ Function textbox_GetRenderObservation(ByVal w As Widget Ptr) As String
     OBSERVE_TEXT_FIELD(active)
     OBSERVE_TEXT_FIELD(multiline)
     OBSERVE_TEXT_FIELD(wordwrap)
-    OBSERVE_TEXT_FIELD(cursor_pos)
-    OBSERVE_TEXT_FIELD(sel_start)
-    OBSERVE_TEXT_FIELD(sel_end)
-    OBSERVE_TEXT_FIELD(cursor_virtual_space)
-    OBSERVE_TEXT_FIELD(sel_start_virtual_space)
-    OBSERVE_TEXT_FIELD(sel_end_virtual_space)
     OBSERVE_TEXT_FIELD(scroll_offset)
     OBSERVE_TEXT_FIELD(v_scroll)
     OBSERVE_TEXT_FIELD(line_number_gutter_width)
@@ -4629,6 +5003,16 @@ Function textbox_GetRenderObservation(ByVal w As Widget Ptr) As String
     ' Exact source equality also detects supported legacy direct writes which
     ' did not advance change_serial. No rendering is required to compare it.
     result &= MKLongInt(Len(d->text)) & d->text
+    ' The length locates the movement fields without parsing the source text.
+    result &= MKLongInt(Len(d->text))
+    ' The final six 8-byte fields describe caret and selection movement.
+    ' An opted-in row damage handler compares the exact stable prefix first.
+    result &= MKLongInt(d->cursor_pos)
+    result &= MKLongInt(d->sel_start)
+    result &= MKLongInt(d->sel_end)
+    result &= MKLongInt(d->cursor_virtual_space)
+    result &= MKLongInt(d->sel_start_virtual_space)
+    result &= MKLongInt(d->sel_end_virtual_space)
     result &= Chr(IIf(d->active <> 0 AndAlso d->caret_visible <> 0 AndAlso _
         Int(Timer * 2) Mod 2 = 0, 1, 0))
     Return result
@@ -4645,7 +5029,8 @@ Function textbox_GetRenderDamage(ByVal w As Widget Ptr, _
     ' A caret-only repaint is safe only when all those bytes still match.
     Dim As Integer keyLength = Len(previousKey)
     If keyLength < 1 OrElse Len(nextKey) <> keyLength Then Return 0
-    If Left(previousKey, keyLength - 1) <> Left(nextKey, keyLength - 1) Then Return 0
+    ' Compare borrowed bytes directly instead of copying the source-sized prefix.
+    If oma_BytesEqual(StrPtr(previousKey), StrPtr(nextKey), keyLength - 1) = 0 Then Return 0
     Dim As TextBoxData Ptr d = Cast(TextBoxData Ptr, w->data)
     x = d->rendered_caret_x: y = d->rendered_caret_y
     widthValue = d->rendered_caret_w: heightValue = d->rendered_caret_h
@@ -4653,7 +5038,55 @@ Function textbox_GetRenderDamage(ByVal w As Widget Ptr, _
 End Function
 
 
-' fblint: disable-next-line FBL111 REASON: The widget renderer shares one clipping and selection state across its branches.
+Function textbox_GetCursorRowRenderDamage(ByVal w As Widget Ptr, _
+    ByRef previousKey As Const String, ByRef nextKey As Const String, _
+    ByRef x As Integer, ByRef y As Integer, _
+    ByRef widthValue As Integer, ByRef heightValue As Integer) As Integer
+    If w = 0 OrElse w->data = 0 Then Return 0
+    Dim As TextBoxData Ptr d = Cast(TextBoxData Ptr, w->data)
+    ' Six 8-byte movement fields and one blink byte terminate the observation.
+    ' The caller must observe every callback-owned visual dependency before it
+    ' opts into this handler. Default textboxes retain conservative repainting.
+    Const MOVEMENT_BYTES As Integer = 49
+    Dim As Integer keyLength = Len(previousKey)
+    If keyLength < MOVEMENT_BYTES Then Return textbox_GetRenderDamage( _
+        w, previousKey, nextKey, x, y, widthValue, heightValue)
+    If Len(nextKey) <> keyLength Then Return 0
+    If oma_BytesEqual(StrPtr(previousKey), StrPtr(nextKey), keyLength - MOVEMENT_BYTES) = 0 Then Return 0
+    ' Compare the document prefix once. The small suffix then distinguishes
+    ' blinking from movement without another complete source comparison.
+    If oma_BytesEqual(StrPtr(previousKey) + keyLength - MOVEMENT_BYTES, _
+        StrPtr(nextKey) + keyLength - MOVEMENT_BYTES, MOVEMENT_BYTES - 1) <> 0 Then
+        x = d->rendered_caret_x
+        y = d->rendered_caret_y
+        widthValue = d->rendered_caret_w
+        heightValue = d->rendered_caret_h
+        If widthValue > 0 AndAlso heightValue > 0 Then Return -1
+    End If
+    If d->wordwrap <> 0 OrElse d->rendered_caret_h <= 0 Then Return 0
+    Dim As Integer movementStart = keyLength - MOVEMENT_BYTES + 1
+    Dim As LongInt oldCursor = CVLongInt(Mid(previousKey, movementStart, 8))
+    Dim As LongInt oldSelectionStart = CVLongInt(Mid(previousKey, movementStart + 8, 8))
+    Dim As LongInt oldSelectionEnd = CVLongInt(Mid(previousKey, movementStart + 16, 8))
+    Dim As LongInt oldVirtualStart = CVLongInt(Mid(previousKey, movementStart + 32, 8))
+    Dim As LongInt oldVirtualEnd = CVLongInt(Mid(previousKey, movementStart + 40, 8))
+    If oldSelectionStart <> oldSelectionEnd OrElse oldVirtualStart <> oldVirtualEnd OrElse _
+       d->sel_start <> d->sel_end OrElse d->sel_start_virtual_space <> d->sel_end_virtual_space Then Return 0
+    If oldCursor < 0 OrElse oldCursor > Len(d->text) OrElse _
+       d->cursor_pos < 0 OrElse d->cursor_pos > Len(d->text) Then Return 0
+    If textbox_LineStart(d->text, CInt(oldCursor)) <> textbox_LineStart(d->text, d->cursor_pos) Then Return 0
+    ' The old caret records the row's screen coordinate, including hidden rows.
+    ' Replay the full row so the old caret, glyph overhang and line decorations
+    ' are restored without measuring the document again to find the new caret.
+    x = w->ax
+    y = d->rendered_caret_y
+    widthValue = w->w
+    heightValue = d->rendered_caret_h
+    Return IIf(widthValue > 0 AndAlso heightValue > 0, -1, 0)
+End Function
+
+
+' fblint: disable-next-line FBL111 -- Visible rows, caret and scrollbars share one frame layout state.
 Sub textbox_Render(ByVal w As Widget Ptr)
 
     Dim textData As TextBoxData Ptr
@@ -4733,6 +5166,8 @@ Sub textbox_Render(ByVal w As Widget Ptr)
             separatorX, w->ay + textClipHeight + 1, _
             current_theme.bg_dark
 
+        textbox_RestoreRenderRow textData, textData->v_scroll, _
+            lineIndex, scanPosition, sourceLineNumber, sourceLineStart
         While textbox_NextVisibleVisualLine( _
             displayText, scanPosition, textData->wordwrap, _
             contentWidth, lineStart, lineEnd, textData, _
@@ -4756,6 +5191,12 @@ Sub textbox_Render(ByVal w As Widget Ptr)
     If textClipWidth < 1 Then textClipWidth = 1
     backend_SetClip textClipX, w->ay + 2, textClipWidth, textClipHeight
 
+    If Len(displayText) = 0 AndAlso textData->active = 0 AndAlso _
+       Len(textData->placeholder_text) > 0 Then
+        backend_Print textClipX + 2, w->ay + TEXTBOX_TEXT_LEFT_PADDING, _
+            current_theme.classic_disabled_text, textData->placeholder_text
+    End If
+
     textData->cursor_pos = textbox_ClampPosition(displayText, textData->cursor_pos)
     scanPosition = 0
     lineIndex = 0
@@ -4764,16 +5205,20 @@ Sub textbox_Render(ByVal w As Widget Ptr)
     textData->render_color_state = 0
     textData->render_style_state = 0
 
-    Dim As Integer preparedState
+    Dim As Integer preparedState = 0
     Dim As Integer firstRenderRow = textData->v_scroll
+    Dim As Integer lastRenderPixel
     If textData->render_state_handler <> 0 AndAlso textData->wordwrap = 0 Then
         Dim As Integer probePosition, probeStart, probeEnd, probeRow
         Dim As Integer probeSourceNumber, probeSourceStart, probeNumber, probeLogicalStart
         Dim As Integer clipX, clipY, clipWidth, clipHeight
         backend_GetClip clipX, clipY, clipWidth, clipHeight
+        lastRenderPixel = clipY + clipHeight
         Dim As Integer lineHeight = textbox_LineHeight(textData)
         Dim As Integer skippedPixels = clipY - w->ay - textbox_TextPadding(textData)
         If skippedPixels > 0 AndAlso lineHeight > 0 Then firstRenderRow += skippedPixels \ lineHeight
+        textbox_RestoreRenderRow textData, firstRenderRow, _
+            probeRow, probePosition, probeSourceNumber, probeSourceStart
         While textbox_NextVisibleVisualLine( _
             displayText, probePosition, 0, contentWidth, probeStart, probeEnd, _
             textData, probeSourceNumber, probeSourceStart, probeNumber, probeLogicalStart _
@@ -4791,6 +5236,14 @@ Sub textbox_Render(ByVal w As Widget Ptr)
         If preparedState = 0 Then
             textData->render_color_state = 0
             textData->render_style_state = 0
+        Else
+            ' The provider restored syntax state at this exact visible row.
+            ' Resume the source walk there rather than allocating and visiting
+            ' every earlier line again. Wrapped rows retain ordinary replay.
+            scanPosition = probeStart
+            lineIndex = probeRow
+            sourceLineNumber = probeNumber
+            sourceLineStart = probeLogicalStart
         End If
     End If
 
@@ -4808,6 +5261,14 @@ Sub textbox_Render(ByVal w As Widget Ptr)
            w->ay + w->h - _
                textbox_ScaledPadding(textData, TEXTBOX_TEXT_BOTTOM_PADDING) Then _
             Exit While
+
+        ' A checkpoint provider restores syntax before each repaint. Once the
+        ' caret is located, rows below the paint clip need no further callbacks.
+        ' Providers that decline restoration retain the complete viewport walk.
+        If preparedState <> 0 AndAlso cursorRecorded <> 0 AndAlso _
+           w->ay + textbox_TextPadding(textData) + _
+               (lineIndex - textData->v_scroll) * textbox_LineHeight(textData) >= _
+           lastRenderPixel Then Exit While
 
         If cursorRecorded = 0 AndAlso _
            textData->cursor_pos >= lineStart AndAlso _
@@ -4837,9 +5298,10 @@ Sub textbox_Render(ByVal w As Widget Ptr)
             cursorRecorded = 1
         End If
 
-        lineText = Mid(displayText, lineStart + 1, lineEnd - lineStart)
-        If preparedState = 0 OrElse lineIndex >= firstRenderRow Then _
+        If preparedState = 0 OrElse lineIndex >= firstRenderRow Then
+            lineText = Mid(displayText, lineStart + 1, lineEnd - lineStart)
             textbox_RenderLine w, textData, lineIndex, lineStart, lineText
+        End If
         If (preparedState = 0 OrElse lineIndex >= firstRenderRow) AndAlso _
            lineEnd < Len(displayText) Then
             If displayText[lineEnd] = TEXTBOX_LINE_FEED OrElse _
@@ -5831,6 +6293,16 @@ Sub textbox_SetRenderStateHandler( _
 )
     If w = 0 OrElse w->data = 0 OrElse w->destroy <> @textbox_Destroy Then Exit Sub
     Cast(TextBoxData Ptr, w->data)->render_state_handler = stateHandler
+End Sub
+
+
+Sub textbox_SetMetricsStateHandler( _
+    ByVal w As Widget Ptr, ByVal stateHandler As TextBoxMetricsStateHandler _
+)
+    If w = 0 OrElse w->data = 0 OrElse w->destroy <> @textbox_Destroy Then Exit Sub
+    Dim As TextBoxData Ptr textData = Cast(TextBoxData Ptr, w->data)
+    textData->metrics_state_handler = stateHandler
+    textData->metrics_valid = 0
 End Sub
 
 

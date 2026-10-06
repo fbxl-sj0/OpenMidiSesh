@@ -31,17 +31,11 @@
     so its private polling state must be shared with the accessor routines in
     this file.  It is not part of the public input API.
 '/
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer mX, mY, mButtons, mWheelDelta
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer previousWheelPosition, wheelPositionInitialized
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer mockX, mockY, mockButtons, mockWheelDelta
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer useMockMouse, useMockTouch, useMockKeys, useMockText
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer pointerDispatchEnabled = -1, keyboardDispatchEnabled = -1
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As String textBuffer, mockText
 
 ' Ten contacts bound both native polling and deterministic input fixtures.
@@ -65,25 +59,17 @@ Const INPUT_KEY_LAST = 255
     only reports the final state, so ScreenEvent records each press together
     with the modifier state that existed at that instant.
 '/
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer inputNativeModifiers
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer inputKeyPressEvents(0 To INPUT_KEY_LAST)
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer inputKeyPressChords(0 To INPUT_KEY_LAST)
 ' Track both Shift keys separately. Releasing one must not release the other.
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer inputNativeModifierKeys(0 To INPUT_KEY_LAST)
 
 ' All event storage belongs to the GUI input thread. No callback or pointer
 ' escapes these fixed buffers. Mock records become visible only at Update.
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As InputKeyEvent inputKeyEvents(0 To INPUT_KEY_EVENT_CAPACITY - 1)
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As InputKeyEvent mockKeyEvents(0 To INPUT_KEY_EVENT_CAPACITY - 1)
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Long inputKeyEventLength, mockKeyEventLength
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer inputKeyEventOverflow, mockKeyEventOverflow
 
 /'
@@ -93,28 +79,18 @@ Dim Shared As Integer inputKeyEventOverflow, mockKeyEventOverflow
     release-driven widgets keep their ordinary capture semantics.
 '/
 Const INPUT_POINTER_EVENT_CAPACITY As Long = 64
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Long inputPointerEventX(0 To INPUT_POINTER_EVENT_CAPACITY - 1)
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Long inputPointerEventY(0 To INPUT_POINTER_EVENT_CAPACITY - 1)
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer inputPointerEventButtons( _
     0 To INPUT_POINTER_EVENT_CAPACITY - 1 _
 )
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Long inputPointerEventHead, inputPointerEventTail
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Long inputPointerEventCount
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer inputNativeButtons, inputNativeButtonsInitialized
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer inputNativeX, inputNativeY
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer inputWindowCloseRequested
 
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer mockKeys(0 To INPUT_KEY_LAST)
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer mockPreviousKeys(0 To INPUT_KEY_LAST)
 ' A restored GUI must not interpret the key/button that ended external drawing
 ' as a new activation. This suppression belongs to the GUI input thread.
@@ -517,6 +493,18 @@ Function input_Touch( _
     y = inputTouchY(contactIndex)
     id = inputTouchId(contactIndex)
     Return -1
+End Function
+
+Function input_AnyKeyPressed() As Integer
+    Dim As Integer keyIndex
+
+    If keyboardDispatchEnabled = 0 Then Return 0
+    For keyIndex = 0 To INPUT_KEY_LAST
+        ' Held state and buffered press edges are both valid modal input.
+        If input_KeyPressed(keyIndex) <> 0 OrElse _
+           inputKeyPressEvents(keyIndex) <> 0 Then Return -1
+    Next keyIndex
+    Return 0
 End Function
 
 Function input_KeyPressed(ByVal k As Integer) As Integer

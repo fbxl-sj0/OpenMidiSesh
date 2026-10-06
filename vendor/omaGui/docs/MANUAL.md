@@ -1731,9 +1731,9 @@ needed by application code.
   `subwindow_Create`, `menu_Create`, `menubar_Create`, `toolbar_Create`,
   `statusbar_Create`, `splitter_Create`, `linewidget_Create`, `rectwidget_Create`,
   `circlewidget_Create`, and `curvewidget_Create`
-- Label state: `label_SetFont`, `label_SetWordWrap`, and
+- Label state: `label_CreateWithColor`, `label_SetFont`, `label_SetWordWrap`, and
   `label_GetRenderedLineCount`, `label_SetTextColor`, `label_GetTextColor`,
-  `label_SetTextStyle`, `label_GetTextStyle`,
+  `label_SetTextStyle`, `label_GetTextStyle`, `label_SetTextColorLiteral`,
   `label_SetBackgroundColor`, `label_ClearBackgroundColor`, and
   `label_GetBackgroundColor`
 - Button state: `button_SetBackgroundColor`, `button_ClearBackgroundColor`, and
@@ -1933,5 +1933,49 @@ modal-external states without calling application code.
   `graphicshape_GetText`, `graphicshape_ClearItems`, `graphicshape_AddItem`,
   `graphicshape_GetSelectedIndex`, `graphicshape_GetSelectedItem`,
   `graphicshape_GetChangeCount`, and `graphicshape_IsDropdownOpen`
+
+## Copied themes and game controls
+
+`theme_GetCurrent` copies the active `GUI_Theme`; `theme_SetCurrent` applies a
+complete palette and derives classic semantic roles for older application
+palettes. `panel_face`, `accent_secondary`, and `GUI_THEME_STYLE_*` describe
+panel construction independently of the classic or flat control treatment.
+
+`gui_SetWidgetTheme` stores a palette by value in a widget. Descendants inherit
+the nearest palette, and a copied override takes precedence over `appearance`
+at the same widget. `gui_ClearWidgetTheme` removes only that copied override;
+the borrowed `appearance` pointer remains available. Its owner must keep the
+referenced theme alive through widget destruction. `gui_GetEffectiveWidgetTheme`
+resolves either form of inheritance without drawing. Rendering restores the
+complete prior palette, including custom classic colors, after each control.
+Retained rendering observes both forms of palette and the panel motif fields.
+These operations belong to the GUI thread.
+
+`themeframe_Create` has the same geometry, fallback color, and filled flag as
+`rectwidget_Create`. Filled frames retain the supplied application color in
+every theme. Unfilled frames use one border and corner-bracket motif, with
+semantic border, selection, and light colors from the effective theme.
+`themeframe_SetClassicColor` checks the widget type before changing its data.
+
+`listbox_SetColors` preserves the five-role palette: normal background, border,
+normal text, selected background, and selected text. The granular normal-color
+functions remain available. `listbox_SetRightColumn` sets a checked pixel offset
+for the text after the first tab in ordinary rows. This is a compact name/value
+layout; the editor table and flowing-column APIs retain their separate layout.
+
+`textbox_SetPlaceholder` stores at most `TEXTBOX_PLACEHOLDER_MAX_LENGTH` bytes
+of guidance. A failed call leaves the prior guidance unchanged, and
+`textbox_GetPlaceholder` returns an empty string for an invalid widget. An empty,
+inactive textbox draws guidance without inserting it into text, selection,
+clipboard data, undo history, or password contents.
+
+`input_AnyKeyPressed` reports held keys and buffered press edges, respecting the
+keyboard dispatch mask. `gui_GetPointerWidgetNameAt` reports the same eligible
+target used by pointer dispatch, while `gui_GetPointerCaptureName` returns only
+a currently registered capture. Both return an empty string when absent.
+
+`gui_CreateWidgetBase` allocates an initialized, visible and enabled base for
+custom controls. The caller owns it until registration transfers its lifetime
+to the manager. Built-in constructors initialize their own widget state.
 
 <!-- end of MANUAL.md -->

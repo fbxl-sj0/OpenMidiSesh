@@ -71,6 +71,7 @@ Declare Function input_Touch( _
     ByVal contactIndex As Integer, _
     ByRef x As Integer, ByRef y As Integer, ByRef id As Integer _
 ) As Integer
+Declare Function input_AnyKeyPressed() As Integer
 Declare Function input_KeyPressed(ByVal k As Integer) As Integer
 Declare Function input_KeyPressEvent(ByVal k As Integer) As Integer
 Declare Function input_ModifiedKeyPressEvent( _

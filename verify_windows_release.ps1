@@ -359,7 +359,7 @@ try {
                 'ui_smoothness_cases=8',
                 'ui_smoothness_status=pass',
                 'omagui_snapshot=ok',
-                'omagui_payload_files=116',
+                'omagui_payload_files=120',
                 'omagui_licenses=MIT,OFL-1.1,LGPL-2.1-or-later,BSD-2-Clause',
                 'windows_font_conversions=absent',
                 'dependency_snapshot_status=ok',

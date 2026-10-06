@@ -35,19 +35,26 @@ Private Function rasterico_Decode( _
     Dim As ULong paletteColors(0 To 255)
     Dim As Any Ptr imagePixels, pixelBytes
     Dim As Integer bufferWidth, bufferHeight, bytesPerPixel, pitch, bufferSize
+    Const RASTERICO_DIRECTORY_HEADER_BYTES As LongInt = 6
+    Const RASTERICO_DIRECTORY_ENTRY_BYTES As LongInt = 16
 
     errorMessage = "ICO directory is truncated or invalid"
-    If byteCount < 22 Then Return 0
+    If byteCount < RASTERICO_DIRECTORY_HEADER_BYTES + _
+        RASTERICO_DIRECTORY_ENTRY_BYTES Then Return 0
     rasterimage_ReadU16LE bytes(), byteCount, 4, entryCount
-    If entryCount = 0 OrElse entryCount > (byteCount - 6) \ 16 Then Return 0
+    If entryCount = 0 OrElse entryCount > _
+        (byteCount - RASTERICO_DIRECTORY_HEADER_BYTES) \ _
+        RASTERICO_DIRECTORY_ENTRY_BYTES Then Return 0
     ' Check every entry span even though only the first frame is decoded.
     For entryIndex As Long = 0 To entryCount - 1
-        ' fblint: disable-next-line FBL-NUM-002 REASON: The offset operand is explicitly widened before multiplication; ICO dimensions are bounded to 256.
-        Dim As LongInt entryOffset = 6 + CLngInt(entryIndex) * 16
+        Dim As LongInt wideEntryIndex = entryIndex
+        Dim As LongInt entryOffset = RASTERICO_DIRECTORY_HEADER_BYTES + _
+            (wideEntryIndex * RASTERICO_DIRECTORY_ENTRY_BYTES)
         Dim As ULong spanOffset, spanLength
         rasterimage_ReadU32LE bytes(), byteCount, entryOffset + 8, spanLength
         rasterimage_ReadU32LE bytes(), byteCount, entryOffset + 12, spanOffset
-        If spanOffset < 6 + CLngInt(entryCount) * 16 OrElse _
+        If spanOffset < RASTERICO_DIRECTORY_HEADER_BYTES + _
+            CLngInt(entryCount) * RASTERICO_DIRECTORY_ENTRY_BYTES OrElse _
            spanOffset > byteCount OrElse spanLength = 0 OrElse _
            spanLength > byteCount - spanOffset Then Return 0
         If bytes(entryOffset + 3) <> 0 Then Return 0
@@ -87,8 +94,8 @@ Private Function rasterico_Decode( _
     errorMessage = "ICO bitmap palette or masks are truncated"
     If andOffset + CLngInt(andStride) * imageHeight > CLngInt(imageOffset) + imageLength Then Return 0
     For colorIndex As Long = 0 To CLng(colorCount) - 1
-        ' fblint: disable-next-line FBL-NUM-002 REASON: The offset operand is explicitly widened before multiplication; ICO dimensions are bounded to 256.
-        Dim As LongInt offsetValue = paletteOffset + colorIndex * 4
+        Dim As LongInt offsetValue = _
+            paletteOffset + CLngInt(colorIndex) * 4LL
         paletteColors(colorIndex) = RGB(bytes(offsetValue + 2), bytes(offsetValue + 1), bytes(offsetValue))
     Next colorIndex
 
@@ -103,15 +110,17 @@ Private Function rasterico_Decode( _
         Return 0
     End If
     For rowIndex As Long = 0 To imageHeight - 1
-        ' fblint: disable-next-line FBL-NUM-002 REASON: The offset operand is explicitly widened before multiplication; ICO dimensions are bounded to 256.
-        Dim As LongInt xorRow = xorOffset + CLngInt(imageHeight - 1 - rowIndex) * xorStride
-        ' fblint: disable-next-line FBL-NUM-002 REASON: The offset operand is explicitly widened before multiplication; ICO dimensions are bounded to 256.
-        Dim As LongInt andRow = andOffset + CLngInt(imageHeight - 1 - rowIndex) * andStride
+        Dim As LongInt xorRow = xorOffset + _
+            CLngInt(imageHeight - 1 - rowIndex) * CLngInt(xorStride)
+        Dim As LongInt andRow = andOffset + _
+            CLngInt(imageHeight - 1 - rowIndex) * CLngInt(andStride)
+        Dim As ULong Ptr destinationRow = Cast(ULong Ptr, _
+            Cast(UByte Ptr, pixelBytes) + CLngInt(rowIndex) * pitch)
         For columnIndex As Long = 0 To imageWidth - 1
             Dim As ULong pixelColor
             If bitCount = 24 Then
-                ' fblint: disable-next-line FBL-NUM-002 REASON: The offset operand is explicitly widened before multiplication; ICO dimensions are bounded to 256.
-                Dim As LongInt offsetValue = xorRow + columnIndex * 3
+                Dim As LongInt offsetValue = _
+                    xorRow + CLngInt(columnIndex) * 3LL
                 pixelColor = RGB(bytes(offsetValue + 2), bytes(offsetValue + 1), bytes(offsetValue))
             Else
                 Dim As Long bitOffset = columnIndex * bitCount
@@ -136,8 +145,8 @@ Private Function rasterico_Decode( _
             Else
                 pixelColor Or= &hFF000000UL
             End If
-            ' fblint: disable-next-line FBL-PTR-019 FBL525 REASON: ImageInfo validates pitch and size before rowIndex and columnIndex traverse the declared dimensions.
-            Cast(ULong Ptr, Cast(UByte Ptr, pixelBytes) + rowIndex * pitch)[columnIndex] = pixelColor
+            ' ImageInfo validated the buffer size and pitch above.
+            destinationRow[columnIndex] = pixelColor
         Next columnIndex
     Next rowIndex
     errorMessage = ""

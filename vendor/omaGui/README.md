@@ -86,6 +86,12 @@ screen and bound each gfxlib3 packet to avoid excessive temporary storage.
 
 ## Included controls
 
+The shared tree also retains TurboTrek's copied widget themes, theme-aware
+panels, five-role ListBox colors and tab-aligned value columns, bounded textbox
+guidance, any-key query, and pointer diagnostics. Copied palettes and borrowed
+dialog appearances use the same nearest-ancestor rule. See the manual's
+"Copied themes and game controls" section and [sync notes](docs/TURBOTREK_SYNC.md).
+
 - Buttons, labels, checkboxes, grouped radio buttons, keyboard-operable signed
   scrollbars, and listboxes
 - Push buttons with an optional retained face color that preserves theme bevels

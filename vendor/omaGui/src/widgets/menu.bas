@@ -977,7 +977,7 @@ End Sub
 
 Private Function menu_NodeAtPoint(ByVal root As Widget Ptr, ByVal x As Integer, ByVal y As Integer) As Widget Ptr
     Dim As Widget Ptr current = root
-    Dim As Widget Ptr result
+    Dim As Widget Ptr result = 0
     Dim As Integer depth
     While current <> 0 AndAlso depth < MENU_MAX_NESTING
         If x >= current->ax AndAlso x < current->ax + current->w AndAlso _

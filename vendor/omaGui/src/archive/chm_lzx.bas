@@ -35,6 +35,10 @@
 
 #include once "src/archive/chm_lzx.bi"
 
+' -------------------------------------------------------------------------
+' LZX decoding constants and state
+' -------------------------------------------------------------------------
+
 Private Const CHMLZX_NUM_CHARS As Integer = 256
 Private Const CHMLZX_NUM_PRIMARY_LENGTHS As Integer = 7
 Private Const CHMLZX_NUM_LENGTH_SYMBOLS As Integer = 249
@@ -370,6 +374,7 @@ Private Function chmlzx_ReadLengths( _
                 Return chmlzx_SetError( _
                     decoder, "LZX long zero run exceeds its code table" _
                 )
+            ' fblint: disable-next-line FBL311 REASON: The loop counter bounds repeated work; the cursor or stream state supplies each value.
             For repeatIndex As Integer = 0 To repeatCount - 1
                 targetTree->codeLengths(targetIndex) = 0
                 targetIndex += 1
@@ -388,6 +393,7 @@ Private Function chmlzx_ReadLengths( _
             decodedLength = _
                 (CInt(targetTree->codeLengths(targetIndex)) - _
                  decodedLength + 17) Mod 17
+            ' fblint: disable-next-line FBL311 REASON: The loop counter bounds repeated work; the cursor or stream state supplies each value.
             For repeatIndex As Integer = 0 To repeatCount - 1
                 targetTree->codeLengths(targetIndex) = CByte(decodedLength)
                 targetIndex += 1
@@ -483,15 +489,17 @@ Private Function chmlzx_ReadBlockHeader( _
     decoder->blockRemaining = decoder->blockLength
 
     Select Case decoder->blockType
-    Case CHMLZX_BLOCK_ALIGNED
-        For symbolIndex As Integer = 0 To CHMLZX_ALIGNED_SYMBOLS - 1
-            If chmlzx_ReadBits(decoder, 3, bits) = 0 Then Return 0
-            decoder->alignedtree.codeLengths(symbolIndex) = CByte(bits)
-        Next symbolIndex
-        If chmlzx_BuildHuffman( _
-            decoder, @decoder->alignedtree, CHMLZX_ALIGNED_SYMBOLS, 0 _
-        ) = 0 Then Return 0
-        ' The aligned header continues with the same trees as a verbatim block.
+    Case CHMLZX_BLOCK_ALIGNED, CHMLZX_BLOCK_VERBATIM
+        If decoder->blockType = CHMLZX_BLOCK_ALIGNED Then
+            For symbolIndex As Integer = 0 To CHMLZX_ALIGNED_SYMBOLS - 1
+                If chmlzx_ReadBits(decoder, 3, bits) = 0 Then Return 0
+                decoder->alignedtree.codeLengths(symbolIndex) = CByte(bits)
+            Next symbolIndex
+            If chmlzx_BuildHuffman( _
+                decoder, @decoder->alignedtree, CHMLZX_ALIGNED_SYMBOLS, 0 _
+            ) = 0 Then Return 0
+            ' The aligned header continues with the same trees as verbatim.
+        End If
 
     Case CHMLZX_BLOCK_UNCOMPRESSED
         decoder->intelStarted = -1

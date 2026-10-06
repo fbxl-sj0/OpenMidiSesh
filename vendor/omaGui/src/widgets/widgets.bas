@@ -206,6 +206,16 @@ End Sub
 ' Registry Management
 ' -------------------------------------------------------------------------
 
+Function gui_CreateWidgetBase() As Widget Ptr
+    ' New initializes every field, including managed strings and callbacks.
+    Dim As Widget Ptr w = New Widget
+    If w = 0 Then Return 0
+    w->visible = -1
+    w->enabled = -1
+    Return w
+End Function
+
+
 Sub gui_Init()
     widget_list_head = 0
     widget_list_tail = 0
@@ -359,6 +369,47 @@ Sub gui_SetParent(ByVal child As Widget Ptr, ByVal parent As Widget Ptr)
     child->parent = parent
 End Sub
 
+
+Sub gui_SetWidgetTheme(ByVal w As Widget Ptr, ByRef themeValue As GUI_Theme)
+    If w = 0 Then Exit Sub
+    Dim As GUI_Theme savedTheme = current_theme
+    theme_SetCurrent themeValue
+    w->theme_override = current_theme
+    current_theme = savedTheme
+    w->theme_override_enabled = -1
+    gui_InvalidateAll
+End Sub
+
+Sub gui_ClearWidgetTheme(ByVal w As Widget Ptr)
+    If w = 0 Then Exit Sub
+    w->theme_override_enabled = 0
+    gui_InvalidateAll
+End Sub
+
+Function gui_GetEffectiveWidgetTheme( _
+    ByVal w As Widget Ptr, ByRef themeValue As GUI_Theme _
+) As Integer
+    Dim As Widget Ptr current = w
+    Dim As Integer parentDepth
+
+    If w = 0 Then Return 0
+
+    While current <> 0 AndAlso parentDepth < GUI_LAYOUT_PARENT_GUARD
+        If current->theme_override_enabled <> 0 Then
+            themeValue = current->theme_override
+            Return -1
+        End If
+        If current->appearance <> 0 Then
+            themeValue = *current->appearance
+            Return -1
+        End If
+        current = current->parent
+        parentDepth += 1
+    Wend
+
+    theme_GetCurrent themeValue
+    Return -1
+End Function
 
 Private Function gui_IsWithinTree( _
     ByVal w As Widget Ptr, ByVal root As Widget Ptr _
@@ -2061,8 +2112,7 @@ End Sub
 
 Private Sub gui_RenderLayer(ByVal renderWindows As Integer)
     Dim As GUI_Theme savedTheme
-    Dim As Widget Ptr appearanceOwner
-    Dim As Integer appearanceDepth
+    Dim As GUI_Theme widgetTheme
     Dim As Integer bottomEdge
     Dim As Integer leftEdge
     Dim As Integer rightEdge
@@ -2110,17 +2160,8 @@ Private Sub gui_RenderLayer(ByVal renderWindows As Integer)
                 ) Then
                     backend_SetClip clipX, clipY, clipWidth, clipHeight
                     savedTheme = current_theme
-                    appearanceOwner = curr
-                    appearanceDepth = 0
-                    While appearanceOwner <> 0 AndAlso _
-                          appearanceDepth < GUI_LAYOUT_PARENT_GUARD
-                        If appearanceOwner->appearance <> 0 Then
-                            current_theme = *appearanceOwner->appearance
-                            Exit While
-                        End If
-                        appearanceOwner = appearanceOwner->parent
-                        appearanceDepth += 1
-                    Wend
+                    If gui_GetEffectiveWidgetTheme(curr, widgetTheme) Then _
+                        current_theme = widgetTheme
                     If curr->render <> 0 Then curr->render(curr)
                     If gui_KeyboardFocusVisible <> 0 AndAlso _
                        curr = widget_focus AndAlso _
@@ -2147,6 +2188,18 @@ End Sub
 Sub gui_RefreshLayout()
     gui_ResolveLayout()
 End Sub
+
+Function gui_GetPointerWidgetNameAt(ByVal x As Integer, ByVal y As Integer) As String
+    gui_ResolveLayout()
+    Dim As Widget Ptr target = gui_FindTopmostPointerWidget(x, y)
+    If target = 0 Then Return ""
+    Return target->name
+End Function
+
+Function gui_GetPointerCaptureName() As String
+    If gui_IsRegisteredWidget(widget_pointer_capture) = 0 Then Return ""
+    Return widget_pointer_capture->name
+End Function
 
 
 Sub gui_RenderDesktop()

@@ -36,6 +36,7 @@
 #include once "src/backend/input.bi"
 #include once "src/backend/font_data.bi"
 #include once "src/backend/theme.bi"
+#include once "crt/string.bi"
 #If Defined(__FB_WIN32__) AndAlso Not Defined(OMAGUI_PORTABLE_ONLY)
 #include once "windows.bi"
 #EndIf
@@ -509,6 +510,8 @@ End Function
 ' Lifecycle
 ' -------------------------------------------------------------------------
 
+#include once "src/backend/backend_font_span.bi"
+
 Sub backend_Init( _
     ByVal w As Integer, _
     ByVal h As Integer, _
@@ -566,6 +569,7 @@ Sub backend_Init( _
 End Sub
 
 Sub backend_Exit()
+    backend_FontSpanRelease
     If backend_HeadlessActive <> BACKEND_HEADLESS Then Screen 0
 #If Defined(__FB_WIN32__) And Not Defined(__FB_GFXLIB3__) And _
     Not Defined(OMAGUI_PORTABLE_ONLY)
@@ -869,8 +873,7 @@ End Sub
 Sub backend_ClearFontPacks()
     backend_FontGeneration += 1
 
-    For fontIndex As Integer = LBound(backend_FontPacks) To _
-                                UBound(backend_FontPacks) ' fblint: disable-line FBL-ARR-004 REASON: backend_FontPacks is a fixed registry with storage present for every supported font slot.
+    For fontIndex As Integer = 0 To BACKEND_FONT_TERMINAL
         If backend_FontPacks(fontIndex).glyphs <> 0 Then _
             Deallocate backend_FontPacks(fontIndex).glyphs
         If backend_FontPacks(fontIndex).bitmap_storage <> 0 Then _
@@ -965,21 +968,25 @@ Function backend_LoadFontPack( _
 
     If font_id < LBound(backend_FontPacks) OrElse font_id > UBound(backend_FontPacks) OrElse _
        font_id = BACKEND_FONT_CUSTOM OrElse filename = "" Then _
-        Return 0
+        Return 0 ' fblint: disable-line FBL-IO-004 REASON: A failed Open acquires no handle; every successful open is closed below.
 
     fileNumber = FreeFile
-    If Open(filename For Binary Access Read As #fileNumber) <> 0 Then _
+    If Open(filename For Binary Access Read As #fileNumber) <> 0 Then
         Return 0 ' fblint: disable-line FBL-IO-004 REASON: A failed Open acquires no handle; every successful open is closed below.
+    End If
     fileLength = Lof(fileNumber)
     If fileLength < BACKEND_FONT_PACK_HEADER_BYTES OrElse _
        fileLength > BACKEND_FONT_PACK_MAX_BYTES Then
         Close #fileNumber
-        Return 0
+        Return 0 ' fblint: disable-line FBL-IO-004 REASON: A failed Open acquires no handle; every successful open is closed below.
     End If
     fileSize = CUInt(fileLength)
 
     fontFileData = Space(CInt(fileSize))
-    Get #fileNumber, , fontFileData
+    If Get(fileNumber, , fontFileData) <> 0 Then
+        Close #fileNumber
+        Return 0 ' fblint: disable-line FBL-IO-004 REASON: A failed Open acquires no handle; every successful open is closed below.
+    End If
     Close #fileNumber
     fontBytes = Cast(UByte Ptr, StrPtr(fontFileData))
     If fontBytes = 0 OrElse Left(fontFileData, 4) <> "OGF1" Then Return 0
@@ -1040,16 +1047,15 @@ Function backend_LoadFontPack( _
     Next glyphIndex
 
     If invalidPack <> 0 OrElse bytePosition <> CULngInt(fileSize) Then _
-        Return 0
+        Return 0 ' fblint: disable-line FBL-IO-004 REASON: A failed Open acquires no handle; every successful open is closed below.
 
-    newGlyphs = Callocate( _
-        CULngInt(glyphCount) * SizeOf(BackendFontGlyphIndex) _
-    ) ' fblint: disable-line FBL310 REASON: The including backend translation unit declares this GUI implementation symbol.
+    ' fblint: disable-next-line FBL310 -- this record type is private to the backend module.
+    newGlyphs = Callocate(CULngInt(glyphCount) * SizeOf(BackendFontGlyphIndex))
     If newGlyphs = 0 Then Return 0
     newBitmapStorage = Allocate(bitmapStorageSize)
     If newBitmapStorage = 0 Then
         Deallocate newGlyphs
-        Return 0
+        Return 0 ' fblint: disable-line FBL-IO-004 REASON: A failed Open acquires no handle; every successful open is closed below.
     End If
 
     bytePosition = headerSize
@@ -1075,14 +1081,13 @@ Function backend_LoadFontPack( _
 
         /'
             Spaces and other advance-only glyphs have no bitmap pixels.
-            Subtracting one from an unsigned zero would turn this copy into
-            an unbounded read and write instead of an empty loop.
+            Both spans were bounded by the validation pass. memcpy avoids
+            per-pixel 64-bit indexing on 32-bit targets; source and destination
+            belong to distinct allocations. Keep empty glyphs out of the copy.
         '/
         If pixelCount > 0 Then
-            For pixelIndex As ULongInt = 0 To pixelCount - 1
-                newBitmapStorage[bitmapStoragePosition + pixelIndex] = _
-                    fontBytes[bytePosition + pixelIndex]
-            Next pixelIndex
+            memcpy(@newBitmapStorage[bitmapStoragePosition], _
+                @fontBytes[bytePosition], CUInt(pixelCount))
         End If
         bitmapStoragePosition += pixelCount
         bytePosition += pixelCount
@@ -1277,7 +1282,6 @@ Function backend_CreateImage( _
 
     If backend_BeginTemporaryImageMode() = 0 Then Return 0
     ' The caller owns this gfxlib image and releases it with ImageDestroy.
-    ' FB-LINTER: DISABLE-NEXT-LINE FBL-PAIR-005
     Dim As Any Ptr imageBuffer = ImageCreate( _
         imageWidth, imageHeight, backgroundColor, imageDepth _
     )
@@ -1916,6 +1920,11 @@ Private Function backend_FontGlyph(ByVal font_id As Integer, _
 End Function
 
 
+Private Function backend_InvalidUTF8(ByRef byteIndex As Integer) As Integer
+    byteIndex += 1
+    Return Asc("?")
+End Function
+
 Function backend_ReadUTF8Codepoint( _
     ByRef text As Const String, ByRef byteIndex As Integer _
 ) As Integer
@@ -1936,10 +1945,11 @@ Function backend_ReadUTF8Codepoint( _
     End If
 
     If firstByte >= &HC2 AndAlso firstByte <= &HDF Then
-        If byteIndex + 1 >= textLength Then Goto invalid_sequence
+        If byteIndex + 1 >= textLength Then _
+            Return backend_InvalidUTF8(byteIndex)
         secondByte = text[byteIndex + 1]
         If secondByte < &H80 OrElse secondByte > &HBF Then _
-            Goto invalid_sequence ' fblint: disable-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
+            Return backend_InvalidUTF8(byteIndex)
         codepoint = ((firstByte And &H1F) Shl 6) Or _
                     (secondByte And &H3F)
         byteIndex += 2
@@ -1947,15 +1957,16 @@ Function backend_ReadUTF8Codepoint( _
     End If
 
     If firstByte >= &HE0 AndAlso firstByte <= &HEF Then
-        If byteIndex + 2 >= textLength Then Goto invalid_sequence
+        If byteIndex + 2 >= textLength Then _
+            Return backend_InvalidUTF8(byteIndex)
         secondByte = text[byteIndex + 1]
         thirdByte = text[byteIndex + 2]
         If secondByte < &H80 OrElse secondByte > &HBF OrElse _
            thirdByte < &H80 OrElse thirdByte > &HBF Then _
-            Goto invalid_sequence ' fblint: disable-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
+            Return backend_InvalidUTF8(byteIndex)
         If (firstByte = &HE0 AndAlso secondByte < &HA0) OrElse _
            (firstByte = &HED AndAlso secondByte > &H9F) Then _
-            Goto invalid_sequence ' fblint: disable-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
+            Return backend_InvalidUTF8(byteIndex)
         codepoint = ((firstByte And &HF) Shl 12) Or _
                     ((secondByte And &H3F) Shl 6) Or _
                     (thirdByte And &H3F)
@@ -1964,17 +1975,18 @@ Function backend_ReadUTF8Codepoint( _
     End If
 
     If firstByte >= &HF0 AndAlso firstByte <= &HF4 Then
-        If byteIndex + 3 >= textLength Then Goto invalid_sequence
+        If byteIndex + 3 >= textLength Then _
+            Return backend_InvalidUTF8(byteIndex)
         secondByte = text[byteIndex + 1]
         thirdByte = text[byteIndex + 2]
         fourthByte = text[byteIndex + 3]
         If secondByte < &H80 OrElse secondByte > &HBF OrElse _
            thirdByte < &H80 OrElse thirdByte > &HBF OrElse _
            fourthByte < &H80 OrElse fourthByte > &HBF Then _
-            Goto invalid_sequence ' fblint: disable-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
+            Return backend_InvalidUTF8(byteIndex)
         If (firstByte = &HF0 AndAlso secondByte < &H90) OrElse _
            (firstByte = &HF4 AndAlso secondByte > &H8F) Then _
-            Goto invalid_sequence ' fblint: disable-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
+            Return backend_InvalidUTF8(byteIndex)
         codepoint = ((firstByte And &H7) Shl 18) Or _
                     ((secondByte And &H3F) Shl 12) Or _
                     ((thirdByte And &H3F) Shl 6) Or _
@@ -1983,9 +1995,8 @@ Function backend_ReadUTF8Codepoint( _
         Return codepoint
     End If
 
-invalid_sequence:
-    byteIndex += 1
-    Return Asc("?")
+    ' Stray continuation bytes and excluded leading bytes still consume one byte.
+    Return backend_InvalidUTF8(byteIndex)
 
 End Function
 
@@ -2370,11 +2381,27 @@ Private Sub DrawCharFont(ByVal x As Integer, ByVal y As Integer, _
     Dim As ULong g = (clr Shr 8) And &HFF
     Dim As ULong b = clr And &HFF
 
+    If backend_FontSpanVisible(CLngInt(x) + bearing_x, CLngInt(y) + bearing_y, _
+        w, h) = 0 Then Exit Sub
+
     Dim As Integer scrW, scrH, scrD
     ScreenInfo scrW, scrH, scrD
 
     If text_alpha <= 0 Then Exit Sub
     If text_alpha > 255 Then text_alpha = 255
+
+    If backend_FontSpanBegin(w, h) <> 0 Then
+        For py As Integer = 0 To h - 1
+            For px As Integer = 0 To w - 1
+                Dim As ULong coverage = p[2 + py * w + px]
+                If text_alpha <> 255 Then coverage = (coverage * text_alpha) \ 255
+                ' fblint: disable-next-line FBL310 -- private mask state is declared in backend_font_span.bi.
+                backend_FontSpanPixels[py * backend_FontSpanPitch + px] = coverage Shl 24
+            Next px
+        Next py
+        backend_FontSpanEnd x + bearing_x, y + bearing_y, w, h, clr
+        Exit Sub
+    End If
 
     For py As Integer = 0 To h - 1
         For px As Integer = 0 To w - 1
@@ -2435,6 +2462,10 @@ Private Sub DrawCharScaledFont(ByVal x As Integer, ByVal y As Integer, _
     w = p[0]
     h = p[1]
     backend_FontGlyphBearing(font_id, charCode, p, bearing_x, bearing_y)
+
+    If backend_FontSpanVisible(CLngInt(x) + CLngInt(bearing_x) * scale_x, _
+        CLngInt(y) + CLngInt(bearing_y) * scale_y, _
+        CLngInt(w) * scale_x, CLngInt(h) * scale_y) = 0 Then Exit Sub
 
     For py = 0 To h - 1
         For px = 0 To w - 1
@@ -2583,6 +2614,22 @@ Private Sub backend_PrintPercentStyled( _
 
         glyph_width = glyph[0]
         glyph_height = glyph[1]
+        ' Normal-sized upright text needs no resampling. The span check keeps
+        ' indexed-color and GPU pages on their established raster paths.
+        If percent = 100 AndAlso italic = 0 AndAlso _
+           backend_FontSpanBegin(glyph_width, glyph_height) <> 0 Then
+            glyph_draw_x = backend_ZeroAdvanceGlyphPenX( _
+                current_x, previous_cell_x, previous_cell_advance, _
+                glyph_advance, glyph_width, bearing_x, 100, 100 _
+            )
+            DrawCharFont glyph_draw_x, y, character_code, clr, font_id, 255
+            If glyph_advance > 0 Then
+                previous_cell_x = current_x
+                previous_cell_advance = glyph_advance
+            End If
+            current_x += glyph_advance
+            Continue While
+        End If
         scaled_width = (glyph_width * percent + 50) \ 100
         scaled_height = (glyph_height * percent + 50) \ 100
         If scaled_width < 1 Then scaled_width = 1
@@ -2602,6 +2649,17 @@ Private Sub backend_PrintPercentStyled( _
             current_x, previous_cell_x, previous_cell_advance, _
             glyph_advance, glyph_width, bearing_x, percent, 100 _
         )
+        If backend_FontSpanVisible(CLngInt(glyph_draw_x) + _
+            ((CLngInt(bearing_x) * percent) \ 100), glyph_draw_y, _
+            scaled_width, scaled_height) = 0 Then
+            If glyph_advance > 0 Then
+                previous_cell_x = current_x
+                previous_cell_advance = glyph_advance
+            End If
+            current_x += (glyph_advance * percent + 50) \ 100
+            Continue While
+        End If
+        Dim As Integer useFontSpan = backend_FontSpanBegin(scaled_width, scaled_height)
         For dest_y As Integer = 0 To scaled_height - 1
             source_y = (dest_y * 100) \ percent
             row_shift_hundredths = 0
@@ -2628,7 +2686,15 @@ Private Sub backend_PrintPercentStyled( _
                     source_x_hundredths = _
                         (dest_x * 100 - row_shift_hundredths) * _
                         glyph_width * 100
-                    If source_x_hundredths < 0 Then Continue For
+                    If source_x_hundredths < 0 Then
+                        ' Shear leaves empty leading pixels. Clear their coverage
+                        ' because the reusable mask may still contain a prior glyph.
+                        If useFontSpan <> 0 Then
+                            ' fblint: disable-next-line FBL310 -- private mask state is declared in backend_font_span.bi.
+                            backend_FontSpanPixels[dest_y * backend_FontSpanPitch + dest_x] = 0
+                        End If
+                        Continue For
+                    End If
                     source_x_hundredths = _
                         source_x_hundredths \ row_content_width_hundredths
                     If source_x_hundredths > (glyph_width - 1) * 100 Then _
@@ -2648,13 +2714,21 @@ Private Sub backend_PrintPercentStyled( _
                 If row_shift_hundredths = 0 Then _
                     glyph_alpha = _
                         glyph[2 + source_y * glyph_width + source_x]
-                backend_PSetAlpha( _
-                    glyph_draw_x + ((bearing_x * percent) \ 100) + dest_x, _
-                    glyph_draw_y + dest_y, clr, _
-                    glyph_alpha _
-                )
+                If useFontSpan <> 0 Then
+                    ' fblint: disable-next-line FBL310 -- private mask state is declared in backend_font_span.bi.
+                    backend_FontSpanPixels[dest_y * backend_FontSpanPitch + dest_x] = CULng(glyph_alpha) Shl 24
+                Else
+                    backend_PSetAlpha( _
+                        glyph_draw_x + ((bearing_x * percent) \ 100) + dest_x, _
+                        glyph_draw_y + dest_y, clr, _
+                        glyph_alpha _
+                    )
+                End If
             Next dest_x
         Next dest_y
+        If useFontSpan <> 0 Then backend_FontSpanEnd _
+            glyph_draw_x + ((bearing_x * percent) \ 100), glyph_draw_y, _
+            scaled_width, scaled_height, clr
         If glyph_advance > 0 Then
             previous_cell_x = current_x
             previous_cell_advance = glyph_advance
@@ -3101,8 +3175,6 @@ Sub backend_SaveSnapshot(ByVal filename As String)
     Dim file_size As UInteger
     Dim x As Integer
     Dim y As Integer
-    ' fblint: disable-next-line FBL311 REASON: The loop counter bounds repeated work; the cursor or stream state supplies each value.
-    Dim pad_index As Integer
     Dim screen_buffer As Any Ptr
     Dim row_ptr As UByte Ptr
     Dim pixel_ptr As UByte Ptr
@@ -3129,10 +3201,6 @@ Sub backend_SaveSnapshot(ByVal filename As String)
     ScreenInfo screen_w, screen_h, screen_depth, screen_bpp, screen_pitch
 
     If screen_w <= 0 Or screen_h <= 0 Then Exit Sub
-
-    screen_buffer = ScreenPtr()
-
-    If screen_buffer = 0 Then Exit Sub
 
     bytes_per_pixel = screen_bpp
 
@@ -3164,44 +3232,60 @@ Sub backend_SaveSnapshot(ByVal filename As String)
         Exit Sub
     End If
 
-    backend_WriteBmpByte file_number, Asc("B")
-    backend_WriteBmpByte file_number, Asc("M")
-    backend_WriteBmpU32 file_number, file_size
-    backend_WriteBmpU32 file_number, 0
-    backend_WriteBmpU32 file_number, 54
+    /'
+        ScreenPtr addresses the current work page. After backend_Flip that
+        page is the next frame, not the completed visible frame. Select the
+        visible page while reading, then restore the backend's work page.
+        ScreenLock synchronizes queued gfxlib3 drawing before CPU readback.
+        These calls belong to the graphics-owning thread.
+    '/
+    If backend_DoubleBufferActive Then _
+        ScreenSet backend_GfxVisiblePage, backend_GfxVisiblePage
+    ScreenLock
+    screen_buffer = ScreenPtr()
+    If screen_buffer <> 0 Then
+        backend_WriteBmpByte file_number, Asc("B")
+        backend_WriteBmpByte file_number, Asc("M")
+        backend_WriteBmpU32 file_number, file_size
+        backend_WriteBmpU32 file_number, 0
+        backend_WriteBmpU32 file_number, 54
 
-    backend_WriteBmpU32 file_number, 40
-    backend_WriteBmpU32 file_number, screen_w
-    backend_WriteBmpU32 file_number, screen_h
-    backend_WriteBmpU16 file_number, 1
-    backend_WriteBmpU16 file_number, 24
-    backend_WriteBmpU32 file_number, 0
-    backend_WriteBmpU32 file_number, pixel_data_size
-    backend_WriteBmpU32 file_number, 2835
-    backend_WriteBmpU32 file_number, 2835
-    backend_WriteBmpU32 file_number, 0
-    backend_WriteBmpU32 file_number, 0
+        backend_WriteBmpU32 file_number, 40
+        backend_WriteBmpU32 file_number, screen_w
+        backend_WriteBmpU32 file_number, screen_h
+        backend_WriteBmpU16 file_number, 1
+        backend_WriteBmpU16 file_number, 24
+        backend_WriteBmpU32 file_number, 0
+        backend_WriteBmpU32 file_number, pixel_data_size
+        backend_WriteBmpU32 file_number, 2835
+        backend_WriteBmpU32 file_number, 2835
+        backend_WriteBmpU32 file_number, 0
+        backend_WriteBmpU32 file_number, 0
 
-    For y = screen_h - 1 To 0 Step -1
-        row_ptr = Cast(UByte Ptr, screen_buffer) + (y * screen_pitch)
+        For y = screen_h - 1 To 0 Step -1
+            row_ptr = Cast(UByte Ptr, screen_buffer) + (y * screen_pitch)
 
-        For x = 0 To screen_w - 1
-            pixel_ptr = row_ptr + (x * bytes_per_pixel)
-            blue_value = pixel_ptr[0]
-            green_value = pixel_ptr[1]
-            red_value = pixel_ptr[2]
+            For x = 0 To screen_w - 1
+                pixel_ptr = row_ptr + (x * bytes_per_pixel)
+                blue_value = pixel_ptr[0]
+                green_value = pixel_ptr[1]
+                red_value = pixel_ptr[2]
 
-            backend_WriteBmpByte file_number, blue_value
-            backend_WriteBmpByte file_number, green_value
-            backend_WriteBmpByte file_number, red_value
-        Next x
+                backend_WriteBmpByte file_number, blue_value
+                backend_WriteBmpByte file_number, green_value
+                backend_WriteBmpByte file_number, red_value
+            Next x
 
-        For pad_index = (screen_w * 3) + 1 To row_stride
-            backend_WriteBmpByte file_number, 0
-        Next pad_index
-    Next y
+            For x = (screen_w * 3) + 1 To row_stride
+                backend_WriteBmpByte file_number, 0
+            Next x
+        Next y
+    End If
 
     Close #file_number
+    ScreenUnlock
+    If backend_DoubleBufferActive Then _
+        ScreenSet backend_GfxWorkPage, backend_GfxVisiblePage
 End Sub
 
 Private Function backend_ValidDisplayState(ByRef display_state As Const BackendDisplayState) As Integer

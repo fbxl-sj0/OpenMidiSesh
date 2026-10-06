@@ -546,6 +546,7 @@ Sub listbox_Render(ByVal w As Widget Ptr)
     backend_Rect(w->ax, w->ay, w->w, w->h, background_color, 1)
     Dim As ULong border_color = theme_GetColor(GUI_COLOR_BORDER)
     If current_theme.control_style = GUI_CONTROL_STYLE_FLAT Then border_color = current_theme.bg_dark
+    If d->border_color_override Then border_color = d->border_color
     backend_Rect(w->ax, w->ay, w->w, w->h, border_color, 0)
 
     If d->column_count > 0 Then
@@ -575,6 +576,10 @@ Sub listbox_Render(ByVal w As Widget Ptr)
                     Dim As Integer selection_width = clip_width
                     Dim As ULong selection_color = theme_GetColor(GUI_COLOR_SELECT_BG)
                     row_color = theme_GetColor(GUI_COLOR_SELECT_TEXT)
+                    If d->selected_background_color_override Then _
+                        selection_color = d->selected_background_color
+                    If d->selected_foreground_color_override Then _
+                        row_color = d->selected_foreground_color
                     If d->navigation_style Then
                         selection_x = w->ax + 22
                         selection_width = backend_GetTextWidth(d->items(idx)) + 4
@@ -617,8 +622,18 @@ Sub listbox_Render(ByVal w As Widget Ptr)
                         column_x += d->table_column_widths(column_index)
                     Next column_index
                 Else
-                    backend_Print w->ax + d->text_inset, _
-                        iy + LISTBOX_TEXT_Y_OFFSET, row_color, d->items(idx)
+                    Dim As Integer separatorPosition = InStr(d->items(idx), Chr(9))
+                    If separatorPosition > 0 AndAlso d->right_column_offset >= 0 Then
+                        backend_Print w->ax + d->text_inset, _
+                            iy + LISTBOX_TEXT_Y_OFFSET, row_color, _
+                            Left(d->items(idx), separatorPosition - 1)
+                        backend_Print w->ax + d->right_column_offset, _
+                            iy + LISTBOX_TEXT_Y_OFFSET, row_color, _
+                            Mid(d->items(idx), separatorPosition + 1)
+                    Else
+                        backend_Print w->ax + d->text_inset, _
+                            iy + LISTBOX_TEXT_Y_OFFSET, row_color, d->items(idx)
+                    End If
                 End If
                 If d->selection_mode <> LISTBOX_SELECTION_SINGLE AndAlso w->has_focus AndAlso idx = d->selected_index Then
                     backend_Rect w->ax + LISTBOX_CLIP_INSET, iy, clip_width, _
@@ -691,6 +706,7 @@ Function listbox_Create(ByVal nm As String, ByVal x As Integer, ByVal y As Integ
     listbox_ClearDoubleClick d
     d->background_color_override = 0
     d->foreground_color_override = 0
+    d->right_column_offset = -1
     d->scrollbar = scrollbar_Create( _
         nm & "_sb", x + w - LISTBOX_SCROLLBAR_WIDTH, y, _
         LISTBOX_SCROLLBAR_WIDTH, h, 0, 1, -1 _
@@ -1187,6 +1203,44 @@ Function listbox_GetForegroundColor( _
     list_data = Cast(ListBoxData Ptr, w->data)
     If list_data->foreground_color_override = 0 Then Return 0
     color_value = list_data->foreground_color
+    Return -1
+End Function
+
+Sub listbox_SetColors( _
+    ByVal w As Widget Ptr, _
+    ByVal background_color As ULong, ByVal border_color As ULong, _
+    ByVal foreground_color As ULong, _
+    ByVal selected_background_color As ULong, _
+    ByVal selected_foreground_color As ULong _
+)
+    Dim As ListBoxData Ptr list_data
+
+    If w = 0 OrElse w->data = 0 OrElse w->destroy <> @listbox_Destroy Then Exit Sub
+    list_data = Cast(ListBoxData Ptr, w->data)
+    With *list_data
+        .background_color = background_color
+        .background_color_override = -1
+        .border_color = border_color
+        .border_color_override = -1
+        .foreground_color = foreground_color
+        .foreground_color_override = -1
+        .selected_background_color = selected_background_color
+        .selected_background_color_override = -1
+        .selected_foreground_color = selected_foreground_color
+        .selected_foreground_color_override = -1
+    End With
+End Sub
+
+Function listbox_SetRightColumn( _
+    ByVal w As Widget Ptr, ByVal column_offset As Integer _
+) As Integer
+    Dim As ListBoxData Ptr list_data
+
+    If w = 0 OrElse w->data = 0 OrElse w->destroy <> @listbox_Destroy Then Return 0
+    If column_offset < 0 OrElse _
+       column_offset >= w->w - LISTBOX_SCROLLBAR_WIDTH Then Return 0
+    list_data = Cast(ListBoxData Ptr, w->data)
+    list_data->right_column_offset = column_offset
     Return -1
 End Function
 

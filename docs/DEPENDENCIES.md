@@ -30,12 +30,17 @@ The editor defaults to its maintained `vendor/omaGui` snapshot. Its downstream
 changes are described in `vendor/omaGui/DEPENDENCY.md`. A full local development
 tree may also contain `TREE.sha256`, which checks examples, tools and historical
 fonts. That larger tree is not published with OpenSesh.
-`SNAPSHOT.sha256` selects the 116-file redistributable runtime subset for
+`SNAPSHOT.sha256` selects the 120-file redistributable runtime subset for
 source archives and release lint. The subset includes omaGUI's MIT license,
 the licenses for its generated bitmap-font subsets, the CHM decoder license,
 and Unicode font packs. OpenSesh selects its neutral font tables with
 `OMAGUI_REDISTRIBUTABLE_FONTS`. The release subset omits historical
 Arial-derived tables, examples, tools, and generated binaries.
+
+The October 6 update incorporates the optimized omaGUI tree from Tiko commit
+`42ff302a9eb225b31c15671b9825fa502dd0215a`, retaining the OpenSesh safety
+checks, label styles and literal-color support. The downstream manifest records
+the merged bytes.
 
 ## Audited Windows build tools
 

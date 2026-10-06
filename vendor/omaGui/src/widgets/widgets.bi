@@ -84,6 +84,9 @@ Type Widget_Struct_ ' fblint: disable-line FBL910 REASON: This record is process
     As Any Ptr data
     ' Borrowed palette. Its owner keeps it alive through widget destruction.
     As GUI_Theme Ptr appearance
+    ' Copied overrides own their palette and take precedence at this node.
+    As Integer theme_override_enabled
+    As GUI_Theme theme_override
 
     /'
         The manager assigns a new identity whenever a widget enters the
@@ -145,6 +148,11 @@ Declare Function gui_GetTabStop(ByVal w As Widget Ptr) As Integer
 ' GUI Manager API
 ' -------------------------------------------------------------------------
 
+' The returned unregistered base belongs to the caller until gui_AddWidget.
+Declare Function gui_CreateWidgetBase() As Widget Ptr
+Declare Function gui_GetPointerWidgetNameAt(ByVal x As Integer, ByVal y As Integer) As String
+Declare Function gui_GetPointerCaptureName() As String
+
 Const GUI_ANCHOR_NONE As UInteger = 0
 Const GUI_ANCHOR_LEFT As UInteger = 1
 Const GUI_ANCHOR_TOP As UInteger = 2
@@ -171,6 +179,11 @@ Declare Function gui_RemoveWidgetPtr(ByVal target As Widget Ptr) As Integer
 Declare Sub gui_RemoveWidget(ByVal nm As String)
 Declare Function gui_FindWidget(ByVal nm As String) As Widget Ptr
 Declare Sub gui_SetParent(ByVal child As Widget Ptr, ByVal parent As Widget Ptr)
+Declare Sub gui_SetWidgetTheme(ByVal w As Widget Ptr, ByRef themeValue As GUI_Theme)
+Declare Sub gui_ClearWidgetTheme(ByVal w As Widget Ptr)
+Declare Function gui_GetEffectiveWidgetTheme( _
+    ByVal w As Widget Ptr, ByRef themeValue As GUI_Theme _
+) As Integer
 Declare Sub gui_BringToFront(ByVal w As Widget Ptr)
 Declare Function gui_IsWidgetRegistered(ByVal w As Widget Ptr) As Integer
 Declare Sub gui_SetTextTransformHandler(ByVal handler As Any Ptr)

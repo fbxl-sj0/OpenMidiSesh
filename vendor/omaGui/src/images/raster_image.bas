@@ -163,9 +163,16 @@ Function rasterimage_DetectFormat( _
 ) As Integer
     ' Dimension zero is the runtime's safe allocation query, including empty arrays.
     If UBound(bytes, 0) <> 1 Then Return RASTERIMAGE_FORMAT_UNKNOWN ' fblint: disable-line FBL-ARR-004 REASON: Dimension zero safely queries allocation before querying element bounds.
-    ' fblint: disable-next-line FBL-ARR-004 REASON: The dimension-count guard rejects unallocated byte arrays before these bound queries.
-    If LBound(bytes) <> 0 OrElse byteCount < 1 OrElse _
-       byteCount > CLngInt(UBound(bytes)) + 1 Then Return RASTERIMAGE_FORMAT_UNKNOWN ' fblint: disable-line FBL-ARR-004 REASON: The dimension-count guard rejects unallocated byte arrays before these bound queries.
+    Dim As Integer firstIndex
+    Dim As Integer lastIndex
+
+    If byteCount < 1 Then Return RASTERIMAGE_FORMAT_UNKNOWN
+    ' FreeBASIC reports UBound=-1 for an unallocated dynamic array.
+    If UBound(bytes) < LBound(bytes) Then Return RASTERIMAGE_FORMAT_UNKNOWN ' fblint: disable-line FBL-ARR-004 REASON: The dimension-count guard rejects unallocated byte arrays before element-bound queries.
+    firstIndex = LBound(bytes) ' fblint: disable-line FBL-ARR-004 REASON: The dimension-count guard rejects unallocated byte arrays before element-bound queries.
+    lastIndex = UBound(bytes) ' fblint: disable-line FBL-ARR-004 REASON: The dimension-count guard rejects unallocated byte arrays before element-bound queries.
+    If firstIndex <> 0 OrElse lastIndex < firstIndex OrElse _
+       byteCount > CLngInt(lastIndex) + 1 Then Return RASTERIMAGE_FORMAT_UNKNOWN
     If byteCount >= 8 Then
         If bytes(0) = &h89 AndAlso bytes(1) = Asc("P") AndAlso _
            bytes(2) = Asc("N") AndAlso bytes(3) = Asc("G") AndAlso _
@@ -778,6 +785,16 @@ Private Sub rasterjpeg_FreeComponents( _
 End Sub
 
 
+Private Function rasterjpeg_FailDecode( _
+    components() As RasterJpegComponent, _
+    ByVal imagePixels As Any Ptr _
+) As Integer
+    rasterjpeg_FreeComponents components()
+    If imagePixels <> 0 Then ImageDestroy imagePixels
+    Return 0
+End Function
+
+
 Private Function rasterjpeg_EntropyByte( _
     ByRef reader As RasterJpegBitReader _
 ) As Integer
@@ -1130,8 +1147,9 @@ Private Function rasterjpeg_Decode( _
     Dim As Long destinationX
     Dim As Long destinationY
     Dim As Long sampleCount
-    Dim As Any Ptr imagePixels
-    Dim As Any Ptr pixelData
+    Dim As UByte Ptr componentSamples
+    Dim As Any Ptr imagePixels = 0
+    Dim As Any Ptr pixelData = 0
     Dim As Long bufferWidth
     Dim As Long bufferHeight
     Dim As Long bytesPerPixel
@@ -1149,6 +1167,10 @@ Private Function rasterjpeg_Decode( _
     Dim As Long blueValue
     Dim As Integer frameFound
     Dim As Integer scanFound
+
+    For componentIndex = 0 To RASTERIMAGE_JPEG_MAX_COMPONENTS - 1
+        components(componentIndex).samples = 0
+    Next componentIndex
 
     If byteCount < 4 OrElse bytes(0) <> &hFF OrElse bytes(1) <> &hD8 Then
         errorMessage = "JPEG start-of-image marker is missing"
@@ -1178,12 +1200,12 @@ Private Function rasterjpeg_Decode( _
                bytes(), byteCount, position, segmentLengthValue _
            ) Then
             errorMessage = "JPEG marker length is truncated"
-            GoTo JpegFailure
+            Return rasterjpeg_FailDecode(components(), imagePixels)
         End If
         If segmentLengthValue < 2 OrElse _
            segmentLengthValue > byteCount - position Then
             errorMessage = "JPEG marker segment extends beyond the file"
-            GoTo JpegFailure
+            Return rasterjpeg_FailDecode(components(), imagePixels)
         End If
 
         segmentStart = position + 2
@@ -1199,12 +1221,12 @@ Private Function rasterjpeg_Decode( _
                 If tableIndex >= RASTERIMAGE_JPEG_MAX_TABLES OrElse _
                    precision > 1 Then
                     errorMessage = "JPEG quantization table is unsupported"
-                    GoTo JpegFailure
+                    Return rasterjpeg_FailDecode(components(), imagePixels)
                 End If
                 If precision = 0 Then
                     If segmentEnd - segmentPosition < 64 Then
                         errorMessage = "JPEG quantization table is truncated"
-                        GoTo JpegFailure
+                        Return rasterjpeg_FailDecode(components(), imagePixels)
                     End If
                     For symbolIndex = 0 To 63
                         quantizationValues(tableIndex * 64 + symbolIndex) = _
@@ -1214,7 +1236,7 @@ Private Function rasterjpeg_Decode( _
                 Else
                     If segmentEnd - segmentPosition < 128 Then
                         errorMessage = "JPEG 16-bit quantization table is truncated"
-                        GoTo JpegFailure
+                        Return rasterjpeg_FailDecode(components(), imagePixels)
                     End If
                     For symbolIndex = 0 To 63
                         If Not rasterimage_ReadU16BE( _
@@ -1222,7 +1244,7 @@ Private Function rasterjpeg_Decode( _
                             segmentLengthValue _
                         ) Then
                             errorMessage = "JPEG quantization value is truncated"
-                            GoTo JpegFailure
+                            Return rasterjpeg_FailDecode(components(), imagePixels)
                         End If
                         quantizationValues(tableIndex * 64 + symbolIndex) = _
                             segmentLengthValue
@@ -1242,7 +1264,7 @@ Private Function rasterjpeg_Decode( _
                    tableIndex >= RASTERIMAGE_JPEG_MAX_TABLES OrElse _
                    segmentEnd - segmentPosition < 16 Then
                     errorMessage = "JPEG Huffman table header is invalid"
-                    GoTo JpegFailure
+                    Return rasterjpeg_FailDecode(components(), imagePixels)
                 End If
 
                 symbolCount = 0
@@ -1255,7 +1277,7 @@ Private Function rasterjpeg_Decode( _
                 If symbolCount > 256 OrElse _
                    segmentEnd - segmentPosition < symbolCount Then
                     errorMessage = "JPEG Huffman symbol table is truncated"
-                    GoTo JpegFailure
+                    Return rasterjpeg_FailDecode(components(), imagePixels)
                 End If
                 For symbolIndex = 0 To symbolCount - 1
                     huffmanTables(tableClass, tableIndex).symbols(symbolIndex) = _
@@ -1268,12 +1290,12 @@ Private Function rasterjpeg_Decode( _
         Case &hC0
             If segmentEnd - segmentStart < 6 Then
                 errorMessage = "JPEG baseline frame header is truncated"
-                GoTo JpegFailure
+                Return rasterjpeg_FailDecode(components(), imagePixels)
             End If
             precision = bytes(segmentStart)
             If precision <> 8 Then
                 errorMessage = "JPEG sample precision is not 8 bits"
-                GoTo JpegFailure
+                Return rasterjpeg_FailDecode(components(), imagePixels)
             End If
             If Not rasterimage_ReadU16BE( _
                 bytes(), byteCount, segmentStart + 1, imageHeightValue _
@@ -1281,22 +1303,22 @@ Private Function rasterjpeg_Decode( _
                 bytes(), byteCount, segmentStart + 3, imageWidthValue _
             ) Then
                 errorMessage = "JPEG frame dimensions are truncated"
-                GoTo JpegFailure
+                Return rasterjpeg_FailDecode(components(), imagePixels)
             End If
             imageWidth = imageWidthValue
             imageHeight = imageHeightValue
             If Not rasterimage_ValidateDimensions( _
                 imageWidth, imageHeight, errorMessage _
-            ) Then GoTo JpegFailure
+            ) Then Return rasterjpeg_FailDecode(components(), imagePixels)
 
             componentCount = bytes(segmentStart + 5)
             If componentCount <> 1 AndAlso componentCount <> 3 Then
                 errorMessage = "JPEG must contain one grayscale or three YCbCr components"
-                GoTo JpegFailure
+                Return rasterjpeg_FailDecode(components(), imagePixels)
             End If
             If segmentEnd - (segmentStart + 6) <> componentCount * 3 Then
                 errorMessage = "JPEG frame component list has the wrong size"
-                GoTo JpegFailure
+                Return rasterjpeg_FailDecode(components(), imagePixels)
             End If
 
             segmentPosition = segmentStart + 6
@@ -1314,7 +1336,7 @@ Private Function rasterjpeg_Decode( _
                    components(componentIndex).quantizationTable >= _
                        RASTERIMAGE_JPEG_MAX_TABLES Then
                     errorMessage = "JPEG component sampling or table selector is invalid"
-                    GoTo JpegFailure
+                    Return rasterjpeg_FailDecode(components(), imagePixels)
                 End If
                 If components(componentIndex).horizontalSampling > _
                    maxHorizontalSampling Then
@@ -1330,30 +1352,30 @@ Private Function rasterjpeg_Decode( _
             frameFound = -1
         Case &hC1 To &hC3, &hC5 To &hC7, &hC9 To &hCB, &hCD To &hCF
             errorMessage = "JPEG is not baseline sequential SOF0"
-            GoTo JpegFailure
+            Return rasterjpeg_FailDecode(components(), imagePixels)
         Case &hDD
             If segmentEnd - segmentStart <> 2 OrElse _
                Not rasterimage_ReadU16BE( _
                    bytes(), byteCount, segmentStart, segmentLengthValue _
                ) Then
                 errorMessage = "JPEG restart interval is malformed"
-                GoTo JpegFailure
+                Return rasterjpeg_FailDecode(components(), imagePixels)
             End If
             restartInterval = segmentLengthValue
         Case &hDA
             If frameFound = 0 OrElse segmentEnd - segmentStart < 4 Then
                 errorMessage = "JPEG scan appears before a valid frame"
-                GoTo JpegFailure
+                Return rasterjpeg_FailDecode(components(), imagePixels)
             End If
             scanComponentCount = bytes(segmentStart)
             If scanComponentCount <> componentCount Then
                 errorMessage = "JPEG uses unsupported separate component scans"
-                GoTo JpegFailure
+                Return rasterjpeg_FailDecode(components(), imagePixels)
             End If
             If segmentEnd - (segmentStart + 1) <> _
                scanComponentCount * 2 + 3 Then
                 errorMessage = "JPEG scan component list has the wrong size"
-                GoTo JpegFailure
+                Return rasterjpeg_FailDecode(components(), imagePixels)
             End If
 
             segmentPosition = segmentStart + 1
@@ -1368,7 +1390,7 @@ Private Function rasterjpeg_Decode( _
                 Next componentIndex
                 If scanComponentIndex(scanIndex) < 0 Then
                     errorMessage = "JPEG scan references an unknown component"
-                    GoTo JpegFailure
+                    Return rasterjpeg_FailDecode(components(), imagePixels)
                 End If
                 tableInfo = bytes(segmentPosition + 1)
                 components(scanComponentIndex(scanIndex)).dcTable = tableInfo Shr 4
@@ -1378,7 +1400,7 @@ Private Function rasterjpeg_Decode( _
                    components(scanComponentIndex(scanIndex)).acTable >= _
                    RASTERIMAGE_JPEG_MAX_TABLES Then
                     errorMessage = "JPEG scan Huffman selector is invalid"
-                    GoTo JpegFailure
+                    Return rasterjpeg_FailDecode(components(), imagePixels)
                 End If
                 segmentPosition += 2
             Next scanIndex
@@ -1386,7 +1408,7 @@ Private Function rasterjpeg_Decode( _
                bytes(segmentPosition + 1) <> 63 OrElse _
                bytes(segmentPosition + 2) <> 0 Then
                 errorMessage = "JPEG scan parameters are not baseline sequential"
-                GoTo JpegFailure
+                Return rasterjpeg_FailDecode(components(), imagePixels)
             End If
             reader.bytes = @bytes(0)
             reader.byteCount = byteCount
@@ -1398,18 +1420,18 @@ Private Function rasterjpeg_Decode( _
 
     If frameFound = 0 OrElse scanFound = 0 Then
         errorMessage = "JPEG has no complete baseline frame and scan"
-        GoTo JpegFailure
+        Return rasterjpeg_FailDecode(components(), imagePixels)
     End If
     For componentIndex = 0 To componentCount - 1
         tableIndex = components(componentIndex).quantizationTable
         If quantizationPresent(tableIndex) = 0 Then
             errorMessage = "JPEG component references a missing quantization table"
-            GoTo JpegFailure
+            Return rasterjpeg_FailDecode(components(), imagePixels)
         End If
         If huffmanTables(0, components(componentIndex).dcTable).present = 0 OrElse _
            huffmanTables(1, components(componentIndex).acTable).present = 0 Then
             errorMessage = "JPEG component references a missing Huffman table"
-            GoTo JpegFailure
+            Return rasterjpeg_FailDecode(components(), imagePixels)
         End If
     Next componentIndex
 
@@ -1428,15 +1450,14 @@ Private Function rasterjpeg_Decode( _
             components(componentIndex).planeHeight
         If sampleCount < 1 OrElse sampleCount > RASTERIMAGE_MAX_PIXELS Then
             errorMessage = "JPEG component plane exceeds the pixel safety limit"
-            GoTo JpegFailure
+            Return rasterjpeg_FailDecode(components(), imagePixels)
         End If
-        ' fblint: disable-next-line FBL800 REASON: The following branch checks the component allocation before any sample access.
-        components(componentIndex).samples = Callocate(sampleCount)
-        If components(componentIndex).samples = 0 Then
+        componentSamples = Callocate(sampleCount)
+        If componentSamples = 0 Then
             errorMessage = "unable to allocate a JPEG component plane"
-            ' fblint: disable-next-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
-            GoTo JpegFailure
+            Return rasterjpeg_FailDecode(components(), imagePixels)
         End If
+        components(componentIndex).samples = componentSamples
     Next componentIndex
 
     For mcuY = 0 To mcuRows - 1
@@ -1459,7 +1480,7 @@ Private Function rasterjpeg_Decode( _
                             components(componentIndex).quantizationTable, _
                             dcPredictor(componentIndex), coefficients(), _
                             errorMessage _
-                        ) Then GoTo JpegFailure
+                        ) Then Return rasterjpeg_FailDecode(components(), imagePixels)
                         rasterjpeg_InverseDct coefficients(), blockPixels()
 
                         destinationX = ( _
@@ -1490,8 +1511,7 @@ Private Function rasterjpeg_Decode( _
                     reader, &hD0 + (restartIndex And 7) _
                 ) Then
                     errorMessage = "JPEG restart marker is missing or out of order"
-                    ' fblint: disable-next-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
-                    GoTo JpegFailure
+                    Return rasterjpeg_FailDecode(components(), imagePixels)
                 End If
                 restartIndex += 1
                 For componentIndex = 0 To componentCount - 1
@@ -1506,16 +1526,14 @@ Private Function rasterjpeg_Decode( _
     )
     If imagePixels = 0 Then
         errorMessage = "unable to allocate the JPEG pixel buffer"
-        ' fblint: disable-next-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
-        GoTo JpegFailure
+        Return rasterjpeg_FailDecode(components(), imagePixels)
     End If
     If ImageInfo( _
         imagePixels, bufferWidth, bufferHeight, bytesPerPixel, pitch, _
         pixelData, imageBufferSize _
     ) <> 0 OrElse bytesPerPixel <> 4 OrElse pixelData = 0 Then
         errorMessage = "gfxlib returned an invalid JPEG pixel buffer"
-        ' fblint: disable-next-line FBL-CF-003 REASON: This failure branch reaches the single cleanup path for resources owned by this decoder.
-        GoTo JpegFailure
+        Return rasterjpeg_FailDecode(components(), imagePixels)
     End If
 
     For y = 0 To imageHeight - 1
@@ -1574,10 +1592,6 @@ Private Function rasterjpeg_Decode( _
         loadedImage, errorMessage _
     )
 
-JpegFailure:
-    rasterjpeg_FreeComponents components()
-    If imagePixels <> 0 Then ImageDestroy imagePixels
-    Return 0
 End Function
 
 
@@ -1825,6 +1839,8 @@ Function rasterimage_ScaleToFit( _
     Dim As Long sourceBytesPerPixel
     Dim As Long sourcePitch
     Dim As Long sourceSize
+    Dim As Long actualSourceWidth
+    Dim As Long actualSourceHeight
     Dim As Any Ptr sourcePixels
     Dim As Long targetWidth
     Dim As Long targetHeight
@@ -1875,10 +1891,16 @@ Function rasterimage_ScaleToFit( _
     ) Then Return 0
 
     If ImageInfo( _
-        loadedImage->pixels, sourceWidth, sourceHeight, _
+        loadedImage->pixels, actualSourceWidth, actualSourceHeight, _
         sourceBytesPerPixel, sourcePitch, sourcePixels, sourceSize _
     ) <> 0 OrElse sourceBytesPerPixel <> 4 OrElse sourcePixels = 0 Then
         errorMessage = "source is not a valid 32-bit gfxlib image"
+        Return 0
+    End If
+    If actualSourceWidth <> sourceWidth OrElse actualSourceHeight <> sourceHeight OrElse _
+       sourcePitch < sourceWidth * 4 OrElse _
+       CLngInt(sourcePitch) * CLngInt(sourceHeight) > sourceSize Then
+        errorMessage = "source image dimensions or pitch are invalid"
         Return 0
     End If
 
@@ -1897,6 +1919,13 @@ Function rasterimage_ScaleToFit( _
         errorMessage = "gfxlib returned an invalid scaled image buffer"
         Return 0
     End If
+    If scaledWidth <> targetWidth OrElse scaledHeight <> targetHeight OrElse _
+       scaledPitch < scaledWidth * 4 OrElse _
+       CLngInt(scaledPitch) * CLngInt(scaledHeight) > scaledSize Then
+        ImageDestroy scaledImage
+        errorMessage = "scaled image dimensions or pitch are invalid"
+        Return 0
+    End If
 
     /'
         Hard-edged diagrams retain nearest-neighbor sampling by default.
@@ -1911,23 +1940,27 @@ Function rasterimage_ScaleToFit( _
         Dim As Long nextY = smoothY + 1
         If nextY >= sourceHeight Then nextY = sourceHeight - 1
         Dim As ULong Ptr targetRow = Cast(ULong Ptr, Cast(UByte Ptr, scaledPixels) + targetY * scaledPitch)
+        Dim As ULong Ptr sourceRow = Cast(ULong Ptr, _
+            Cast(UByte Ptr, sourcePixels) + sourceY * sourcePitch)
         For targetX As Long = 0 To targetWidth - 1
             sourceX = (CLngInt(targetX) * sourceWidth) \ targetWidth
+            Dim As ULong pixelColor
             If smooth <> 0 Then
                 Dim As Double coordinateX = (CDbl(targetX) + 0.5) * sourceWidth / targetWidth - 0.5
                 If coordinateX < 0.0 Then coordinateX = 0.0
                 Dim As Long smoothX = Int(coordinateX)
                 Dim As Long nextX = smoothX + 1
                 If nextX >= sourceWidth Then nextX = sourceWidth - 1
-                targetRow[targetX] = rasterimage_SmoothPixel( _
+                pixelColor = rasterimage_SmoothPixel( _
                     Cast(ULong Ptr, Cast(UByte Ptr, sourcePixels) + smoothY * sourcePitch), _
                     Cast(ULong Ptr, Cast(UByte Ptr, sourcePixels) + nextY * sourcePitch), _
                     smoothX, nextX, coordinateX - smoothX, coordinateY - smoothY)
             Else
-                ' fblint: disable-next-line FBL525 REASON: Validated ImageInfo dimensions and bounded target coordinates keep this row access inside its buffer.
-                targetRow[targetX] = Cast(ULong Ptr, _
-                    Cast(UByte Ptr, sourcePixels) + sourceY * sourcePitch)[sourceX] ' fblint: disable-line FBL-PTR-019 FBL525 REASON: Validated ImageInfo dimensions and bounded target coordinates keep this row access inside its buffer.
+                ' Source row and column remain within the validated allocation.
+                pixelColor = sourceRow[sourceX]
             End If
+            ' Target row and column remain within the validated allocation.
+            targetRow[targetX] = pixelColor
         Next targetX
     Next targetY
 

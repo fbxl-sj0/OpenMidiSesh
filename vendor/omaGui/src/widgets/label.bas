@@ -14,6 +14,7 @@
     Responsibilities:
 
         - render static text with customizable colors and embedded fonts
+        - distinguish theme-following text from literal 32-bit colors
         - render bounded portable text styles without host font services
         - optionally fill the label's bounded client rectangle
         - wrap configured labels at measured word and path boundaries
@@ -56,9 +57,10 @@ End Function
 Private Sub label_PrintText( _
     ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, _
     ByRef textValue As Const String, ByVal fontId As Integer, _
-    ByVal percent As Integer, ByVal textStyle As Integer _
+    ByVal percent As Integer, ByVal textStyle As Integer, _
+    ByVal textColorUsesTheme As Integer _
 )
-    If clr = LABEL_COLOR_THEME_TEXT Then clr = theme_GetColor(GUI_COLOR_TEXT)
+    If textColorUsesTheme Then clr = theme_GetColor(GUI_COLOR_TEXT)
     If textStyle = BACKEND_TEXT_STYLE_NORMAL AndAlso percent = 100 Then
         backend_PrintFont x, y, clr, textValue, fontId
         Exit Sub
@@ -217,7 +219,8 @@ Private Sub label_DrawLayoutLine( _
         End Select
     End If
     label_PrintText drawX, drawY, dataValue->clr, lineText, _
-        dataValue->fontId, dataValue->fontPercent, dataValue->textStyle
+        dataValue->fontId, dataValue->fontPercent, dataValue->textStyle, _
+        dataValue->textColorUsesTheme
 
     ' Aligned mnemonic decoration uses the same origin and embedded font as
     ' the glyphs. Draw only the first matching character across wrapped lines.
@@ -260,7 +263,7 @@ Private Function label_LayoutWrapped( _
             label_PrintText _
                 w->ax, w->ay, dataValue->clr, _
                 dataValue->text, dataValue->fontId, dataValue->fontPercent, _
-                dataValue->textStyle
+                dataValue->textStyle, dataValue->textColorUsesTheme
         End If
         Return IIf(Len(dataValue->text) > 0, 1, 0)
     End If
@@ -383,7 +386,21 @@ Function label_Create( _
     d->verticalAlignment = BACKEND_ALIGN_TOP
     d->borderStyle = 0
     d->textStyle = BACKEND_TEXT_STYLE_NORMAL
+    d->textColorUsesTheme = IIf(clr = LABEL_COLOR_THEME_TEXT, -1, 0)
     wgt->data = d
+    Return wgt
+End Function
+
+
+Function label_CreateWithColor( _
+    ByVal nm As String, ByVal txt As String, _
+    ByVal x As Integer, ByVal y As Integer, _
+    ByVal clr As ULong, ByVal fontId As Integer _
+) As Widget Ptr
+    Dim As Widget Ptr wgt = label_Create(nm, txt, x, y, clr, fontId)
+    If wgt = 0 Then Return 0
+    ' This constructor's contract treats every color bit pattern as literal.
+    Cast(LabelData Ptr, wgt->data)->textColorUsesTheme = 0
     Return wgt
 End Function
 
@@ -423,6 +440,18 @@ Function label_SetTextColor( _
 ) As Integer
     If w = 0 OrElse w->data = 0 Then Return 0
     Cast(LabelData Ptr, w->data)->clr = textColor
+    Cast(LabelData Ptr, w->data)->textColorUsesTheme = _
+        IIf(textColor = LABEL_COLOR_THEME_TEXT, -1, 0)
+    Return -1
+End Function
+
+
+Function label_SetTextColorLiteral( _
+    ByVal w As Widget Ptr, ByVal textColor As ULong _
+) As Integer
+    If w = 0 OrElse w->data = 0 OrElse w->destroy <> @label_Destroy Then Return 0
+    Cast(LabelData Ptr, w->data)->clr = textColor
+    Cast(LabelData Ptr, w->data)->textColorUsesTheme = 0
     Return -1
 End Function
 

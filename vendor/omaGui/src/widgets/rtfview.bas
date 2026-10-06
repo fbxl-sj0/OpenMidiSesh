@@ -503,7 +503,462 @@ Private Sub rtfview_SetError( _
 End Sub
 
 
-' fblint: disable-next-line FBL110 FBL111 REASON: The RTF control-word dispatcher shares one bounded group and style stack.
+Private Function rtfview_ReadControlWord( _
+    ByRef rtfText As Const String, ByRef bytePosition As Integer, _
+    ByVal inputLength As Integer, ByRef controlWord As String, _
+    ByRef numberValue As Integer, ByRef hasNumber As Integer _
+) As Integer
+
+    Dim As Integer wordStart = bytePosition
+    Dim As Integer numberSign = 1
+
+    controlWord = ""
+    numberValue = 0
+    hasNumber = 0
+    If bytePosition > inputLength Then Return 0
+    If rtfview_IsAlpha(Asc(Mid(rtfText, bytePosition, 1))) = 0 Then Return 0
+
+    While bytePosition <= inputLength AndAlso _
+          rtfview_IsAlpha(Asc(Mid(rtfText, bytePosition, 1))) <> 0
+        bytePosition += 1
+    Wend
+    controlWord = LCase(Mid(rtfText, wordStart, bytePosition - wordStart))
+
+    If bytePosition <= inputLength AndAlso _
+       Asc(Mid(rtfText, bytePosition, 1)) = 45 Then
+        numberSign = -1
+        bytePosition += 1
+    End If
+    While bytePosition <= inputLength AndAlso _
+          rtfview_IsDigit(Asc(Mid(rtfText, bytePosition, 1))) <> 0
+        hasNumber = -1
+        ' Continue consuming long numbers while keeping the accumulator in range.
+        If numberValue < 1000000 Then
+            numberValue = numberValue * 10 + _
+                Asc(Mid(rtfText, bytePosition, 1)) - 48
+        End If
+        bytePosition += 1
+    Wend
+    numberValue *= numberSign
+
+    If bytePosition <= inputLength AndAlso _
+       Asc(Mid(rtfText, bytePosition, 1)) = 32 Then _
+        bytePosition += 1
+
+    Return -1
+
+End Function
+
+
+Private Function rtfview_ApplyStyleControlWord( _
+    ByVal d As RtfViewData Ptr, _
+    ByRef parserState As RtfViewParserState, _
+    ByRef controlWord As String, _
+    ByVal numberValue As Integer, ByVal hasNumber As Integer, _
+    ByRef handled As Integer _
+) As Integer
+
+    Dim As Integer signedUnicode
+
+    handled = 0
+    Select Case controlWord
+    Case "b"
+        parserState.bold = IIf( _
+            hasNumber <> 0 AndAlso numberValue = 0, 0, -1 _
+        )
+        parserState.resolved_font_id = -1
+        handled = -1
+    Case "i"
+        parserState.italic = IIf( _
+            hasNumber <> 0 AndAlso numberValue = 0, 0, -1 _
+        )
+        handled = -1
+    Case "deff"
+        If hasNumber <> 0 AndAlso numberValue >= 0 Then
+            d->default_font_number = numberValue
+            parserState.font_number = numberValue
+            parserState.resolved_font_id = -1
+        End If
+        handled = -1
+    Case "f"
+        If hasNumber <> 0 AndAlso numberValue >= 0 Then
+            parserState.font_number = numberValue
+            parserState.resolved_font_id = -1
+        End If
+        handled = -1
+    Case "fs"
+        If hasNumber <> 0 Then
+            If numberValue < RTFVIEW_MIN_FONT_HALFPOINTS Then _
+                numberValue = RTFVIEW_MIN_FONT_HALFPOINTS
+            If numberValue > RTFVIEW_MAX_FONT_HALFPOINTS Then _
+                numberValue = RTFVIEW_MAX_FONT_HALFPOINTS
+            parserState.font_halfpoints = numberValue
+        End If
+        handled = -1
+    Case "ul"
+        parserState.underline = IIf( _
+            hasNumber <> 0 AndAlso numberValue = 0, 0, -1 _
+        )
+        handled = -1
+    Case "ulnone"
+        parserState.underline = 0
+        handled = -1
+    Case "v"
+        parserState.hidden = IIf( _
+            hasNumber <> 0 AndAlso numberValue = 0, 0, -1 _
+        )
+        handled = -1
+    Case "cf"
+        parserState.color_index = numberValue
+        If parserState.color_index < 0 Then parserState.color_index = 0
+        handled = -1
+    Case "uc"
+        parserState.unicode_fallback = numberValue
+        If parserState.unicode_fallback < 0 Then _
+            parserState.unicode_fallback = 0
+        If parserState.unicode_fallback > 16 Then _
+            parserState.unicode_fallback = 16
+        handled = -1
+    Case "u"
+        If hasNumber <> 0 Then
+            signedUnicode = numberValue
+            If signedUnicode < 0 Then signedUnicode += 65536
+            If signedUnicode < 0 OrElse signedUnicode > 65535 Then _
+                signedUnicode = &HFFFD
+            If rtfview_AppendUnicode( _
+                d, parserState, signedUnicode _
+            ) = 0 Then Return 0
+            parserState.unicode_fallback_count = _
+                parserState.unicode_fallback
+        End If
+        handled = -1
+    Case "plain"
+        parserState.bold = 0
+        parserState.italic = 0
+        parserState.underline = 0
+        parserState.hidden = 0
+        parserState.color_index = 0
+        parserState.font_number = d->default_font_number
+        parserState.font_halfpoints = 24
+        parserState.resolved_font_id = -1
+        handled = -1
+    End Select
+
+    Return -1
+
+End Function
+
+
+Private Function rtfview_ApplyTextControlWord( _
+    ByVal d As RtfViewData Ptr, _
+    ByRef parserState As RtfViewParserState, _
+    ByRef controlWord As String, _
+    ByRef handled As Integer _
+) As Integer
+
+    Dim As Integer displayCodePoint = 0
+
+    handled = 0
+    Select Case controlWord
+    Case "par", "line"
+        If rtfview_StartParagraph(d, parserState) = 0 Then Return 0
+        handled = -1
+        Return -1
+    Case "tab"
+        handled = -1
+        If parserState.unicode_fallback_count > 0 Then
+            parserState.unicode_fallback_count -= 1
+        ElseIf rtfview_AppendTab(d, parserState) = 0 Then
+            Return 0
+        End If
+        Return -1
+    Case "emdash": displayCodePoint = &H2014
+    Case "endash": displayCodePoint = &H2013
+    Case "bullet": displayCodePoint = &H2022
+    Case "lquote": displayCodePoint = &H2018
+    Case "rquote": displayCodePoint = &H2019
+    Case "ldblquote": displayCodePoint = &H201C
+    Case "rdblquote": displayCodePoint = &H201D
+    End Select
+
+    If displayCodePoint = 0 Then Return -1
+    handled = -1
+    If parserState.unicode_fallback_count > 0 Then
+        parserState.unicode_fallback_count -= 1
+    ElseIf rtfview_AppendCodePoint( _
+        d, parserState, displayCodePoint _
+    ) = 0 Then
+        Return 0
+    End If
+    Return -1
+
+End Function
+
+
+Private Function rtfview_ApplyParagraphControlWord( _
+    ByVal d As RtfViewData Ptr, _
+    ByRef parserState As RtfViewParserState, _
+    ByRef controlWord As String, _
+    ByVal numberValue As Integer, ByVal hasNumber As Integer, _
+    ByRef handled As Integer _
+) As Integer
+
+    handled = -1
+    Select Case controlWord
+    Case "pard"
+        parserState.alignment = BACKEND_ALIGN_LEFT
+        parserState.left_indent = 0
+        parserState.first_indent = 0
+        parserState.right_indent = 0
+        rtfview_SyncParagraph(d, parserState)
+    Case "ql"
+        parserState.alignment = BACKEND_ALIGN_LEFT
+        rtfview_SyncParagraph(d, parserState)
+    Case "qc"
+        parserState.alignment = BACKEND_ALIGN_CENTER
+        rtfview_SyncParagraph(d, parserState)
+    Case "qr"
+        parserState.alignment = BACKEND_ALIGN_RIGHT
+        rtfview_SyncParagraph(d, parserState)
+    Case "qj"
+        parserState.alignment = BACKEND_ALIGN_LEFT
+        rtfview_SyncParagraph(d, parserState)
+    Case "li"
+        If hasNumber <> 0 Then parserState.left_indent = numberValue
+        rtfview_SyncParagraph(d, parserState)
+    Case "fi"
+        If hasNumber <> 0 Then parserState.first_indent = numberValue
+        rtfview_SyncParagraph(d, parserState)
+    Case "ri"
+        If hasNumber <> 0 Then parserState.right_indent = numberValue
+        rtfview_SyncParagraph(d, parserState)
+    Case Else
+        handled = 0
+    End Select
+
+    Return -1
+
+End Function
+
+
+Private Function rtfview_ApplyControlWord( _
+    ByVal d As RtfViewData Ptr, _
+    ByRef parserState As RtfViewParserState, _
+    ByRef controlWord As String, _
+    ByVal numberValue As Integer, ByVal hasNumber As Integer _
+) As Integer
+
+    Dim As Integer handled
+
+    If rtfview_ApplyStyleControlWord( _
+        d, parserState, controlWord, numberValue, hasNumber, handled _
+    ) = 0 Then Return 0
+    If handled <> 0 Then Return -1
+
+    If rtfview_ApplyTextControlWord( _
+        d, parserState, controlWord, handled _
+    ) = 0 Then Return 0
+    If handled <> 0 Then Return -1
+
+    If rtfview_ApplyParagraphControlWord( _
+        d, parserState, controlWord, numberValue, hasNumber, handled _
+    ) = 0 Then Return 0
+
+    Return -1
+
+End Function
+
+
+Private Function rtfview_ParseControlWord( _
+    ByVal d As RtfViewData Ptr, _
+    ByRef parserState As RtfViewParserState, _
+    ByRef rtfText As Const String, ByRef bytePosition As Integer, _
+    ByVal inputLength As Integer _
+) As Integer
+
+    Dim As Integer numberValue, hasNumber
+    Dim As String controlWord
+
+    If rtfview_ReadControlWord( _
+        rtfText, bytePosition, inputLength, controlWord, _
+        numberValue, hasNumber _
+    ) = 0 Then
+        rtfview_SetError(d, "The RTF document has an invalid control word")
+        Return 0
+    End If
+
+    If controlWord = "bin" AndAlso hasNumber <> 0 Then
+        ' Binary destinations may contain braces and backslashes.
+        ' Consume their bounded byte count before interpreting syntax.
+        If numberValue < 0 OrElse _
+           numberValue > inputLength - bytePosition + 1 Then
+            rtfview_SetError( _
+                d, "The RTF document has an invalid binary byte count" _
+            )
+            Return 0
+        End If
+        bytePosition += numberValue
+        parserState.ignorable_next = 0
+        Return -1
+    End If
+
+    If parserState.skip_destination = 0 Then
+        Select Case controlWord
+        Case "fonttbl"
+            parserState.table_kind = RTFVIEW_TABLE_FONTS
+            parserState.skip_destination = -1
+        Case "colortbl"
+            parserState.table_kind = RTFVIEW_TABLE_COLORS
+            parserState.skip_destination = -1
+        End Select
+    End If
+
+    If parserState.table_kind <> 0 Then
+        rtfview_TableControl( _
+            parserState, controlWord, numberValue, hasNumber _
+        )
+    ElseIf parserState.skip_destination = 0 Then
+        If parserState.ignorable_next <> 0 OrElse _
+           rtfview_IsDestination(controlWord) <> 0 Then
+            parserState.skip_destination = -1
+        ElseIf rtfview_ApplyControlWord( _
+            d, parserState, controlWord, numberValue, hasNumber _
+        ) = 0 Then
+            Return 0
+        End If
+    End If
+
+    parserState.ignorable_next = 0
+    Return -1
+
+End Function
+
+
+Private Function rtfview_ParseControlSymbol( _
+    ByVal d As RtfViewData Ptr, _
+    ByRef parserState As RtfViewParserState, _
+    ByRef rtfText As Const String, ByRef bytePosition As Integer, _
+    ByVal inputLength As Integer _
+) As Integer
+
+    Dim As Integer controlSymbol = Asc(Mid(rtfText, bytePosition, 1))
+    Dim As Integer hexHigh, hexLow, decodedCodePoint
+
+    Select Case controlSymbol
+    Case 39
+        bytePosition += 1
+        If bytePosition + 1 > inputLength Then
+            rtfview_SetError(d, "The RTF document ends inside a hex escape")
+            Return 0
+        End If
+        hexHigh = rtfview_HexValue( _
+            Asc(Mid(rtfText, bytePosition, 1)) _
+        )
+        hexLow = rtfview_HexValue( _
+            Asc(Mid(rtfText, bytePosition + 1, 1)) _
+        )
+        If hexHigh < 0 OrElse hexLow < 0 Then
+            rtfview_SetError( _
+                d, "The RTF document contains an invalid hex escape" _
+            )
+            Return 0
+        End If
+        decodedCodePoint = rtfview_DecodeCp1252(hexHigh * 16 + hexLow)
+        bytePosition += 2
+        If parserState.unicode_fallback_count > 0 Then
+            parserState.unicode_fallback_count -= 1
+        ElseIf parserState.skip_destination = 0 Then
+            If rtfview_AppendCodePoint( _
+                d, parserState, decodedCodePoint _
+            ) = 0 Then Return 0
+        End If
+        parserState.ignorable_next = 0
+
+    Case 92, 123, 125
+        If parserState.unicode_fallback_count > 0 Then
+            parserState.unicode_fallback_count -= 1
+        ElseIf parserState.skip_destination = 0 Then
+            If rtfview_AppendCodePoint( _
+                d, parserState, controlSymbol _
+            ) = 0 Then Return 0
+        End If
+        bytePosition += 1
+        parserState.ignorable_next = 0
+
+    Case 42
+        parserState.ignorable_next = -1
+        bytePosition += 1
+
+    Case 126
+        If parserState.unicode_fallback_count > 0 Then
+            parserState.unicode_fallback_count -= 1
+        ElseIf parserState.skip_destination = 0 Then
+            If rtfview_AppendCodePoint(d, parserState, 32) = 0 Then _
+                Return 0
+        End If
+        bytePosition += 1
+        parserState.ignorable_next = 0
+
+    Case 95
+        If parserState.unicode_fallback_count > 0 Then
+            parserState.unicode_fallback_count -= 1
+        ElseIf parserState.skip_destination = 0 Then
+            If rtfview_AppendCodePoint(d, parserState, 45) = 0 Then _
+                Return 0
+        End If
+        bytePosition += 1
+        parserState.ignorable_next = 0
+
+    Case 45
+        bytePosition += 1
+        parserState.ignorable_next = 0
+
+    Case Else
+        bytePosition += 1
+        parserState.ignorable_next = 0
+    End Select
+
+    Return -1
+
+End Function
+
+
+Private Function rtfview_ParseTextCharacter( _
+    ByVal d As RtfViewData Ptr, _
+    ByRef parserState As RtfViewParserState, _
+    ByRef bytePosition As Integer, ByVal characterCode As Integer _
+) As Integer
+
+    If parserState.table_kind <> 0 Then
+        If rtfview_TableCharacter( _
+            d, parserState, characterCode _
+        ) = 0 Then Return 0
+        bytePosition += 1
+    ElseIf parserState.unicode_fallback_count > 0 Then
+        parserState.unicode_fallback_count -= 1
+        bytePosition += 1
+    ElseIf parserState.skip_destination = 0 Then
+        If characterCode = 0 Then
+            bytePosition += 1
+        Else
+            If characterCode >= &H80 AndAlso characterCode <= &H9F Then
+                characterCode = rtfview_DecodeCp1252(characterCode)
+            End If
+            If rtfview_AppendCodePoint( _
+                d, parserState, characterCode _
+            ) = 0 Then Return 0
+            bytePosition += 1
+        End If
+    Else
+        bytePosition += 1
+    End If
+
+    parserState.ignorable_next = 0
+    Return -1
+
+End Function
+
+
 Private Function rtfview_ParseRtf( _
     ByVal d As RtfViewData Ptr, ByRef rtfText As Const String _
 ) As Integer
@@ -512,22 +967,11 @@ Private Function rtfview_ParseRtf( _
     Dim As RtfViewParserState groupStack( _
         0 To RTFVIEW_MAX_GROUP_DEPTH - 1 _
     )
-    Dim As Integer depth
+    Dim As Integer depth = 0
     Dim As Integer bytePosition = 1
     Dim As Integer inputLength = Len(rtfText)
     Dim As Integer characterCode
-    Dim As Integer wordStart
-    Dim As Integer wordLength
-    Dim As Integer numberValue
-    Dim As Integer numberSign
-    Dim As Integer hasNumber
-    Dim As Integer hexHigh
-    Dim As Integer hexLow
-    Dim As Integer decodedCodePoint
-    Dim As Integer signedUnicode
     Dim As Integer controlSymbol
-    Dim As String controlWord
-    Dim As String errorText
 
     parserState.unicode_fallback = 1
     parserState.font_halfpoints = 24
@@ -541,8 +985,9 @@ Private Function rtfview_ParseRtf( _
         Select Case characterCode
         Case 123
             If depth >= RTFVIEW_MAX_GROUP_DEPTH Then
-                errorText = "The RTF document exceeds the group nesting limit"
-                rtfview_SetError(d, errorText)
+                rtfview_SetError( _
+                    d, "The RTF document exceeds the group nesting limit" _
+                )
                 Return 0
             End If
             groupStack(depth) = parserState
@@ -551,18 +996,23 @@ Private Function rtfview_ParseRtf( _
 
         Case 125
             If depth <= 0 Then
-                errorText = "The RTF document has an unmatched closing brace"
-                rtfview_SetError(d, errorText)
+                rtfview_SetError( _
+                    d, "The RTF document has an unmatched closing brace" _
+                )
                 Return 0
             End If
             Dim As Integer closedTableKind = parserState.table_kind
-            If depth = 1 AndAlso d->pending_surrogate <> 0 AndAlso parserState.skip_destination = 0 Then
+            If depth = 1 AndAlso d->pending_surrogate <> 0 AndAlso _
+               parserState.skip_destination = 0 Then
                 d->pending_surrogate = 0
-                If rtfview_AppendCodePoint(d, parserState, &HFFFD) = 0 Then Return 0
+                If rtfview_AppendCodePoint( _
+                    d, parserState, &HFFFD _
+                ) = 0 Then Return 0
             End If
             depth -= 1
             parserState = groupStack(depth)
-            If closedTableKind <> 0 AndAlso parserState.table_kind = 0 Then parserState.resolved_font_id = -1
+            If closedTableKind <> 0 AndAlso parserState.table_kind = 0 Then _
+                parserState.resolved_font_id = -1
             bytePosition += 1
             If depth > 0 Then rtfview_SyncParagraph(d, parserState)
 
@@ -570,344 +1020,30 @@ Private Function rtfview_ParseRtf( _
             bytePosition += 1
             If bytePosition > inputLength Then Exit While
             controlSymbol = Asc(Mid(rtfText, bytePosition, 1))
-
             If rtfview_IsAlpha(controlSymbol) <> 0 Then
-                wordStart = bytePosition
-                While bytePosition <= inputLength AndAlso _
-                      rtfview_IsAlpha(Asc(Mid(rtfText, bytePosition, 1))) <> 0
-                    bytePosition += 1
-                Wend
-                wordLength = bytePosition - wordStart
-                controlWord = LCase(Mid(rtfText, wordStart, wordLength))
-
-                numberValue = 0
-                numberSign = 1
-                hasNumber = 0
-                If bytePosition <= inputLength AndAlso _
-                   Asc(Mid(rtfText, bytePosition, 1)) = 45 Then
-                    numberSign = -1
-                    bytePosition += 1
-                End If
-                While bytePosition <= inputLength AndAlso _
-                      rtfview_IsDigit(Asc(Mid(rtfText, bytePosition, 1))) <> 0
-                    hasNumber = -1
-                    If numberValue < 1000000 Then
-                        numberValue = numberValue * 10 + _
-                            Asc(Mid(rtfText, bytePosition, 1)) - 48
-                    End If
-                    bytePosition += 1
-                Wend
-                numberValue *= numberSign
-
-                If bytePosition <= inputLength AndAlso _
-                   Asc(Mid(rtfText, bytePosition, 1)) = 32 Then _
-                    bytePosition += 1
-
-                If controlWord = "bin" AndAlso hasNumber <> 0 Then
-                    ' Binary destinations may contain braces and backslashes.
-                    ' Consume their bounded byte count before interpreting syntax.
-                    If numberValue < 0 OrElse numberValue > inputLength - bytePosition + 1 Then
-                        rtfview_SetError(d, "The RTF document has an invalid binary byte count")
-                        Return 0
-                    End If
-                    bytePosition += numberValue
-                    parserState.ignorable_next = 0
-                    Continue While
-                End If
-                If parserState.skip_destination = 0 Then
-                    If controlWord = "fonttbl" Then
-                        parserState.table_kind = RTFVIEW_TABLE_FONTS
-                        parserState.skip_destination = -1
-                    ElseIf controlWord = "colortbl" Then
-                        parserState.table_kind = RTFVIEW_TABLE_COLORS
-                        parserState.skip_destination = -1
-                    End If
-                End If
-                If parserState.table_kind <> 0 Then
-                    rtfview_TableControl(parserState, controlWord, numberValue, hasNumber)
-                ElseIf parserState.skip_destination = 0 Then
-                    If parserState.ignorable_next <> 0 OrElse _
-                       rtfview_IsDestination(controlWord) <> 0 Then
-                        parserState.skip_destination = -1
-                    Else
-                        Select Case controlWord
-                        Case "b"
-                            parserState.bold = IIf( _
-                                hasNumber <> 0 AndAlso numberValue = 0, 0, -1 _
-                            )
-                            parserState.resolved_font_id = -1
-                        Case "i"
-                            parserState.italic = IIf(hasNumber <> 0 AndAlso numberValue = 0, 0, -1)
-                        Case "deff"
-                            If hasNumber <> 0 AndAlso numberValue >= 0 Then
-                                d->default_font_number = numberValue
-                                parserState.font_number = numberValue
-                                parserState.resolved_font_id = -1
-                            End If
-                        Case "f"
-                            If hasNumber <> 0 AndAlso numberValue >= 0 Then
-                                parserState.font_number = numberValue
-                                parserState.resolved_font_id = -1
-                            End If
-                        Case "fs"
-                            If hasNumber <> 0 Then
-                                If numberValue < RTFVIEW_MIN_FONT_HALFPOINTS Then numberValue = RTFVIEW_MIN_FONT_HALFPOINTS
-                                If numberValue > RTFVIEW_MAX_FONT_HALFPOINTS Then numberValue = RTFVIEW_MAX_FONT_HALFPOINTS
-                                parserState.font_halfpoints = numberValue
-                            End If
-                        Case "ul"
-                            parserState.underline = IIf( _
-                                hasNumber <> 0 AndAlso numberValue = 0, 0, -1 _
-                            )
-                        Case "ulnone"
-                            parserState.underline = 0
-                        Case "v"
-                            parserState.hidden = IIf( _
-                                hasNumber <> 0 AndAlso numberValue = 0, 0, -1 _
-                            )
-                        Case "cf"
-                            parserState.color_index = numberValue
-                            If parserState.color_index < 0 Then _
-                                parserState.color_index = 0
-                        Case "uc"
-                            parserState.unicode_fallback = numberValue
-                            If parserState.unicode_fallback < 0 Then _
-                                parserState.unicode_fallback = 0
-                            If parserState.unicode_fallback > 16 Then _
-                                parserState.unicode_fallback = 16
-                        Case "u"
-                            If hasNumber <> 0 Then
-                                signedUnicode = numberValue
-                                If signedUnicode < 0 Then _
-                                    signedUnicode += 65536
-                                If signedUnicode < 0 OrElse signedUnicode > 65535 Then signedUnicode = &HFFFD
-                                If rtfview_AppendUnicode( _
-                                    d, parserState, signedUnicode _
-                                ) = 0 Then Return 0
-                                parserState.unicode_fallback_count = _
-                                    parserState.unicode_fallback
-                            End If
-                        Case "par", "line"
-                            If rtfview_StartParagraph(d, parserState) = 0 _
-                                Then Return 0
-                        Case "tab"
-                            If parserState.unicode_fallback_count > 0 Then
-                                parserState.unicode_fallback_count -= 1
-                            Elseif rtfview_AppendTab(d, parserState) = 0 Then
-                                Return 0
-                            End If
-                        Case "emdash"
-                            If parserState.unicode_fallback_count > 0 Then
-                                parserState.unicode_fallback_count -= 1
-                            Elseif rtfview_AppendCodePoint( _
-                                d, parserState, &H2014 _
-                            ) = 0 Then
-                                Return 0
-                            End If
-                        Case "endash"
-                            If parserState.unicode_fallback_count > 0 Then
-                                parserState.unicode_fallback_count -= 1
-                            Elseif rtfview_AppendCodePoint( _
-                                d, parserState, &H2013 _
-                            ) = 0 Then
-                                Return 0
-                            End If
-                        Case "bullet"
-                            If parserState.unicode_fallback_count > 0 Then
-                                parserState.unicode_fallback_count -= 1
-                            Elseif rtfview_AppendCodePoint( _
-                                d, parserState, &H2022 _
-                            ) = 0 Then
-                                Return 0
-                            End If
-                        Case "lquote"
-                            If parserState.unicode_fallback_count > 0 Then
-                                parserState.unicode_fallback_count -= 1
-                            Elseif rtfview_AppendCodePoint( _
-                                d, parserState, &H2018 _
-                            ) = 0 Then
-                                Return 0
-                            End If
-                        Case "rquote"
-                            If parserState.unicode_fallback_count > 0 Then
-                                parserState.unicode_fallback_count -= 1
-                            Elseif rtfview_AppendCodePoint( _
-                                d, parserState, &H2019 _
-                            ) = 0 Then
-                                Return 0
-                            End If
-                        Case "ldblquote"
-                            If parserState.unicode_fallback_count > 0 Then
-                                parserState.unicode_fallback_count -= 1
-                            Elseif rtfview_AppendCodePoint( _
-                                d, parserState, &H201C _
-                            ) = 0 Then
-                                Return 0
-                            End If
-                        Case "rdblquote"
-                            If parserState.unicode_fallback_count > 0 Then
-                                parserState.unicode_fallback_count -= 1
-                            Elseif rtfview_AppendCodePoint( _
-                                d, parserState, &H201D _
-                            ) = 0 Then
-                                Return 0
-                            End If
-                        Case "pard"
-                            parserState.alignment = BACKEND_ALIGN_LEFT
-                            parserState.left_indent = 0
-                            parserState.first_indent = 0
-                            parserState.right_indent = 0
-                            rtfview_SyncParagraph(d, parserState)
-                        Case "ql"
-                            parserState.alignment = BACKEND_ALIGN_LEFT
-                            rtfview_SyncParagraph(d, parserState)
-                        Case "qc"
-                            parserState.alignment = BACKEND_ALIGN_CENTER
-                            rtfview_SyncParagraph(d, parserState)
-                        Case "qr"
-                            parserState.alignment = BACKEND_ALIGN_RIGHT
-                            rtfview_SyncParagraph(d, parserState)
-                        Case "qj"
-                            parserState.alignment = BACKEND_ALIGN_LEFT
-                            rtfview_SyncParagraph(d, parserState)
-                        Case "li"
-                            If hasNumber <> 0 Then _
-                                parserState.left_indent = numberValue
-                            rtfview_SyncParagraph(d, parserState)
-                        Case "fi"
-                            If hasNumber <> 0 Then _
-                                parserState.first_indent = numberValue
-                            rtfview_SyncParagraph(d, parserState)
-                        Case "ri"
-                            If hasNumber <> 0 Then _
-                                parserState.right_indent = numberValue
-                            rtfview_SyncParagraph(d, parserState)
-                        Case "plain"
-                            parserState.bold = 0
-                            parserState.italic = 0
-                            parserState.underline = 0
-                            parserState.hidden = 0
-                            parserState.color_index = 0
-                            parserState.font_number = d->default_font_number
-                            parserState.font_halfpoints = 24
-                            parserState.resolved_font_id = -1
-                        End Select
-                    End If
-                End If
-
-                parserState.ignorable_next = 0
-            Else
-                Select Case controlSymbol
-                Case 39
-                    bytePosition += 1
-                    If bytePosition + 1 > inputLength Then
-                        errorText = "The RTF document ends inside a hex escape"
-                        rtfview_SetError(d, errorText)
-                        Return 0
-                    End If
-                    hexHigh = rtfview_HexValue( _
-                        Asc(Mid(rtfText, bytePosition, 1)) _
-                    )
-                    hexLow = rtfview_HexValue( _
-                        Asc(Mid(rtfText, bytePosition + 1, 1)) _
-                    )
-                    If hexHigh < 0 OrElse hexLow < 0 Then
-                        errorText = "The RTF document contains an invalid hex escape"
-                        rtfview_SetError(d, errorText)
-                        Return 0
-                    End If
-                    decodedCodePoint = rtfview_DecodeCp1252( _
-                        hexHigh * 16 + hexLow _
-                    )
-                    bytePosition += 2
-                    If parserState.unicode_fallback_count > 0 Then
-                        parserState.unicode_fallback_count -= 1
-                    Elseif parserState.skip_destination = 0 Then
-                        If rtfview_AppendCodePoint( _
-                            d, parserState, decodedCodePoint _
-                        ) = 0 Then Return 0
-                    End If
-                    parserState.ignorable_next = 0
-
-                Case 92, 123, 125
-                    If parserState.unicode_fallback_count > 0 Then
-                        parserState.unicode_fallback_count -= 1
-                    Elseif parserState.skip_destination = 0 Then
-                        If rtfview_AppendCodePoint( _
-                            d, parserState, controlSymbol _
-                        ) = 0 Then Return 0
-                    End If
-                    bytePosition += 1
-                    parserState.ignorable_next = 0
-
-                Case 42
-                    parserState.ignorable_next = -1
-                    bytePosition += 1
-
-                Case 126
-                    If parserState.unicode_fallback_count > 0 Then
-                        parserState.unicode_fallback_count -= 1
-                    Elseif parserState.skip_destination = 0 Then
-                        If rtfview_AppendCodePoint(d, parserState, 32) = 0 _
-                            Then Return 0
-                    End If
-                    bytePosition += 1
-                    parserState.ignorable_next = 0
-
-                Case 95
-                    If parserState.unicode_fallback_count > 0 Then
-                        parserState.unicode_fallback_count -= 1
-                    Elseif parserState.skip_destination = 0 Then
-                        If rtfview_AppendCodePoint(d, parserState, 45) = 0 _
-                            Then Return 0
-                    End If
-                    bytePosition += 1
-                    parserState.ignorable_next = 0
-
-                Case 45
-                    bytePosition += 1
-                    parserState.ignorable_next = 0
-
-                Case Else
-                    bytePosition += 1
-                    parserState.ignorable_next = 0
-                End Select
+                If rtfview_ParseControlWord( _
+                    d, parserState, rtfText, bytePosition, inputLength _
+                ) = 0 Then Return 0
+            ElseIf rtfview_ParseControlSymbol( _
+                d, parserState, rtfText, bytePosition, inputLength _
+            ) = 0 Then
+                Return 0
             End If
 
         Case 13, 10
             bytePosition += 1
 
         Case Else
-            If parserState.table_kind <> 0 Then
-                If rtfview_TableCharacter(d, parserState, characterCode) = 0 Then Return 0
-                bytePosition += 1
-            ElseIf parserState.unicode_fallback_count > 0 Then
-                parserState.unicode_fallback_count -= 1
-                bytePosition += 1
-            Elseif parserState.skip_destination = 0 Then
-                If characterCode = 0 Then
-                    bytePosition += 1
-                Else
-                    If characterCode >= &H80 AndAlso _
-                       characterCode <= &H9F Then
-                        characterCode = _
-                            rtfview_DecodeCp1252(characterCode)
-                    End If
-                    If rtfview_AppendCodePoint( _
-                        d, parserState, characterCode _
-                    ) = 0 Then Return 0
-                    bytePosition += 1
-                End If
-            Else
-                bytePosition += 1
-            End If
-            parserState.ignorable_next = 0
+            If rtfview_ParseTextCharacter( _
+                d, parserState, bytePosition, characterCode _
+            ) = 0 Then Return 0
         End Select
     Wend
 
     If depth <> 0 Then
-        errorText = "The RTF document has an unmatched opening brace"
-        rtfview_SetError(d, errorText)
+        rtfview_SetError( _
+            d, "The RTF document has an unmatched opening brace" _
+        )
         Return 0
     End If
 
@@ -941,6 +1077,9 @@ Private Function rtfview_ParsePlainText( _
             If rtfview_StartParagraph(d, parserState) = 0 Then Return 0
         Case 9
             If rtfview_AppendTab(d, parserState) = 0 Then Return 0
+        Case 0
+            ' File readers may retain the conventional trailing NUL byte.
+            Continue While
         Case Else
             ' File readers may retain a trailing NUL; it has no display glyph.
             If characterCode <> 0 Then
@@ -1035,123 +1174,169 @@ Private Sub rtfview_AddLine( _
     d->visual_line_count += 1
 End Sub
 
-' fblint: disable-next-line FBL111 REASON: The layout pass handles each decoded run kind in sequence.
-Private Function rtfview_BuildLayout( _
-    ByVal w As Widget Ptr, ByVal d As RtfViewData Ptr _
+Private Function rtfview_LayoutParagraph( _
+    ByVal d As RtfViewData Ptr, _
+    ByVal paragraphData As RtfViewParagraph Ptr, _
+    ByVal contentWidth As Integer, _
+    metrics() As RtfViewFontMetric, _
+    ByRef metricCount As Integer _
 ) As Integer
-    Dim As RtfViewFontMetric metrics(0 To RTFVIEW_METRIC_CACHE_COUNT - 1)
-    Dim As Integer metricCount
-    Dim As Integer contentWidth, availableWidth
+
     Dim As Integer leftIndent, firstIndent, rightIndent, lineIndent
-    Dim As Integer lineIndex, bytePosition, nextPosition, codePoint, charWidth
+    Dim As Integer availableWidth, lineIndex
+    Dim As Integer bytePosition, nextPosition, codePoint, charWidth
     Dim As Integer wordWidth, wordPosition, wordNextPosition, wordCodePoint
-    Dim As Integer atWordStart, fragmentIndex
-    Dim As RtfViewParagraph Ptr paragraphData
+    Dim As Integer atWordStart = -1, fragmentIndex
     Dim As RtfViewRun Ptr runData, wordRunData
     Dim As RtfViewLine Ptr lineData
     Dim As RtfViewLineFragment Ptr fragmentData
 
-    If w = 0 OrElse d = 0 OrElse d->parse_error <> "" Then Return 0
-    d->visual_line_count = 0 : d->line_fragment_count = 0
-    d->document_height = 0
-    d->layout_width = w->w
-    contentWidth = w->w - RTFVIEW_SCROLLBAR_WIDTH - d->content_left - d->content_right
-    If contentWidth < 1 Then contentWidth = 1
+    leftIndent = paragraphData->left_indent \ RTFVIEW_TWIPS_PER_PIXEL
+    firstIndent = paragraphData->first_indent \ RTFVIEW_TWIPS_PER_PIXEL
+    rightIndent = paragraphData->right_indent \ RTFVIEW_TWIPS_PER_PIXEL
+    If leftIndent < 0 Then leftIndent = 0
+    If leftIndent >= contentWidth Then leftIndent = contentWidth - 1
+    If rightIndent < 0 Then rightIndent = 0
+    If rightIndent >= contentWidth Then rightIndent = contentWidth - 1
+    lineIndent = leftIndent + firstIndent
+    If lineIndent < 0 Then lineIndent = 0
+    If lineIndent >= contentWidth Then lineIndent = contentWidth - 1
 
-    For paragraphIndex As Integer = 0 To d->paragraph_count - 1
-        paragraphData = @d->paragraphs(paragraphIndex)
-        leftIndent = paragraphData->left_indent \ RTFVIEW_TWIPS_PER_PIXEL
-        firstIndent = paragraphData->first_indent \ RTFVIEW_TWIPS_PER_PIXEL
-        rightIndent = paragraphData->right_indent \ RTFVIEW_TWIPS_PER_PIXEL
-        If leftIndent < 0 Then leftIndent = 0
-        If leftIndent >= contentWidth Then leftIndent = contentWidth - 1
-        If rightIndent < 0 Then rightIndent = 0
-        If rightIndent >= contentWidth Then rightIndent = contentWidth - 1
-        lineIndent = leftIndent + firstIndent
-        If lineIndent < 0 Then lineIndent = 0
-        If lineIndent >= contentWidth Then lineIndent = contentWidth - 1
-        rtfview_AddLine(d, paragraphData[0], lineIndent, rightIndent)
-        If d->parse_error <> "" Then Return 0
-        lineIndex = d->visual_line_count - 1
-        availableWidth = contentWidth - lineIndent - rightIndent
-        If availableWidth < 1 Then availableWidth = 1
-        atWordStart = -1
+    rtfview_AddLine(d, paragraphData[0], lineIndent, rightIndent)
+    If d->parse_error <> "" Then Return 0
+    lineIndex = d->visual_line_count - 1
+    availableWidth = contentWidth - lineIndent - rightIndent
+    If availableWidth < 1 Then availableWidth = 1
 
-        For runOffset As Integer = 0 To paragraphData->run_count - 1
-            Dim As Integer runIndex = paragraphData->first_run + runOffset
-            runData = @d->runs(runIndex)
-            bytePosition = runData->start_byte
-            Dim As Integer runEnd = runData->start_byte + runData->byte_length
-            While bytePosition < runEnd
-                charWidth = rtfview_MeasureCharacter(d, runData, bytePosition, nextPosition, codePoint, metrics(), metricCount)
-                lineData = @d->lines(lineIndex)
-                If codePoint <> 32 AndAlso atWordStart <> 0 Then
-                    wordWidth = 0
-                    For wordRunOffset As Integer = runOffset To paragraphData->run_count - 1
-                        wordRunData = @d->runs(paragraphData->first_run + wordRunOffset)
-                        wordPosition = wordRunData->start_byte
-                        If wordRunOffset = runOffset Then wordPosition = bytePosition
-                        While wordPosition < wordRunData->start_byte + wordRunData->byte_length
-                            Dim As Integer glyphWidth = rtfview_MeasureCharacter(d, wordRunData, wordPosition, _
-                                wordNextPosition, wordCodePoint, metrics(), metricCount)
-                            If wordCodePoint = 32 Then Exit While
-                            wordWidth += glyphWidth
-                            wordPosition = wordNextPosition
-                            ' A word wider than the view wraps by scalar below.
-                            ' Stop counting it here rather than summing unbounded widths.
-                            If wordWidth > availableWidth Then Exit While
-                        Wend
-                        If wordWidth > availableWidth OrElse wordPosition < wordRunData->start_byte + wordRunData->byte_length Then Exit For
-                    Next wordRunOffset
-                    If lineData->fragment_count > 0 AndAlso lineData->text_width + wordWidth > availableWidth Then
-                        rtfview_AddLine(d, paragraphData[0], leftIndent, rightIndent)
-                        If d->parse_error <> "" Then Return 0
-                        lineIndex = d->visual_line_count - 1
-                        availableWidth = contentWidth - leftIndent - rightIndent
-                        If availableWidth < 1 Then availableWidth = 1
-                        lineData = @d->lines(lineIndex)
-                    End If
-                    atWordStart = 0
-                ElseIf codePoint = 32 Then
-                    atWordStart = -1
-                End If
-
-                If lineData->fragment_count > 0 AndAlso lineData->text_width + charWidth > availableWidth Then
-                    rtfview_AddLine(d, paragraphData[0], leftIndent, rightIndent)
+    For runOffset As Integer = 0 To paragraphData->run_count - 1
+        Dim As Integer runIndex = paragraphData->first_run + runOffset
+        runData = @d->runs(runIndex)
+        bytePosition = runData->start_byte
+        Dim As Integer runEnd = runData->start_byte + runData->byte_length
+        While bytePosition < runEnd
+            charWidth = rtfview_MeasureCharacter( _
+                d, runData, bytePosition, nextPosition, codePoint, _
+                metrics(), metricCount _
+            )
+            lineData = @d->lines(lineIndex)
+            If codePoint <> 32 AndAlso atWordStart <> 0 Then
+                wordWidth = 0
+                For wordRunOffset As Integer = runOffset To _
+                    paragraphData->run_count - 1
+                    wordRunData = @d->runs( _
+                        paragraphData->first_run + wordRunOffset _
+                    )
+                    wordPosition = wordRunData->start_byte
+                    If wordRunOffset = runOffset Then _
+                        wordPosition = bytePosition
+                    While wordPosition < _
+                        wordRunData->start_byte + wordRunData->byte_length
+                        Dim As Integer glyphWidth = rtfview_MeasureCharacter( _
+                            d, wordRunData, wordPosition, wordNextPosition, _
+                            wordCodePoint, metrics(), metricCount _
+                        )
+                        If wordCodePoint = 32 Then Exit While
+                        wordWidth += glyphWidth
+                        wordPosition = wordNextPosition
+                        ' A word wider than the view wraps by scalar below.
+                        ' Stop counting rather than summing unbounded widths.
+                        If wordWidth > availableWidth Then Exit While
+                    Wend
+                    If wordWidth > availableWidth OrElse _
+                       wordPosition < _
+                           wordRunData->start_byte + wordRunData->byte_length _
+                        Then Exit For
+                Next wordRunOffset
+                If lineData->fragment_count > 0 AndAlso _
+                   lineData->text_width + wordWidth > availableWidth Then
+                    rtfview_AddLine( _
+                        d, paragraphData[0], leftIndent, rightIndent _
+                    )
                     If d->parse_error <> "" Then Return 0
                     lineIndex = d->visual_line_count - 1
                     availableWidth = contentWidth - leftIndent - rightIndent
                     If availableWidth < 1 Then availableWidth = 1
                     lineData = @d->lines(lineIndex)
                 End If
+                atWordStart = 0
+            ElseIf codePoint = 32 Then
+                atWordStart = -1
+            End If
 
-                fragmentData = 0
-                If lineData->fragment_count > 0 Then
-                    fragmentIndex = lineData->first_fragment + lineData->fragment_count - 1
-                    fragmentData = @d->fragments(fragmentIndex)
-                    If fragmentData->run_index <> runIndex OrElse _
-                       fragmentData->start_byte + fragmentData->byte_length <> bytePosition Then fragmentData = 0
+            If lineData->fragment_count > 0 AndAlso _
+               lineData->text_width + charWidth > availableWidth Then
+                rtfview_AddLine( _
+                    d, paragraphData[0], leftIndent, rightIndent _
+                )
+                If d->parse_error <> "" Then Return 0
+                lineIndex = d->visual_line_count - 1
+                availableWidth = contentWidth - leftIndent - rightIndent
+                If availableWidth < 1 Then availableWidth = 1
+                lineData = @d->lines(lineIndex)
+            End If
+
+            fragmentData = 0
+            If lineData->fragment_count > 0 Then
+                fragmentIndex = lineData->first_fragment + _
+                    lineData->fragment_count - 1
+                fragmentData = @d->fragments(fragmentIndex)
+                If fragmentData->run_index <> runIndex OrElse _
+                   fragmentData->start_byte + fragmentData->byte_length <> _
+                       bytePosition Then
+                    fragmentData = 0
                 End If
-                If fragmentData = 0 Then
-                    If d->line_fragment_count >= RTFVIEW_MAX_LINE_FRAGMENTS Then
-                        d->parse_error = "The RTF document exceeds the line fragment limit"
-                        Return 0
-                    End If
-                    fragmentData = @d->fragments(d->line_fragment_count)
-                    fragmentData->run_index = runIndex
-                    fragmentData->start_byte = bytePosition
-                    fragmentData->byte_length = 0
-                    d->line_fragment_count += 1
-                    lineData->fragment_count += 1
+            End If
+            If fragmentData = 0 Then
+                If d->line_fragment_count >= RTFVIEW_MAX_LINE_FRAGMENTS Then
+                    d->parse_error = _
+                        "The RTF document exceeds the line fragment limit"
+                    Return 0
                 End If
-                ' Append complete UTF-8 scalars. Formatting and wrapping can
-                ' never split a continuation byte into a different line.
-                fragmentData->byte_length += nextPosition - bytePosition
-                lineData->text_width += charWidth
-                rtfview_LineMetrics(lineData, runData->font_id, runData->font_percent)
-                bytePosition = nextPosition
-            Wend
-        Next runOffset
+                fragmentData = @d->fragments(d->line_fragment_count)
+                fragmentData->run_index = runIndex
+                fragmentData->start_byte = bytePosition
+                fragmentData->byte_length = 0
+                d->line_fragment_count += 1
+                lineData->fragment_count += 1
+            End If
+            ' Append complete UTF-8 scalars so wrapping cannot split a scalar.
+            fragmentData->byte_length += nextPosition - bytePosition
+            lineData->text_width += charWidth
+            rtfview_LineMetrics( _
+                lineData, runData->font_id, runData->font_percent _
+            )
+            bytePosition = nextPosition
+        Wend
+    Next runOffset
+
+    Return -1
+
+End Function
+
+
+Private Function rtfview_BuildLayout( _
+    ByVal w As Widget Ptr, ByVal d As RtfViewData Ptr _
+) As Integer
+
+    Dim As RtfViewFontMetric metrics(0 To RTFVIEW_METRIC_CACHE_COUNT - 1)
+    Dim As Integer metricCount
+    Dim As Integer contentWidth
+    Dim As RtfViewParagraph Ptr paragraphData
+
+    If w = 0 OrElse d = 0 OrElse d->parse_error <> "" Then Return 0
+    d->visual_line_count = 0
+    d->line_fragment_count = 0
+    d->document_height = 0
+    d->layout_width = w->w
+    contentWidth = w->w - RTFVIEW_SCROLLBAR_WIDTH - _
+        d->content_left - d->content_right
+    If contentWidth < 1 Then contentWidth = 1
+
+    For paragraphIndex As Integer = 0 To d->paragraph_count - 1
+        paragraphData = @d->paragraphs(paragraphIndex)
+        If rtfview_LayoutParagraph( _
+            d, paragraphData, contentWidth, metrics(), metricCount _
+        ) = 0 Then Return 0
     Next paragraphIndex
 
     If d->visual_line_count = 0 Then
@@ -1164,7 +1349,9 @@ Private Function rtfview_BuildLayout( _
     Next index
     d->layout_dirty = 0
     Return -1
+
 End Function
+
 
 Private Sub rtfview_ClampScroll(ByVal w As Widget Ptr)
     If w = 0 OrElse w->data = 0 Then Exit Sub

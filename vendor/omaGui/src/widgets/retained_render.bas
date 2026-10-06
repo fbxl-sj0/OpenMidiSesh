@@ -131,6 +131,9 @@ Private Function gui_RetainedPaletteKey(ByRef themePalette As Const GUI_Theme) A
     RETAIN_THEME_FIELD(syntax_label_color)
     RETAIN_THEME_FIELD(syntax_object_color)
     RETAIN_THEME_FIELD(mode)
+    RETAIN_THEME_FIELD(panel_face)
+    RETAIN_THEME_FIELD(accent_secondary)
+    RETAIN_THEME_FIELD(visual_style)
     #undef RETAIN_THEME_FIELD
     Return themeKey
 End Function
@@ -168,6 +171,10 @@ Function gui_PrepareRetainedFrame() As Integer
             Dim As Widget Ptr owner = w
             Dim As Integer ownerDepth
             While owner <> 0 AndAlso ownerDepth < GUI_LAYOUT_PARENT_GUARD
+                If owner->theme_override_enabled <> 0 Then
+                    key &= gui_RetainedPaletteKey(owner->theme_override)
+                    Exit While
+                End If
                 If owner->appearance <> 0 Then
                     key &= gui_RetainedPaletteKey(*owner->appearance)
                     Exit While
@@ -202,8 +209,9 @@ Function gui_PrepareRetainedFrame() As Integer
                     w->retained_x, w->retained_y, w->retained_w, w->retained_h
                 If w->evis <> 0 Then gui_InvalidateRect w->ax, w->ay, w->w, w->h
             End If
+            ' The retained key already matches. Do not copy a large key every idle frame.
+            w->retained_key = key
         End If
-        w->retained_key = key
         w->retained_valid = -1
         w->retained_visible = w->evis
         w->retained_x = w->ax: w->retained_y = w->ay

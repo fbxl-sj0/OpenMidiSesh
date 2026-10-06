@@ -16,19 +16,24 @@
     This file intentionally does NOT contain:
 
         - application-specific build instructions
-        - an upstream commit identity
+        - private build-tool locations
         - the license text
 -->
 
 # omaGUI dependency snapshot
 
-OpenSesh maintains this copy downstream. The release preparation includes
-source documentation, narrowly explained lint annotations, CSS selector bounds
-checks and a safe unallocated-image probe. It retains the existing API and
-third-party license notices, and includes additive portable label text styles.
-These edits have not been synchronized to the
-other local projects. The manifests identify the current bytes, rather than
-claiming an upstream commit or unchanged shared-tree identity.
+OpenSesh maintains this copy downstream of the Tiko fork's omaGUI tree at
+`42ff302a9eb225b31c15671b9825fa502dd0215a` (2026-10-06). The update includes
+batched glyph rendering, byte-span helpers, text caches, retained palette
+tracking, and the theme-frame widget.
+
+OpenSesh retains its source documentation, narrowly explained lint annotations,
+CSS selector bounds checks, and the allocation query before image byte-array
+bound checks. Portable label text styles and literal label colors remain
+available, including the distinction between opaque white and theme-following
+text. Existing public declarations and third-party notices are preserved.
+The manifests identify the resulting downstream bytes; they do not claim
+byte identity with Tiko or that our remaining changes were pushed upstream.
 
 This directory is the common omaGUI development tree. `TREE.sha256` records
 every file in the tree except itself, including this document and

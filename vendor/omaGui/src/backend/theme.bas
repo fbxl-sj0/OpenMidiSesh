@@ -142,6 +142,41 @@ Sub theme_InitClassic()
 End Sub
 
 
+Sub theme_SetCurrent(ByRef theme_value As GUI_Theme)
+    /'
+        Application shells such as TurboTrek build a complete faction palette
+        outside omaGUI. Their profiles predate the library's optional classic
+        semantic roles, so derive those roles after copying the shared fields.
+        This keeps labels, menus, and command buttons readable without asking
+        every host application to duplicate the backend's default palette.
+    '/
+    current_theme = theme_value
+    If current_theme.panel_face = 0 Then _
+        current_theme.panel_face = current_theme.bg_face
+    If current_theme.accent_secondary = 0 Then _
+        current_theme.accent_secondary = current_theme.bg_select
+    theme_ResetClassicColors
+    ' Older complete palettes predate the dialog-specific roles. Derive them
+    ' together only when that extension was not supplied by the caller.
+    If current_theme.bg_widget = 0 AndAlso _
+       current_theme.menu_background = 0 AndAlso _
+       current_theme.title_background = 0 Then
+        current_theme.bg_widget = current_theme.bg_light
+        current_theme.menu_background = current_theme.classic_menu_background
+        current_theme.menu_text = current_theme.classic_menu_text
+        current_theme.menu_selected_background = current_theme.bg_select
+        current_theme.menu_selected_text = current_theme.text_select
+        current_theme.menu_separator = current_theme.bg_dark
+        current_theme.menu_disabled_text = current_theme.classic_disabled_text
+        current_theme.title_background = current_theme.bg_face
+        current_theme.title_text = current_theme.text_main
+    End If
+End Sub
+
+Sub theme_GetCurrent(ByRef theme_value As GUI_Theme)
+    theme_value = current_theme
+End Sub
+
 Sub theme_SetMode(ByVal theme_mode As Integer)
     Select Case theme_mode
         Case GUI_THEME_MODE_DARK
@@ -162,6 +197,9 @@ Sub theme_SetMode(ByVal theme_mode As Integer)
     current_theme.menu_selected_text = current_theme.classic_menu_selected_text
     current_theme.menu_separator = current_theme.bg_dark
     current_theme.menu_disabled_text = current_theme.classic_disabled_text
+    current_theme.panel_face = current_theme.bg_face
+    current_theme.accent_secondary = current_theme.bg_select
+    current_theme.visual_style = GUI_THEME_STYLE_CLASSIC
     current_theme.control_style = GUI_CONTROL_STYLE_CLASSIC
     current_theme.title_background = current_theme.bg_face
     current_theme.title_text = current_theme.text_main

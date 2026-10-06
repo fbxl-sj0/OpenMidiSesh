@@ -56,6 +56,9 @@ Type LabelData
     As Integer borderStyle
     ' Appended flags reuse the backend's portable synthetic text styles.
     As Integer textStyle
+    ' Theme-following is separate from the 32-bit color value because opaque
+    ' white can use the same bit pattern as LABEL_COLOR_THEME_TEXT.
+    As Integer textColorUsesTheme
 End Type
 
 ' A sentinel keeps a label's text tied to the active theme at render time.
@@ -65,6 +68,12 @@ Declare Function label_Create( _
     ByVal nm As String, ByVal txt As String, _
     ByVal x As Integer, ByVal y As Integer, _
     ByVal clr As ULong = RGB(0, 0, 0), _
+    ByVal fontId As Integer = BACKEND_FONT_DEFAULT _
+) As Widget Ptr
+Declare Function label_CreateWithColor( _
+    ByVal nm As String, ByVal txt As String, _
+    ByVal x As Integer, ByVal y As Integer, _
+    ByVal clr As ULong, _
     ByVal fontId As Integer = BACKEND_FONT_DEFAULT _
 ) As Widget Ptr
 Declare Function label_SetText( _
@@ -77,6 +86,10 @@ Declare Sub label_SetFontScalePercent(ByVal w As Widget Ptr, ByVal percent As In
 Declare Function label_SetTextStyle(ByVal w As Widget Ptr, ByVal textStyle As Integer) As Integer
 Declare Function label_GetTextStyle(ByVal w As Widget Ptr) As Integer
 Declare Function label_SetTextColor( _
+    ByVal w As Widget Ptr, ByVal textColor As ULong _
+) As Integer
+' Literal colors remain literal even when their bits equal the theme sentinel.
+Declare Function label_SetTextColorLiteral( _
     ByVal w As Widget Ptr, ByVal textColor As ULong _
 ) As Integer
 Declare Function label_GetTextColor( _

@@ -60,6 +60,13 @@ Type ListBoxData
     As ULong background_color
     As Integer foreground_color_override
     As ULong foreground_color
+    As Integer border_color_override
+    As ULong border_color
+    As Integer selected_background_color_override
+    As ULong selected_background_color
+    As Integer selected_foreground_color_override
+    As ULong selected_foreground_color
+    As Integer right_column_offset
     ' Opaque signed values, not owned pointers. LongInt keeps the same range
     ' on 32-bit and 64-bit targets. New rows start at zero.
     As LongInt item_data(0 To LISTBOX_MAX_ITEMS - 1)
@@ -173,6 +180,21 @@ Declare Function listbox_ClearForegroundColor(ByVal w As Widget Ptr) As Integer
 Declare Function listbox_GetForegroundColor( _
     ByVal w As Widget Ptr, _
     ByRef color_value As ULong _
+) As Integer
+
+' SetColors retains TurboTrek's existing five-role list presentation API.
+' The more granular background and foreground calls remain available.
+Declare Sub listbox_SetColors( _
+    ByVal w As Widget Ptr, _
+    ByVal background_color As ULong, ByVal border_color As ULong, _
+    ByVal foreground_color As ULong, _
+    ByVal selected_background_color As ULong, _
+    ByVal selected_foreground_color As ULong _
+)
+' A non-negative offset aligns the text after the first tab in a row. This is
+' used for compact name/value lists without creating a second widget column.
+Declare Function listbox_SetRightColumn( _
+    ByVal w As Widget Ptr, ByVal column_offset As Integer _
 ) As Integer
 
 #endif

@@ -343,7 +343,17 @@ Function gui_ButtonPressed(ByVal nm As String) As Integer
 
     w = gui_FindWidget(nm)
     If w = 0 Then Return 0
-    If w->data = 0 Then Return 0
+    If w->data = 0 OrElse w->destroy <> @button_Destroy Then Return 0
+    Dim As Widget Ptr owner = w
+    Dim As Integer ownerDepth
+    ' A release event belongs to a live, eligible control tree. Visibility
+    ' can change after the update, before application code polls the event.
+    While owner <> 0 AndAlso ownerDepth < GUI_MODAL_ROOT_MAXIMUM_DEPTH
+        If owner->visible = 0 OrElse owner->enabled = 0 Then Return 0
+        owner = owner->parent
+        ownerDepth += 1
+    Wend
+    If owner <> 0 Then Return 0
     d = Cast(ButtonData Ptr, w->data)
     Return d->pressed
 End Function

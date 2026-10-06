@@ -121,8 +121,13 @@ Private Sub listbox_RenderColumns(ByVal w As Widget Ptr, ByVal foreground_color 
         listbox_GetItemSelected w, item_index, selected_value
         Dim As ULong text_color = foreground_color
         If selected_value Then
-            backend_Rect column_x + LISTBOX_CLIP_INSET, row_y, width_value - LISTBOX_CLIP_INSET * 2, listbox_RowHeight(d), theme_GetColor(GUI_COLOR_SELECT_BG), 1
+            Dim As ULong selection_color = theme_GetColor(GUI_COLOR_SELECT_BG)
+            If d->selected_background_color_override Then _
+                selection_color = d->selected_background_color
+            backend_Rect column_x + LISTBOX_CLIP_INSET, row_y, width_value - LISTBOX_CLIP_INSET * 2, listbox_RowHeight(d), selection_color, 1
             text_color = theme_GetColor(GUI_COLOR_SELECT_TEXT)
+            If d->selected_foreground_color_override Then _
+                text_color = d->selected_foreground_color
         End If
         backend_Print column_x + LISTBOX_TEXT_X_OFFSET, row_y + LISTBOX_TEXT_Y_OFFSET, text_color, d->items(item_index)
         If d->selection_mode <> LISTBOX_SELECTION_SINGLE AndAlso w->has_focus AndAlso item_index = d->selected_index Then

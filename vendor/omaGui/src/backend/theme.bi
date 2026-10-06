@@ -41,6 +41,9 @@ Type GUI_Theme
     As ULong text_select
     As ULong bg_select
     As ULong win_border
+    ' Panel motifs are independent of the classic/flat control treatment.
+    As ULong panel_face, accent_secondary
+    As Integer visual_style
     As ULong menu_background, menu_text
     As ULong menu_selected_background, menu_selected_text
     As ULong menu_separator, menu_disabled_text
@@ -76,6 +79,8 @@ End Type
 
 Extern current_theme As GUI_Theme
 Declare Sub theme_InitClassic()
+Declare Sub theme_SetCurrent(ByRef theme_value As GUI_Theme)
+Declare Sub theme_GetCurrent(ByRef theme_value As GUI_Theme)
 Declare Sub theme_InitDialog(ByRef dialogTheme As GUI_Theme)
 Const GUI_CONTROL_STYLE_CLASSIC As Integer = 0
 Const GUI_CONTROL_STYLE_FLAT As Integer = 1
@@ -116,6 +121,20 @@ Declare Function theme_GetClassicColor( _
 Const GUI_THEME_MODE_NORMAL As Integer = 0
 Const GUI_THEME_MODE_DARK As Integer = 1
 Const GUI_THEME_MODE_BLACK As Integer = 2
+
+' TurboTrek retains these identities as presentation tokens. omaGUI widgets
+' consume the shared color fields, while application frame renderers may use
+' the style to choose a faction-specific structural motif.
+Const GUI_THEME_STYLE_CLASSIC As Integer = 0
+Const GUI_THEME_STYLE_FORTIFIED As Integer = 1
+Const GUI_THEME_STYLE_INSCRIBED As Integer = 2
+Const GUI_THEME_STYLE_MODULAR As Integer = 3
+Const GUI_THEME_STYLE_SWEPT As Integer = 4
+Const GUI_THEME_STYLE_CHEVRON As Integer = 5
+Const GUI_THEME_STYLE_ORBITAL As Integer = 6
+Const GUI_THEME_STYLE_FACETED As Integer = 7
+Const GUI_THEME_STYLE_NODAL As Integer = 8
+Const GUI_THEME_STYLE_RIGGED As Integer = 9
 
 Enum GUI_THEME_COLOR
     GUI_COLOR_BORDER = 0

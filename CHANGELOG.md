@@ -4,6 +4,9 @@
 
 ## Unreleased
 
+- Update omaGUI from Tiko with batched glyph rendering, cached text metrics,
+  retained palette tracking and theme-frame controls. Preserve our GUI safety
+  checks, label styles, literal colors and score redraw fixes.
 - Capture score pixels in bulk during native rendering audits so Haiku checks
   retain their full coverage within the existing editor timeout.
 - Restore the score background when note-tool cursors move or disappear, and
