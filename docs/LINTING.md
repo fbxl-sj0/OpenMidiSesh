@@ -46,6 +46,10 @@ compiler exports. These checks also cover paths containing spaces. Macro
 replay preprocesses the compilation root so an included implementation retains
 the declarations and definitions that made its initial export valid.
 
+Conditional expression and branch-node arrays use their validated record counts.
+An unrelated 250,000-entry symbol-type limit previously rejected valid large
+GUI models. Their existing expression and node limits remain in place.
+
 These exports are compiler front-end checks on the selected Windows or Linux
 target. Native compilation with all warnings and target execution remain
 separate required checks. In particular, a Linux export on Windows is not a

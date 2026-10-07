@@ -5,7 +5,7 @@
  
  Const FBLINT_VERSION As String = "1.0.0"
 -Const FBLINT_RULESET_VERSION As String = "2026.10.086"
-+Const FBLINT_RULESET_VERSION As String = "2026.10.093"
++Const FBLINT_RULESET_VERSION As String = "2026.10.094"
  Const FBLINT_CONFIG_FILE_NAME As String = "fblint.toml"
  Const MAX_COPYRIGHT_SCAN_BYTES As Integer = 4096
  
@@ -1060,6 +1060,19 @@
  Const MEMORY_SEMANTIC_DEPTH_LIMIT As Integer = 128
  
  Type MemorySemanticOwner
+--- a/src/fb_linter_conditional_model.bi
++++ b/src/fb_linter_conditional_model.bi
+@@ -211,7 +211,9 @@
+        Schema20Choice(Schema27Value(Schema27First("Q"), 4), "|fb|deprecated|fblite|qb|") = 0 Then
+         FailureText = "compiler conditional dialect receipt is incomplete": Return 0
+     End If
+-    ReDim Frames(0 To FBLINT_MAX_SEMANTIC_SYMBOL_TYPES)
++    ' Expression identities are dense in the validated graph. Their count is
++    ' bounded above, independently of the smaller symbol-type storage limit.
++    ReDim Frames(0 To Schema27Count("E"))
+     Dim As LongInt Stack(), Depth, ExpressionId
+     Dim As LongInt RowIndex = Schema27First("E")
+     ReDim Stack(0 To Schema27Count("E"))
 --- a/src/fb_linter_contract_rules.bi
 +++ b/src/fb_linter_contract_rules.bi
 @@ -160,8 +160,14 @@
@@ -1079,3 +1092,15 @@
              End If
              With ContractSourceSuppressions(ContractSourceSuppressionCount)
                  .CacheIndex = CacheIndex
+--- a/src/fb_linter_conditional_branches.bi
++++ b/src/fb_linter_conditional_branches.bi
+@@ -49,7 +49,8 @@
+     If Schema27Count("N") > EMPTY_BODY_NODE_LIMIT OrElse Schema27Count("H") > EMPTY_BODY_NODE_LIMIT * 4 Then
+         FailureText = "compiler conditional node budget exceeded": Return 0
+     End If
+-    ReDim Nodes(0 To FBLINT_MAX_SEMANTIC_SYMBOL_TYPES)
++    ' Node identities use the validated node count, not the symbol-type limit.
++    ReDim Nodes(0 To Schema27Count("N"))
+     Dim As LongInt RowIndex = Schema27First("N")
+     Dim As LongInt NodeId, ParentId, StatementRow, Slot
+     Dim As String EdgeText
