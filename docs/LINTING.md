@@ -37,8 +37,14 @@ lists those contexts without running a scan.
 The context-aware validator patch is retained in
 `tools/fblint/semantic-context.patch`. It adds typed build-context options and
 keeps source-specific rule indexes separate from reusable graph metadata.
+Its baseline is the current linter source with compiler-backed CASE and
+declaration typing rules. Preserve `fb_linter_case_rules.bi` and
+`fb_linter_declaration_type_rules.bi` when applying the patch.
 `tools/fblint/test_semantic_context.py` checks included files, absent files,
-inactive includes and paths containing spaces against real compiler exports.
+inactive includes, inline returns and included macro replay against real
+compiler exports. These checks also cover paths containing spaces. Macro
+replay preprocesses the compilation root so an included implementation retains
+the declarations and definitions that made its initial export valid.
 
 These exports are compiler front-end checks on the selected Windows or Linux
 target. Native compilation with all warnings and target execution remain

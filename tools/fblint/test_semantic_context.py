@@ -30,7 +30,7 @@ def check_context(linter: Path, compiler: Path) -> None:
         common = [str(linter.resolve()), '--no-config', '--compiler', str(compiler.resolve()),
                   '--compiler-target', 'win64', '--compiler-backend', 'gcc',
                   '--compiler-multithreaded', '--require-semantic', '--format', 'jsonl',
-                  '--select', 'FBL310', '--semantic-root', str(root),
+                  '--select', 'FBL310,FBL-CF-008,FBL-NUM-007', '--semantic-root', str(root),
                   '--compiler-include', str(directory)]
         cases = (
             ('included', ['--compiler-define', 'CONTEXT_TEST', str(implementation), str(header)], 0),
@@ -60,6 +60,37 @@ def check_context(linter: Path, compiler: Path) -> None:
         if result.returncode != 2 or len(statuses) != 2 or any(row['accepted'] for row in statuses):
             raise RuntimeError('A failed compilation context was accepted: ' + result.stdout + result.stderr)
         print('semantic_context_compile_failure=pass', flush=True)
+        root.write_text('dim shared ContextLimit as integer = 7\n'
+                        '#ifdef CONTEXT_TEST\n#include "included.bi"\n'
+                        '#include "included.bas"\n#endif\n')
+        implementation.write_text('function ContextValue() as integer\n'
+                                  ' dim value as integer = ContextLimit\n'
+                                  ' if value > 0 then return value : end if\n'
+                                  ' return 0\nend function\n')
+        result = subprocess.run(common + ['--compiler-define', 'CONTEXT_TEST',
+                                str(implementation)], capture_output=True, text=True,
+                                timeout=120, check=False)
+        rows = [json.loads(line) for line in result.stdout.splitlines() if line.startswith('{')]
+        summaries = [row for row in rows if row.get('type') == 'summary']
+        if result.returncode != 0 or len(summaries) != 1 or summaries[0]['operational_errors'] != 0:
+            raise RuntimeError('Included inline RETURN failed: ' + result.stdout + result.stderr)
+        print('semantic_context_inline_return=pass', flush=True)
+        implementation.write_text('#define ContextPredicate(value) ((value) > 0 and (value) < ContextLimit)\n'
+                                  'function ContextValue() as integer\n'
+                                  ' dim value as integer = ContextLimit\n'
+                                  ' if ContextPredicate(value) then return 1\n'
+                                  ' return 0\nend function\n')
+        result = subprocess.run(common + ['--compiler-define', 'CONTEXT_TEST',
+                                '--fail-on-warning', str(implementation)], capture_output=True,
+                                text=True, timeout=120, check=False)
+        rows = [json.loads(line) for line in result.stdout.splitlines() if line.startswith('{')]
+        summaries = [row for row in rows if row.get('type') == 'summary']
+        findings = [row for row in rows if row.get('type') == 'finding']
+        if (result.returncode != 1 or len(summaries) != 1 or summaries[0]['operational_errors'] != 0
+                or len(findings) != 1 or findings[0]['rule'] != 'FBL-NUM-007'
+                or Path(findings[0]['path']).resolve() != implementation.resolve()):
+            raise RuntimeError('Included macro replay failed: ' + result.stdout + result.stderr)
+        print('semantic_context_macro_replay=pass', flush=True)
 
 
 if __name__ == '__main__':
