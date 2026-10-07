@@ -57,6 +57,31 @@ block ranges do not repeatedly rescan large preprocessed roots. Cache exhaustion
 keeps the forward reader available. Encoding, byte-boundary validation, source
 occurrence identity and restoration of the compiler file position are unchanged.
 
+The follow-up patch `tools/fblint/semantic-core-projection.patch` applies to the
+linter's indexed schema-27 reader and compiler-backed procedure typing inputs.
+Apply it after the context patch. It merges validated core tag chains in their
+original export order; detail records stay available to every rule consumer.
+The native reader regression compares that projection with the full row stream
+and keeps its corrupt-model rejection checks.
+
+Windows union fields named `Function` are legal field declarations. Their
+`aggregate-member` statement route also occurs on procedure members, so that
+route alone cannot require a procedure header. Compiler procedure declaration
+receipts still require every prototype and definition header.
+`tools/fblint/test_procedure_keyword_fields.py` exports the adjacent fixture
+with the real compiler, runs full strict semantic lint, and confirms that the
+production reader rejects missing member headers. Supply `--linter`,
+`--compiler`, `--includes`, and `--reader`; the reader is the executable built
+from the patched linter's `test_semantic_schema27.bas`.
+
+`tools/fblint/semantic-replay-cache.patch` retains one completed macro expansion
+query for an unchanged compilation context. Reuse requires the retained model
+digest and the same query policy, after the context owner has checked every
+physical source hash. Cached findings own their strings and physical sites;
+they retain no borrowed model rows. Each selected source still runs its normal
+rule checks and suppression handling. The context regression verifies that
+three included inputs reuse the expansion and report the same physical finding.
+
 These exports are compiler front-end checks on the selected Windows or Linux
 target. Native compilation with all warnings and target execution remain
 separate required checks. In particular, a Linux export on Windows is not a

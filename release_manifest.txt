@@ -295,7 +295,11 @@ tools/fblint/actual_boundary_review.bas
 tools/fblint/fixed-width-and-environment.patch
 tools/fblint/fixed_width_safe.bas
 tools/fblint/semantic-context.patch
+tools/fblint/semantic-core-projection.patch
 tools/fblint/semantic-coordinate-index.patch
+tools/fblint/semantic-replay-cache.patch
+tools/fblint/test_procedure_keyword_fields.bas
+tools/fblint/test_procedure_keyword_fields.py
 tools/fblint/test_semantic_context.py
 tools/fetch_ci_toolchain.py
 tools/install_ci_freebasic.sh

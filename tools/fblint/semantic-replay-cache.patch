@@ -1,0 +1,72 @@
+--- a/src/fb_linter_boolean_replay.bi
++++ b/src/fb_linter_boolean_replay.bi
+@@ -50,6 +50,19 @@
+     SiteColumn As Integer
+     MessageText As String
+ End Type
++
++
++' One compiler-proved expansion result belongs to the retained context model.
++' The context owner verifies the model and every physical source hash before
++' each analysis. Store findings, never borrowed row indexes or model pointers.
++' This single-threaded cache is bounded by the existing finding count limit.
++Dim Shared ContextBooleanReplayFindings() As CompilerBooleanFinding
++Dim Shared As LongInt ContextBooleanReplayCount
++Dim Shared As String ContextBooleanReplayKey, ContextBooleanReplayRoot
++
++Declare Function AppendCompilerBooleanFinding(Findings() As CompilerBooleanFinding, ByRef FindingCount As LongInt, _
++    ByRef RuleId As String, ByRef CategoryText As String, ByRef SitePath As String, ByVal SiteLine As Integer, _
++    ByVal SiteColumn As Integer, ByRef MessageText As String, ByRef FailureText As String) As Integer
+ 
+ Declare Function PrepareConditionalReplayOwners(Statements() As BooleanReplayStatement, _
+     ByVal StatementCount As LongInt, ByRef FailureText As String) As Integer
+@@ -302,6 +315,29 @@
+     ' Included implementations need the same declarations and definitions as
+     ' the initial export. Expand the real compilation unit before replaying it.
+     If Len(Options.SemanticRoot) > 0 Then CompilationRoot = Options.SemanticRoot
++    Dim As String CacheKey
++    If Len(Options.SemanticRoot) > 0 AndAlso Len(ContextModelDigest) > 0 Then
++        CacheKey = ContextModelDigest + ":" + LTrim(Str(CheckMetric)) + ":" + LTrim(Str(CheckEager))
++        If ContextBooleanReplayKey = CacheKey Then
++            For CachedSlot As LongInt = 1 To ContextBooleanReplayCount
++                With ContextBooleanReplayFindings(CachedSlot)
++                    Dim As String SitePath = .SitePath
++                    ' A zero-line fallback follows the source being analyzed;
++                    ' proven physical include locations keep their own paths.
++                    If .SiteLine = 0 AndAlso SitePath = ContextBooleanReplayRoot Then SitePath = RootPath
++                    If AppendCompilerBooleanFinding(Findings(), FindingCount, .RuleId, .CategoryText, _
++                        SitePath, .SiteLine, .SiteColumn, .MessageText, FailureText) = 0 Then Return 0
++                End With
++            Next CachedSlot
++            TraceLog "compiler Boolean expansion reused"
++            FailureText = ""
++            Return -1
++        End If
++    End If
++    ContextBooleanReplayKey = ""
++    ContextBooleanReplayCount = 0
++    Erase ContextBooleanReplayFindings
++    Dim As LongInt FirstReplayFinding = FindingCount
+     Dim As String BasePath, ModelPath, OutputPath, ExpandedPath, CompilerOutput, TargetOverride
+     Dim As Long ExitCode
+     Dim As Integer Valid
+@@ -340,7 +376,18 @@
+     ' Restore on every outcome, including validation and proof failures.
+     Schema27ResumeIndex Saved
+     FblintDeleteSemanticTemps BasePath, ModelPath, ExpandedPath, OutputPath
+-    If Valid <> 0 Then FailureText = ""
++    If Valid <> 0 Then
++        If Len(CacheKey) > 0 Then
++            ContextBooleanReplayCount = FindingCount - FirstReplayFinding
++            ReDim ContextBooleanReplayFindings(0 To ContextBooleanReplayCount)
++            For CachedSlot As LongInt = 1 To ContextBooleanReplayCount
++                ContextBooleanReplayFindings(CachedSlot) = Findings(FirstReplayFinding + CachedSlot)
++            Next CachedSlot
++            ContextBooleanReplayRoot = RootPath
++            ContextBooleanReplayKey = CacheKey
++        End If
++        FailureText = ""
++    End If
+     Return Valid
+ End Function
+ 

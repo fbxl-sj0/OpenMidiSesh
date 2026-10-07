@@ -1,0 +1,122 @@
+--- a/src/fb_linter_semantic_schema27.bi
++++ b/src/fb_linter_semantic_schema27.bi
+@@ -215,6 +215,43 @@
+     Dim As Integer TagIndex = Schema27Tag(TagText)
+     If TagIndex < 0 Then Return 0
+     Return Schema27TagCounts(TagIndex)
++End Function
++
++Function Schema27BuildCoreRows(CoreRows() As Long, ByRef DetailRows As LongInt) As Long
++    ' All detail records remain in the validated index for rule consumers.
++    ' Merge tag chains by their original row positions: procedure and node
++    ' context depends on export order, so concatenating tag lists is unsafe.
++    If Schema27FactsComplete = 0 Then Return 0
++    Dim As String Tags(0 To 9) = {"M", "D", "S", "B", "I", "P", "V", "N", "E", "END"}
++    Dim As Long Positions(0 To 9)
++    Dim As Long CoreCount
++    For TagIndex As Integer = 0 To 9
++        Dim As Integer Ordinal = Schema27Tag(Tags(TagIndex))
++        If Ordinal < 0 OrElse Ordinal > UBound(Schema27TagHeads) Then Return 0
++        Positions(TagIndex) = Schema27TagHeads(Ordinal)
++        If Schema27TagCounts(Ordinal) > Schema27RowCount - CoreCount Then Return 0
++        CoreCount += Schema27TagCounts(Ordinal)
++    Next TagIndex
++    DetailRows = Schema27RowCount - CoreCount - Schema27Count("FBCSEM")
++    If CoreCount < 1 OrElse DetailRows < 0 Then Return 0
++    ReDim CoreRows(0 To CoreCount - 1)
++    For CoreIndex As Long = 0 To CoreCount - 1
++        Dim As Integer Selected = -1
++        For TagIndex As Integer = 0 To 9
++            If Positions(TagIndex) = 0 Then Continue For
++            If Selected < 0 Then
++                Selected = TagIndex
++            ElseIf Positions(TagIndex) < Positions(Selected) Then
++                Selected = TagIndex
++            End If
++        Next TagIndex
++        If Selected < 0 Then Erase CoreRows: Return 0
++        Dim As Long RowIndex = Positions(Selected)
++        If RowIndex < 1 OrElse RowIndex > Schema27RowCount Then Erase CoreRows: Return 0
++        CoreRows(CoreIndex) = RowIndex
++        Positions(Selected) = Schema27Rows(RowIndex).NextTag
++    Next CoreIndex
++    Return CoreCount
+ End Function
+ 
+ Function Schema27Add(Fields() As String, ByRef LineText As String, _
+--- a/src/fb_linter_semantic.bi
++++ b/src/fb_linter_semantic.bi
+@@ -9989,6 +9989,7 @@
+     ByRef ImplicitCallCountOut As Integer) As Integer
+ 
+     Dim As Integer FileNumber
++    Dim As Long CoreRows(), CoreCursor, CoreCount
+     Dim As Integer IsFirstLine
+     Dim As Integer HeaderSeen
+     Dim As Integer FooterSeen
+@@ -10397,8 +10398,14 @@
+ 
+     IsFirstLine = -1
+ 
+-    Do While Eof(FileNumber) = 0
+-        Line Input #FileNumber, LineText
++    Do While Eof(FileNumber) = 0 OrElse CoreCount > 0
++        If CoreCount > 0 Then
++            If CoreCursor >= CoreCount Then Exit Do
++            LineText = Schema27LineText(CoreRows(CoreCursor))
++            CoreCursor += 1
++        Else
++            Line Input #FileNumber, LineText
++        End If
+ 
+         If IsFirstLine <> 0 Then
+             IsFirstLine = 0
+@@ -10455,6 +10462,10 @@
+                         Next metadataIndex
+                     End If
+                 End If
++            End If
++            If SchemaVersion = FBLINT_SEMANTIC_SCHEMA_V27 Then
++                CoreCount = Schema27BuildCoreRows(CoreRows(), DetailCount)
++                If CoreCount = 0 Then Close #FileNumber: Return 0
+             End If
+             HeaderSeen = -1
+             Continue Do
+--- a/src/fb_linter_procedure_inputs.bi
++++ b/src/fb_linter_procedure_inputs.bi
+@@ -140,9 +140,12 @@
+         If ProcedureInputAvailable(Schema27Rows(RowIndex).ModuleOrdinal) Then
+             Dim As LongInt TokenId = Schema27Number(RowIndex, 9)
+             Dim As String RouteText = Schema27Value(Schema27Find("STE", Schema27Value(RowIndex, 1)), 2)
++            ' Aggregate fields can be named FUNCTION or SUB. Their shared
++            ' aggregate-member route does not identify a procedure header.
++            ' Typed procedure DCL receipts above still require member headers;
+             ' FUNCTION return assignments take a different accepted route.
+             If (TokenId = 334 OrElse TokenId = 345 OrElse TokenId = 346) AndAlso _
+-               (RouteText = "declaration" OrElse RouteText = "aggregate-member") AndAlso Slot = 0 Then Return 0
++               RouteText = "declaration" AndAlso Slot = 0 Then Return 0
+         End If
+         RowIndex = Schema27Rows(RowIndex).NextTag
+     Loop
+--- a/test_semantic_schema27.bas
++++ b/test_semantic_schema27.bas
+@@ -27,6 +27,19 @@
+ If Accepted <> 0 Then
+     If Schema27FactsComplete = 0 OrElse Schema27Count("FILE") = 0 OrElse _
+        Schema27Count("NT") = 0 OrElse UBound(CanonicalIds) < 1 Then End 1
++    Dim As Long CoreRows(), CoreCount, Cursor
++    Dim As LongInt DetailRows
++    CoreCount = Schema27BuildCoreRows(CoreRows(), DetailRows)
++    If CoreCount < 1 OrElse DetailRows + CoreCount + Schema27Count("FBCSEM") <> Schema27RowCount Then End 1
++    For RowIndex As Long = 1 To Schema27RowCount
++        Dim As String TagText = Schema27Value(RowIndex, 0)
++        Select Case TagText
++        Case "M", "D", "S", "B", "I", "P", "V", "N", "E", "END"
++            If Cursor >= CoreCount OrElse CoreRows(Cursor) <> RowIndex Then End 1
++            Cursor += 1
++        End Select
++    Next RowIndex
++    If Cursor <> CoreCount Then End 1
+ Else
+     If Schema27FactsComplete <> 0 OrElse Schema27RowCount <> 0 OrElse _
+        UBound(LatestTypes) >= 0 OrElse UBound(CanonicalIds) >= 0 Then End 1

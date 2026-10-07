@@ -8,6 +8,7 @@ This file does not install tools or accept heuristic fallback.
 
 import argparse
 import json
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -91,6 +92,22 @@ def check_context(linter: Path, compiler: Path) -> None:
                 or Path(findings[0]['path']).resolve() != implementation.resolve()):
             raise RuntimeError('Included macro replay failed: ' + result.stdout + result.stderr)
         print('semantic_context_macro_replay=pass', flush=True)
+        environment = os.environ.copy()
+        environment['FBLINTER_TRACE'] = '1'
+        result = subprocess.run(common + ['--compiler-define', 'CONTEXT_TEST',
+                                '--fail-on-warning', str(root), str(implementation), str(header)],
+                                capture_output=True, text=True, timeout=120, check=False,
+                                env=environment)
+        rows = [json.loads(line) for line in result.stdout.splitlines() if line.startswith('{')]
+        summary = next(row for row in rows if row.get('type') == 'summary')
+        findings = [row for row in rows if row.get('type') == 'finding']
+        if (result.returncode != 1 or summary['semantic_accepted'] != 3
+                or summary['operational_errors'] != 0 or len(findings) != 1
+                or findings[0]['rule'] != 'FBL-NUM-007'
+                or Path(findings[0]['path']).resolve() != implementation.resolve()
+                or (result.stdout + result.stderr).count('compiler Boolean expansion reused') < 2):
+            raise RuntimeError('Context macro replay reuse failed: ' + result.stdout + result.stderr)
+        print('semantic_context_macro_replay_reuse=pass', flush=True)
 
 
 if __name__ == '__main__':
