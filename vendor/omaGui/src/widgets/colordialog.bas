@@ -4,9 +4,6 @@
 
     File: colordialog.bas
 
-    Targets: FreeBASIC fb dialect; the including application selects the native backend.
-    Module API: Implements colordialog.bi; declarations there define the interface.
-
     Purpose:
 
         Implement a modal classic-palette color chooser.
@@ -17,6 +14,14 @@
         - retain selection until the caller explicitly accepts or cancels
         - constrain input to the generated modal widget tree
         - release dialog metadata without owning application state
+
+    Targets:
+
+        FreeBASIC builds with built-in gfxlib; gfxlib3 is optional when supplied by the compiler.
+
+    Module API:
+
+        Implementation unit assembled by omaGUI.bi when OMAGUI_IMPLEMENTATION is defined.
 
     This file intentionally does NOT contain:
 
@@ -267,7 +272,12 @@ Function colordialog_Create( _
     gui_SetParent dialog_data->selection_label, dialog_data->window_widget
     gui_SetParent accept_button, dialog_data->window_widget
     gui_SetParent cancel_button, dialog_data->window_widget
-    gui_SetModalRoot root_widget
+    ' The modal stack accepts only registered roots.
+    gui_AddWidget root_widget
+    If gui_TrySetModalRoot(root_widget) = 0 Then
+        gui_RemoveWidgetPtr root_widget
+        Return 0
+    End If
     colordialog_RefreshSelection root_widget
     Return root_widget
 End Function

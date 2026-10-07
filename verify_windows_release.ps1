@@ -31,6 +31,8 @@ param(
     [string] $FreeBasicPath = 'C:\FreeBASIC\fbc.exe',
     [string] $OmaGuiPath = '',
     [string] $LinterPath = 'C:\fblint\fb_linter.exe',
+    [string] $SemanticCompilerPath = 'C:\FreeBASIC\fbc.exe',
+    [string] $CompilerIncludePath = 'C:\FreeBASIC\inc',
     [ValidateRange(1, 3600)]
     [int] $TestTimeoutSeconds = 60
 )
@@ -181,7 +183,9 @@ function Get-LintSummary {
     )
 
     $summaryPattern = '^FB-LINTER SUMMARY files=\s*(\d+) errors=\s*(\d+) ' +
-        'warnings=\s*(\d+) info=\s*(\d+)\s*$'
+        'warnings=\s*(\d+) info=\s*(\d+) ' +
+        'semantic_accepted=\s*(\d+) semantic_unavailable=\s*(\d+) ' +
+        'semantic_skipped=\s*(\d+) operational_errors=\s*(\d+)\s*$'
     $summaryExpression = New-Object System.Text.RegularExpressions.Regex(
         $summaryPattern)
     $summaries = @()
@@ -191,15 +195,27 @@ function Get-LintSummary {
             $summaries += $summaryMatch
         }
     }
-    if ($summaries.Count -ne 1) {
-        throw "$Description lint summary must appear exactly once."
+    if ($summaries.Count -eq 0) {
+        throw "$Description lint has no compilation-context summaries."
+    }
+    foreach ($summary in $summaries) {
+        if ([int] $summary.Groups[5].Value -ne [int] $summary.Groups[1].Value -or
+            [int] $summary.Groups[6].Value -ne 0 -or
+            [int] $summary.Groups[7].Value -ne 0 -or
+            [int] $summary.Groups[8].Value -ne 0) {
+            throw "$Description lint lost required compiler facts."
+        }
     }
 
+    $totals = @(0, 0, 0, 0)
+    foreach ($summary in $summaries) {
+        for ($field = 0; $field -lt $totals.Count; $field++) {
+            $totals[$field] += [int] $summary.Groups[$field + 1].Value
+        }
+    }
     return [pscustomobject]@{
-        Files = [int] $summaries[0].Groups[1].Value
-        Errors = [int] $summaries[0].Groups[2].Value
-        Warnings = [int] $summaries[0].Groups[3].Value
-        Info = [int] $summaries[0].Groups[4].Value
+        Files = $totals[0]; Errors = $totals[1]
+        Warnings = $totals[2]; Info = $totals[3]
     }
 }
 
@@ -359,7 +375,7 @@ try {
                 'ui_smoothness_cases=8',
                 'ui_smoothness_status=pass',
                 'omagui_snapshot=ok',
-                'omagui_payload_files=120',
+                'omagui_payload_files=122',
                 'omagui_licenses=MIT,OFL-1.1,LGPL-2.1-or-later,BSD-2-Clause',
                 'windows_font_conversions=absent',
                 'dependency_snapshot_status=ok',
@@ -403,7 +419,10 @@ try {
             Invoke-LoggedCommand -FilePath $powerShellExecutable `
                 -Arguments @('-NoProfile', '-NonInteractive', '-ExecutionPolicy',
                     'Bypass', '-File', (Join-Path $projectRoot 'tools\lint.ps1'),
-                    '-LinterPath', $strictLinter, '-Target', $lintTarget) `
+                    '-LinterPath', $strictLinter, '-Target', $lintTarget,
+                    '-CompilerPath', $SemanticCompilerPath,
+                    '-CompilerIncludePath', $CompilerIncludePath,
+                    '-OmaGuiPath', $OmaGuiPath) `
                 -LogPath $lintLog -Description ('strict ' + $lintTarget + ' source lint')
             $lintSummary = Get-LintSummary -Lines @(Get-Content -LiteralPath $lintLog) `
                 -Description $lintTarget

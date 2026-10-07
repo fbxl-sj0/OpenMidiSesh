@@ -45,6 +45,8 @@ Const MENU_TEXT_HEIGHT As Integer = 8
 Const MENU_SHORTCUT_GAP As Integer = 36
 Const MENU_MAXIMUM_INSET As Integer = 128
 Const MENU_POINTER_OUTSIDE As Integer = -2
+' Bound accidental recursive update scopes before their depth can overflow.
+Const MENU_MAX_UPDATE_DEPTH As Integer = 32
 
 ' -------------------------------------------------------------------------
 ' Internal sizing and input helpers
@@ -55,6 +57,11 @@ Private Sub menu_UpdateHeight(ByVal m As Widget Ptr)
 
     If m = 0 OrElse m->data = 0 Then Exit Sub
     d = Cast(MenuData Ptr, m->data)
+    If d->sizing_depth > 0 Then
+        d->sizing_height_pending = -1
+        Exit Sub
+    End If
+    If d->count < 0 OrElse d->count > MENU_MAX_ITEMS Then Exit Sub
     Dim As Integer rowCount
     For itemIndex As Integer = 0 To d->count - 1
         If d->item_visible(itemIndex) <> 0 Then rowCount += 1
@@ -134,6 +141,11 @@ End Sub
 
 Private Sub menu_UpdateWidth(ByVal m As Widget Ptr)
     Dim As MenuData Ptr d = m->data
+    If d->sizing_depth > 0 Then
+        d->sizing_width_pending = -1
+        Exit Sub
+    End If
+    If d->count < 0 OrElse d->count > MENU_MAX_ITEMS Then Exit Sub
     Dim As Integer captionWidth, shortcutWidth
     Dim As Integer mnemonicScanCode, mnemonicDisplayIndex
     Dim As String displayText
@@ -408,9 +420,18 @@ End Function
 Sub menu_AddCommand(ByVal m As Widget Ptr, ByVal text As String, ByVal commandId As Integer)
     If m = 0 OrElse m->data = 0 Then Exit Sub
     Dim As MenuData Ptr d = m->data
-    If d->count >= MENU_MAX_ITEMS Then Exit Sub
+    If d->count < 0 OrElse d->count >= MENU_MAX_ITEMS Then Exit Sub
     Dim As Integer itemIndex = d->count
     menu_AddItem(m, text, 0)
+    d->command_ids(itemIndex) = commandId
+End Sub
+
+Sub menu_AddDisplayCommand(ByVal m As Widget Ptr, ByVal text As String, ByVal commandId As Integer)
+    If m = 0 OrElse m->data = 0 Then Exit Sub
+    Dim As MenuData Ptr d = m->data
+    If d->count < 0 OrElse d->count >= MENU_MAX_ITEMS Then Exit Sub
+    Dim As Integer itemIndex = d->count
+    menu_AddDisplayItem(m, text, 0)
     d->command_ids(itemIndex) = commandId
 End Sub
 
@@ -610,6 +631,43 @@ End Function
 ' Construction and item management
 ' -------------------------------------------------------------------------
 
+Function menu_BeginUpdate(ByVal m As Widget Ptr) As Integer
+    If m = 0 OrElse m->data = 0 OrElse m->render <> @menu_Render Then Return 0
+    Dim As MenuData Ptr d = m->data
+    If d->sizing_depth < 0 OrElse d->sizing_depth >= MENU_MAX_UPDATE_DEPTH Then Return 0
+    d->sizing_depth += 1
+    Return -1
+End Function
+
+Function menu_EndUpdate(ByVal m As Widget Ptr) As Integer
+    If m = 0 OrElse m->data = 0 OrElse m->render <> @menu_Render Then Return 0
+    Dim As MenuData Ptr d = m->data
+    If d->sizing_depth < 1 OrElse d->sizing_depth > MENU_MAX_UPDATE_DEPTH Then Return 0
+    d->sizing_depth -= 1
+    If d->sizing_depth = 0 Then
+        If d->sizing_height_pending <> 0 Then
+            d->sizing_height_pending = 0
+            menu_UpdateHeight m
+        End If
+        If d->sizing_width_pending <> 0 Then
+            d->sizing_width_pending = 0
+            menu_UpdateWidth m
+        End If
+    End If
+    Return -1
+End Function
+
+Private Function menu_GetOpaqueBounds(ByVal w As Widget Ptr, ByRef x As Integer, _
+    ByRef y As Integer, ByRef widthValue As Integer, ByRef heightValue As Integer) As Integer
+    If w = 0 OrElse w->data = 0 OrElse w->w < 2 OrElse w->h < 2 Then Return 0
+    Dim As MenuData Ptr d = w->data
+    If d->parent_menu <> 0 OrElse d->count < 0 OrElse d->count > MENU_MAX_ITEMS Then Return 0
+    ' The border and background fill the root surface before text is drawn.
+    ' An open branch can leave gaps between nodes, so its union is not opaque.
+    x = w->ax: y = w->ay: widthValue = w->w: heightValue = w->h
+    Return -1
+End Function
+
 Function menu_Create(ByVal nm As String, ByVal x As Integer, ByVal y As Integer) As Widget Ptr
     Dim As Widget Ptr wgt = New Widget
     If wgt = 0 Then Return 0
@@ -651,24 +709,25 @@ Function menu_Create(ByVal nm As String, ByVal x As Integer, ByVal y As Integer)
     d->selection_handler = 0
     d->selection_context = 0
     wgt->data = d
+    wgt->render_observation = @menu_GetRenderObservation
+    gui_SetRenderBoundsHandler wgt, @menu_GetRenderBounds
+    gui_SetOpaqueRenderBoundsHandler wgt, @menu_GetOpaqueBounds
     Return wgt
 End Function
 
 
-Sub menu_AddItem( _
+Sub menu_AddDisplayItem( _
     ByVal m As Widget Ptr, _
     ByVal txt As String, _
     ByVal cb As Sub(ByVal As Integer) _
 )
     Dim As MenuData Ptr d
-    Dim As String displayText
 
     If m = 0 OrElse m->data = 0 Then Exit Sub
     d = Cast(MenuData Ptr, m->data)
-    If d->count >= MENU_MAX_ITEMS Then Exit Sub
+    If d->count < 0 OrElse d->count >= MENU_MAX_ITEMS Then Exit Sub
 
-    displayText = gui_TransformText(txt)
-    d->items(d->count) = displayText
+    d->items(d->count) = txt
     d->callbacks(d->count) = cb
     d->item_enabled(d->count) = -1
     d->item_visible(d->count) = -1
@@ -679,6 +738,18 @@ Sub menu_AddItem( _
     menu_UpdateHeight m
 
     menu_UpdateWidth m
+End Sub
+
+
+Sub menu_AddItem( _
+    ByVal m As Widget Ptr, _
+    ByVal txt As String, _
+    ByVal cb As Sub(ByVal As Integer) _
+)
+    If m = 0 OrElse m->data = 0 Then Exit Sub
+    Dim As MenuData Ptr d = Cast(MenuData Ptr, m->data)
+    If d->count < 0 OrElse d->count >= MENU_MAX_ITEMS Then Exit Sub
+    menu_AddDisplayItem(m, gui_TransformText(txt), cb)
 End Sub
 
 
@@ -794,6 +865,9 @@ Sub menu_ClearItems(ByVal m As Widget Ptr)
     d->visible_rows = 0
     m->w = MENU_DEFAULT_WIDTH
     m->h = 0
+    ' Clear publishes its empty geometry itself, even inside an update scope.
+    d->sizing_height_pending = 0
+    d->sizing_width_pending = 0
 End Sub
 
 
@@ -838,121 +912,141 @@ Private Sub menu_RenderNode(ByVal w As Widget Ptr, ByVal depth As Integer)
     If w = 0 OrElse w->data = 0 OrElse w->w < 2 OrElse w->h < 2 OrElse _
        depth >= MENU_MAX_NESTING Then Exit Sub
     d = Cast(MenuData Ptr, w->data)
+    If d->count < 0 OrElse d->count > MENU_MAX_ITEMS Then Exit Sub
     Dim As GUI_Theme savedTheme = current_theme
     If w->appearance <> 0 Then current_theme = *w->appearance
 
-    backend_Rect(w->ax, w->ay, w->w, w->h, current_theme.win_border, 0)
-    backend_Rect _
-        (w->ax + 1, w->ay + 1, w->w - 2, w->h - 2, _
-        current_theme.menu_background, 1)
+    Dim As Integer clipX, clipY, clipWidth, clipHeight
+    backend_GetClip clipX, clipY, clipWidth, clipHeight
+    Dim As LongInt leftEdge = w->ax
+    Dim As LongInt topEdge = w->ay
+    Dim As LongInt rightEdge = CLngInt(w->ax) + w->w
+    Dim As LongInt bottomEdge = CLngInt(w->ay) + w->h
+    If leftEdge < clipX Then leftEdge = clipX
+    If topEdge < clipY Then topEdge = clipY
+    If rightEdge > CLngInt(clipX) + clipWidth Then rightEdge = CLngInt(clipX) + clipWidth
+    If bottomEdge > CLngInt(clipY) + clipHeight Then bottomEdge = CLngInt(clipY) + clipHeight
+    ' A menu paints inside its own surface. Pop the clip before drawing its
+    ' open child, whose surface may escape that rectangle. Avoid empty pushes:
+    ' the backend's legacy empty clip maps to the pixel at the screen origin.
+    If rightEdge > leftEdge AndAlso bottomEdge > topEdge Then
+        backend_SetClip CInt(leftEdge), CInt(topEdge), _
+            CInt(rightEdge - leftEdge), CInt(bottomEdge - topEdge)
 
-    Dim As Integer visibleCount = menu_VisibleItemCount(d)
-    Dim As Integer lastVisibleRow = visibleCount - 1
-    If d->visible_rows > 0 AndAlso _
-       lastVisibleRow >= d->scroll_top + d->visible_rows Then _
-        lastVisibleRow = d->scroll_top + d->visible_rows - 1
-    For visibleRow As Integer = d->scroll_top To lastVisibleRow
-        Dim As Integer itemIndex = menu_IndexAtVisibleRow(d, visibleRow)
-        If itemIndex < 0 Then Continue For
-        Dim As Integer itemY = w->ay + d->vertical_inset + _
-            (visibleRow - d->scroll_top) * d->item_height
+        backend_Rect(w->ax, w->ay, w->w, w->h, current_theme.win_border, 0)
+        backend_Rect _
+            (w->ax + 1, w->ay + 1, w->w - 2, w->h - 2, _
+            current_theme.menu_background, 1)
 
-        If d->item_kinds(itemIndex) = MENU_ITEM_KIND_SEPARATOR Then
-            Dim As Integer lineY = itemY + (d->item_height \ 2)
-            Dim As Integer lineX1 = w->ax + d->separator_inset
-            Dim As Integer lineX2 = w->ax + w->w - d->separator_inset - 1
+        Dim As Integer visibleCount = menu_VisibleItemCount(d)
+        Dim As Integer lastVisibleRow = visibleCount - 1
+        If d->visible_rows > 0 AndAlso _
+           lastVisibleRow >= d->scroll_top + d->visible_rows Then _
+            lastVisibleRow = d->scroll_top + d->visible_rows - 1
+        For visibleRow As Integer = d->scroll_top To lastVisibleRow
+            Dim As Integer itemIndex = menu_IndexAtVisibleRow(d, visibleRow)
+            If itemIndex < 0 Then Continue For
+            Dim As Integer itemY = w->ay + d->vertical_inset + _
+                (visibleRow - d->scroll_top) * d->item_height
 
-            If lineX2 >= lineX1 Then
-                backend_Line _
-                    (lineX1, lineY, lineX2, lineY, current_theme.menu_separator)
-                If d->details_style = 0 AndAlso lineY + 1 < w->ay + w->h - 1 Then _
+            If d->item_kinds(itemIndex) = MENU_ITEM_KIND_SEPARATOR Then
+                Dim As Integer lineY = itemY + (d->item_height \ 2)
+                Dim As Integer lineX1 = w->ax + d->separator_inset
+                Dim As Integer lineX2 = w->ax + w->w - d->separator_inset - 1
+
+                If lineX2 >= lineX1 Then
                     backend_Line _
-                        (lineX1, lineY + 1, lineX2, lineY + 1, _
-                        current_theme.bg_light)
-            End If
-        ElseIf d->details_style <> 0 Then
-            Dim As ULong textColor = current_theme.menu_text
-            Dim As Integer textY = itemY + _
-                ((d->item_height - backend_GetTextHeight()) \ 2) + _
-                d->text_y_offset
-            Dim As Integer detailMnemonicScanCode
-            Dim As Integer detailMnemonicDisplayIndex
-            Dim As String detailDisplayText = menu_DisplayText( _
-                d->items(itemIndex), detailMnemonicScanCode, _
-                detailMnemonicDisplayIndex _
-            )
-            If d->selected = itemIndex AndAlso d->item_enabled(itemIndex) <> 0 Then
-                backend_Rect(w->ax + 2, itemY, w->w - 4, d->item_height, _
+                        (lineX1, lineY, lineX2, lineY, current_theme.menu_separator)
+                    If d->details_style = 0 AndAlso lineY + 1 < w->ay + w->h - 1 Then _
+                        backend_Line _
+                            (lineX1, lineY + 1, lineX2, lineY + 1, _
+                            current_theme.bg_light)
+                End If
+            ElseIf d->details_style <> 0 Then
+                Dim As ULong textColor = current_theme.menu_text
+                Dim As Integer textY = itemY + _
+                    ((d->item_height - backend_GetTextHeight()) \ 2) + _
+                    d->text_y_offset
+                Dim As Integer detailMnemonicScanCode
+                Dim As Integer detailMnemonicDisplayIndex
+                Dim As String detailDisplayText = menu_DisplayText( _
+                    d->items(itemIndex), detailMnemonicScanCode, _
+                    detailMnemonicDisplayIndex _
+                )
+                If d->selected = itemIndex AndAlso d->item_enabled(itemIndex) <> 0 Then
+                    backend_Rect(w->ax + 2, itemY, w->w - 4, d->item_height, _
+                        current_theme.menu_selected_background, 1)
+                    textColor = current_theme.menu_selected_text
+                End If
+                If d->item_enabled(itemIndex) = 0 Then textColor = current_theme.menu_disabled_text
+                backend_Print( _
+                    w->ax + d->caption_inset, textY, textColor, detailDisplayText _
+                )
+                menu_RenderMnemonicUnderline( _
+                    detailDisplayText, detailMnemonicDisplayIndex, _
+                    w->ax + d->caption_inset, textY, backend_GetTextHeight() _
+                )
+                If d->shortcuts(itemIndex) <> "" Then _
+                    backend_Print(w->ax + w->w - d->shortcut_inset - backend_GetTextWidth(d->shortcuts(itemIndex)), _
+                        textY, textColor, d->shortcuts(itemIndex))
+                If d->item_checked(itemIndex) <> 0 Then
+                    backend_Line(w->ax + 9, itemY + d->item_height \ 2, _
+                        w->ax + 12, itemY + d->item_height \ 2 + 3, textColor)
+                    backend_Line(w->ax + 12, itemY + d->item_height \ 2 + 3, _
+                        w->ax + 18, itemY + d->item_height \ 2 - 3, textColor)
+                End If
+                If d->item_submenu(itemIndex) <> 0 Then
+                    Dim As Integer arrowX = w->ax + w->w - 12
+                    Dim As Integer arrowY = itemY + d->item_height \ 2
+                    backend_Line(arrowX - 2, arrowY - 3, arrowX + 1, arrowY, textColor)
+                    backend_Line(arrowX + 1, arrowY, arrowX - 2, arrowY + 3, textColor)
+                End If
+            ElseIf d->selected = itemIndex Then
+                Dim As Integer selectedMnemonicScanCode
+                Dim As Integer selectedMnemonicDisplayIndex
+                Dim As String selectedDisplayText = menu_DisplayText( _
+                    d->items(itemIndex), selectedMnemonicScanCode, _
+                    selectedMnemonicDisplayIndex _
+                )
+                Dim As Integer selectedTextY = itemY + _
+                    ((d->item_height - MENU_TEXT_HEIGHT) \ 2) + _
+                    d->text_y_offset
+                backend_Rect _
+                    (w->ax + MENU_SELECTION_INSET, itemY, _
+                    w->w - MENU_SELECTION_INSET * 2, d->item_height, _
                     current_theme.menu_selected_background, 1)
-                textColor = current_theme.menu_selected_text
+                backend_Print _
+                    (w->ax + MENU_TEXT_INSET, _
+                    itemY + ((d->item_height - MENU_TEXT_HEIGHT) \ 2) + _
+                        d->text_y_offset, _
+                    current_theme.menu_selected_text, selectedDisplayText)
+                menu_RenderMnemonicUnderline( _
+                    selectedDisplayText, selectedMnemonicDisplayIndex, _
+                    w->ax + MENU_TEXT_INSET, selectedTextY, _
+                    backend_GetTextHeight() _
+                )
+            Else
+                Dim As Integer normalMnemonicScanCode
+                Dim As Integer normalMnemonicDisplayIndex
+                Dim As String normalDisplayText = menu_DisplayText( _
+                    d->items(itemIndex), normalMnemonicScanCode, _
+                    normalMnemonicDisplayIndex _
+                )
+                Dim As Integer normalTextY = itemY + _
+                    ((d->item_height - MENU_TEXT_HEIGHT) \ 2) + _
+                    d->text_y_offset
+                backend_Print _
+                    (w->ax + MENU_TEXT_INSET, _
+                    normalTextY, current_theme.menu_text, normalDisplayText)
+                menu_RenderMnemonicUnderline( _
+                    normalDisplayText, normalMnemonicDisplayIndex, _
+                    w->ax + MENU_TEXT_INSET, normalTextY, _
+                    backend_GetTextHeight() _
+                )
             End If
-            If d->item_enabled(itemIndex) = 0 Then textColor = current_theme.menu_disabled_text
-            backend_Print( _
-                w->ax + d->caption_inset, textY, textColor, detailDisplayText _
-            )
-            menu_RenderMnemonicUnderline( _
-                detailDisplayText, detailMnemonicDisplayIndex, _
-                w->ax + d->caption_inset, textY, backend_GetTextHeight() _
-            )
-            If d->shortcuts(itemIndex) <> "" Then _
-                backend_Print(w->ax + w->w - d->shortcut_inset - backend_GetTextWidth(d->shortcuts(itemIndex)), _
-                    textY, textColor, d->shortcuts(itemIndex))
-            If d->item_checked(itemIndex) <> 0 Then
-                backend_Line(w->ax + 9, itemY + d->item_height \ 2, _
-                    w->ax + 12, itemY + d->item_height \ 2 + 3, textColor)
-                backend_Line(w->ax + 12, itemY + d->item_height \ 2 + 3, _
-                    w->ax + 18, itemY + d->item_height \ 2 - 3, textColor)
-            End If
-            If d->item_submenu(itemIndex) <> 0 Then
-                Dim As Integer arrowX = w->ax + w->w - 12
-                Dim As Integer arrowY = itemY + d->item_height \ 2
-                backend_Line(arrowX - 2, arrowY - 3, arrowX + 1, arrowY, textColor)
-                backend_Line(arrowX + 1, arrowY, arrowX - 2, arrowY + 3, textColor)
-            End If
-        ElseIf d->selected = itemIndex Then
-            Dim As Integer selectedMnemonicScanCode
-            Dim As Integer selectedMnemonicDisplayIndex
-            Dim As String selectedDisplayText = menu_DisplayText( _
-                d->items(itemIndex), selectedMnemonicScanCode, _
-                selectedMnemonicDisplayIndex _
-            )
-            Dim As Integer selectedTextY = itemY + _
-                ((d->item_height - MENU_TEXT_HEIGHT) \ 2) + _
-                d->text_y_offset
-            backend_Rect _
-                (w->ax + MENU_SELECTION_INSET, itemY, _
-                w->w - MENU_SELECTION_INSET * 2, d->item_height, _
-                current_theme.menu_selected_background, 1)
-            backend_Print _
-                (w->ax + MENU_TEXT_INSET, _
-                itemY + ((d->item_height - MENU_TEXT_HEIGHT) \ 2) + _
-                    d->text_y_offset, _
-                current_theme.menu_selected_text, selectedDisplayText)
-            menu_RenderMnemonicUnderline( _
-                selectedDisplayText, selectedMnemonicDisplayIndex, _
-                w->ax + MENU_TEXT_INSET, selectedTextY, _
-                backend_GetTextHeight() _
-            )
-        Else
-            Dim As Integer normalMnemonicScanCode
-            Dim As Integer normalMnemonicDisplayIndex
-            Dim As String normalDisplayText = menu_DisplayText( _
-                d->items(itemIndex), normalMnemonicScanCode, _
-                normalMnemonicDisplayIndex _
-            )
-            Dim As Integer normalTextY = itemY + _
-                ((d->item_height - MENU_TEXT_HEIGHT) \ 2) + _
-                d->text_y_offset
-            backend_Print _
-                (w->ax + MENU_TEXT_INSET, _
-                normalTextY, current_theme.menu_text, normalDisplayText)
-            menu_RenderMnemonicUnderline( _
-                normalDisplayText, normalMnemonicDisplayIndex, _
-                w->ax + MENU_TEXT_INSET, normalTextY, _
-                backend_GetTextHeight() _
-            )
-        End If
-    Next visibleRow
+        Next visibleRow
+        backend_ResetClip
+    End If
     /'
         Draw the open branch in ancestry order even when callers constructed
         its deepest menu first. Registered descendants retain lifetime and
@@ -1279,5 +1373,8 @@ Sub menu_Destroy(ByVal w As Widget Ptr)
     If w->data <> 0 Then Delete Cast(MenuData Ptr, w->data)
     w->data = 0
 End Sub
+
+' fblint: disable-next-line FBL950 FBL-INC-002 -- Menu's companion shares its private node helpers in the implementation assembly.
+#include once "src/widgets/menu_retained.bas"
 
 ' end of menu.bas

@@ -4,9 +4,6 @@
 
     File: rtfview.bas
 
-    Targets: FreeBASIC fb dialect; the including application selects the native backend.
-    Module API: Implements rtfview.bi; declarations there define the interface.
-
     Purpose:
 
         Parse and display bounded, read-only RTF documents.
@@ -17,6 +14,14 @@
         - preserve bounded font and color tables and Unicode scalars
         - wrap document runs into lines using embedded omaGUI fonts
         - provide scrolling, clipping, rendering, and widget lifecycle
+
+    Targets:
+
+        FreeBASIC builds with built-in gfxlib; gfxlib3 is optional when supplied by the compiler.
+
+    Module API:
+
+        Implementation unit assembled by omaGUI.bi when OMAGUI_IMPLEMENTATION is defined.
 
     This file intentionally does NOT contain:
 
@@ -484,7 +489,6 @@ Private Function rtfview_AppendTab( _
     ByVal d As RtfViewData Ptr, ByRef parserState As RtfViewParserState _
 ) As Integer
 
-    ' fblint: disable-next-line FBL311 REASON: The loop counter bounds repeated work; the cursor or stream state supplies each value.
     For spaceIndex As Integer = 1 To 4
         If rtfview_AppendCodePoint(d, parserState, 32) = 0 Then Return 0
     Next spaceIndex

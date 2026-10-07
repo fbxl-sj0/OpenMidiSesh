@@ -796,7 +796,7 @@ Sub combobox_Render(ByVal combo_widget As Widget Ptr)
             BACKEND_ALIGN_LEFT, BACKEND_ALIGN_MIDDLE
 
         If combo_data->editable AndAlso combo_widget->has_focus AndAlso _
-           Int(Timer * 2) Mod 2 = 0 Then
+           gui_CaretBlinkVisible(Timer) <> 0 Then
             Dim As Integer caret_x = combo_widget->ax + _
                 COMBOBOX_TEXT_INSET + _
                 backend_GetTextWidth(Left( _
@@ -869,7 +869,7 @@ Sub combobox_Render(ByVal combo_widget As Widget Ptr)
         BACKEND_FONT_DEFAULT, BACKEND_ALIGN_LEFT, BACKEND_ALIGN_MIDDLE
 
     If combo_data->editable AndAlso combo_widget->has_focus AndAlso _
-       combo_data->is_open = 0 AndAlso Int(Timer * 2) Mod 2 = 0 Then ' fblint: disable-line FBL406 REASON: The Mod operands are nonnegative; the minus sign belongs to a different expression.
+       combo_data->is_open = 0 AndAlso gui_CaretBlinkVisible(Timer) <> 0 Then
         Dim As Integer caret_x = combo_widget->ax + COMBOBOX_TEXT_INSET + _
             backend_GetTextWidth(Left(selected_text, combo_data->edit_cursor))
         If caret_x > arrow_left - 2 Then caret_x = arrow_left - 2

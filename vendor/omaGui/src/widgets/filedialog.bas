@@ -4,9 +4,6 @@
 
     File: filedialog.bas
 
-    Targets: FreeBASIC fb dialect; the including application selects the native backend.
-    Module API: Implements filedialog.bi; declarations there define the interface.
-
     Purpose:
 
         Implement a generated-widget file dialog.
@@ -20,6 +17,14 @@
         - report accepted and cancelled dialog states
         - claim modal update focus while the dialog is open
         - apply a bounded title to the dialog-owned subwindow
+
+    Targets:
+
+        FreeBASIC builds with built-in gfxlib; gfxlib3 is optional when supplied by the compiler.
+
+    Module API:
+
+        Implementation unit assembled by omaGUI.bi when OMAGUI_IMPLEMENTATION is defined.
 
     This file intentionally does NOT contain:
 
@@ -521,7 +526,12 @@ Private Function filedialog_CreateModeAtPath( _
     gui_SetParent(d->btn_cancel, d->win)
 
     filedialog_Refresh(root)
-    gui_SetModalRoot(root)
+    ' The modal stack accepts only registered roots.
+    gui_AddWidget root
+    If gui_TrySetModalRoot(root) = 0 Then
+        gui_RemoveWidgetPtr root
+        Return 0
+    End If
 
     Return root
 End Function

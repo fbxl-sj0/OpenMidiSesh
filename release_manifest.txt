@@ -294,6 +294,8 @@ tools/ci_windows.ps1
 tools/fblint/actual_boundary_review.bas
 tools/fblint/fixed-width-and-environment.patch
 tools/fblint/fixed_width_safe.bas
+tools/fblint/semantic-context.patch
+tools/fblint/test_semantic_context.py
 tools/fetch_ci_toolchain.py
 tools/install_ci_freebasic.sh
 tools/install_ci_unix.sh

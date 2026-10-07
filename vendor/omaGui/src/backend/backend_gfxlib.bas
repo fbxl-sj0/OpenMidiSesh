@@ -37,6 +37,7 @@
 #include once "src/backend/font_data.bi"
 #include once "src/backend/theme.bi"
 #include once "crt/string.bi"
+#include once "src/backend/backend_idle.bi"
 #If Defined(__FB_WIN32__) AndAlso Not Defined(OMAGUI_PORTABLE_ONLY)
 #include once "windows.bi"
 #EndIf
@@ -73,6 +74,9 @@ Private Type BackendFontGlyphIndex
 End Type
 Private Type BackendFontPack
     As BackendFontGlyphIndex Ptr glyphs
+    ' Printable ASCII has 95 codepoints. Entries borrow this pack's glyph
+    ' storage and are replaced or cleared with it, on the GUI thread.
+    As BackendFontGlyphIndex Ptr ascii_glyphs(32 To 126)
     As UByte Ptr bitmap_storage
     As Integer glyph_count
     As Integer line_height, ascent
@@ -643,6 +647,13 @@ Private Function backend_FontPackFind( _
 
     If backend_HasFontPack(font_id) = 0 OrElse codepoint < 0 Then Return 0
 
+#Ifndef OMAGUI_DISABLE_FONT_ASCII_INDEX
+    ' Most editor text is ASCII. Avoid searching the same sorted pack again
+    ' for every width, advance and bitmap query. Missing glyphs remain NULL.
+    If codepoint >= 32 AndAlso codepoint <= 126 Then _
+        Return backend_FontPacks(font_id).ascii_glyphs(codepoint)
+#EndIf
+
     Dim As Integer lowerIndex = 0
     Dim As Integer upperIndex = backend_FontPacks(font_id).glyph_count - 1
     Dim As UInteger wantedCodepoint = CUInt(codepoint)
@@ -874,6 +885,9 @@ Sub backend_ClearFontPacks()
     backend_FontGeneration += 1
 
     For fontIndex As Integer = 0 To BACKEND_FONT_TERMINAL
+        For codepoint As Integer = 32 To 126
+            backend_FontPacks(fontIndex).ascii_glyphs(codepoint) = 0
+        Next codepoint
         If backend_FontPacks(fontIndex).glyphs <> 0 Then _
             Deallocate backend_FontPacks(fontIndex).glyphs
         If backend_FontPacks(fontIndex).bitmap_storage <> 0 Then _
@@ -965,6 +979,7 @@ Function backend_LoadFontPack( _
     Dim As UByte Ptr fontBytes
     Dim As UByte Ptr newBitmapStorage
     Dim As BackendFontGlyphIndex Ptr newGlyphs
+    Dim As BackendFontGlyphIndex Ptr newAsciiGlyphs(32 To 126)
 
     If font_id < LBound(backend_FontPacks) OrElse font_id > UBound(backend_FontPacks) OrElse _
        font_id = BACKEND_FONT_CUSTOM OrElse filename = "" Then _
@@ -1077,6 +1092,8 @@ Function backend_LoadFontPack( _
         newGlyphs[glyphIndex].advance = advance
         newGlyphs[glyphIndex].bearing_x = bearingX
         newGlyphs[glyphIndex].bearing_y = bearingY
+        If codepoint >= 32 AndAlso codepoint <= 126 Then _
+            newAsciiGlyphs(codepoint) = @newGlyphs[glyphIndex]
         bitmapStoragePosition += 2
 
         /'
@@ -1103,6 +1120,11 @@ Function backend_LoadFontPack( _
     backend_FontPacks(font_id).line_height = fontLineHeight
     backend_FontPacks(font_id).ascent = fontAscent
     backend_FontPacks(font_id).point_size = fontPointSize
+    ' Publish the new direct lookup only after the complete replacement pack
+    ' succeeds. A rejected file leaves the previous glyphs and lookup intact.
+    For asciiCodepoint As Integer = 32 To 126
+        backend_FontPacks(font_id).ascii_glyphs(asciiCodepoint) = newAsciiGlyphs(asciiCodepoint)
+    Next asciiCodepoint
 
     Return -1
 

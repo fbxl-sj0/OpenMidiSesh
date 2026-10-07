@@ -4,9 +4,6 @@
 
     File: picturebox.bas
 
-    Targets: FreeBASIC fb dialect; the including application selects the native backend.
-    Module API: Implements picturebox.bi; declarations there define the interface.
-
     Purpose:
 
         Render a portable classic PictureBox-style display surface.
@@ -23,6 +20,14 @@
         - retain explicit pixel colors independently of a platform bitmap
         - own a copied raster image beneath retained drawings and text
         - forward clipped 16-bit patterned line requests to the pixel surface
+
+    Targets:
+
+        FreeBASIC builds with built-in gfxlib; gfxlib3 is optional when supplied by the compiler.
+
+    Module API:
+
+        Implementation unit assembled by omaGUI.bi when OMAGUI_IMPLEMENTATION is defined.
 
     This file intentionally does NOT contain:
 
@@ -43,6 +48,7 @@
 Const PICTUREBOX_MINIMUM_DIMENSION As Integer = 4
 Const PICTUREBOX_SINGLE_INSET As Integer = 1
 Const PICTUREBOX_SUNKEN_INSET As Integer = 2
+Const PICTUREBOX_DOUBLE_INSET As Integer = 2
 Const PICTUREBOX_TEXT_PADDING As Integer = 4
 
 ' -------------------------------------------------------------------------
@@ -54,7 +60,7 @@ Private Function picturebox_IsValidBorderStyle( _
 ) As Integer
     Select Case border_style
     Case PICTUREBOX_BORDER_NONE, PICTUREBOX_BORDER_SINGLE, _
-         PICTUREBOX_BORDER_SUNKEN
+         PICTUREBOX_BORDER_SUNKEN, PICTUREBOX_BORDER_DOUBLE
         Return -1
     End Select
     Return 0
@@ -69,6 +75,8 @@ Private Function picturebox_GetClientInset( _
         Return PICTUREBOX_SINGLE_INSET
     Case PICTUREBOX_BORDER_SUNKEN
         Return PICTUREBOX_SUNKEN_INSET
+    Case PICTUREBOX_BORDER_DOUBLE
+        Return PICTUREBOX_DOUBLE_INSET
     End Select
     Return 0
 End Function
@@ -163,6 +171,16 @@ Sub picturebox_Render(ByVal picture_widget As Widget Ptr)
             picture_widget->w, picture_widget->h, _
             theme_GetColor(GUI_COLOR_BORDER), 0
         text_inset = PICTUREBOX_SINGLE_INSET
+    Case PICTUREBOX_BORDER_DOUBLE
+        backend_Rect picture_widget->ax, picture_widget->ay, _
+            picture_widget->w, picture_widget->h, _
+            theme_GetColor(GUI_COLOR_BORDER), 0
+        If picture_widget->w > 2 AndAlso picture_widget->h > 2 Then
+            backend_Rect picture_widget->ax + 1, picture_widget->ay + 1, _
+                picture_widget->w - 2, picture_widget->h - 2, _
+                theme_GetColor(GUI_COLOR_BORDER), 0
+        End If
+        text_inset = PICTUREBOX_DOUBLE_INSET
     Case PICTUREBOX_BORDER_SUNKEN
         /'
             Dark top and left edges plus light bottom and right edges make the

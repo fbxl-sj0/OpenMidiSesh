@@ -4,6 +4,10 @@
 
 ## Unreleased
 
+- Equalize the optimized omaGUI tree with Tiko while retaining our CSS and
+  image-array safety checks, label styles and literal-color support.
+- Require compiler semantic models for lint, including omaGUI's shared
+  implementation context and the actual native build settings.
 - Update omaGUI from Tiko with batched glyph rendering, cached text metrics,
   retained palette tracking and theme-frame controls. Preserve our GUI safety
   checks, label styles, literal colors and score redraw fixes.

@@ -1,13 +1,18 @@
 /'
     Project: omaGUI Portable Raster Images
     File: raster_ico.bi
-
-    Targets: FreeBASIC fb dialect; the including application selects the native backend.
-    Module API: omaGUI declarations and implementation for raster_ico.
     Purpose: Decode classic ICO bitmaps without platform image APIs.
     Responsibilities:
         - validate the directory and first image's DIB, palette, and masks
         - convert opaque pixels and transparent AND-mask pixels to RGBA
+    Targets:
+
+        FreeBASIC builds with built-in gfxlib; gfxlib3 is optional when supplied by the compiler.
+
+    Module API:
+
+        Declarations for the raster_ico component in the omaGUI include graph.
+
     This file intentionally does NOT contain:
         - cursor loading, PNG icons, or destination-dependent XOR drawing
 
@@ -96,7 +101,10 @@ Private Function rasterico_Decode( _
     For colorIndex As Long = 0 To CLng(colorCount) - 1
         Dim As LongInt offsetValue = _
             paletteOffset + CLngInt(colorIndex) * 4LL
-        paletteColors(colorIndex) = RGB(bytes(offsetValue + 2), bytes(offsetValue + 1), bytes(offsetValue))
+        Dim As UByte paletteRed = bytes(offsetValue + 2)
+        Dim As UByte paletteGreen = bytes(offsetValue + 1)
+        Dim As UByte paletteBlue = bytes(offsetValue)
+        paletteColors(colorIndex) = RGB(paletteRed, paletteGreen, paletteBlue)
     Next colorIndex
 
     imagePixels = backend_CreateImage(imageWidth, imageHeight, RGBA(0, 0, 0, 0), 32)
@@ -121,7 +129,10 @@ Private Function rasterico_Decode( _
             If bitCount = 24 Then
                 Dim As LongInt offsetValue = _
                     xorRow + CLngInt(columnIndex) * 3LL
-                pixelColor = RGB(bytes(offsetValue + 2), bytes(offsetValue + 1), bytes(offsetValue))
+                Dim As UByte pixelRed = bytes(offsetValue + 2)
+                Dim As UByte pixelGreen = bytes(offsetValue + 1)
+                Dim As UByte pixelBlue = bytes(offsetValue)
+                pixelColor = RGB(pixelRed, pixelGreen, pixelBlue)
             Else
                 Dim As Long bitOffset = columnIndex * bitCount
                 Dim As Long colorIndex = (bytes(xorRow + bitOffset \ 8) Shr _

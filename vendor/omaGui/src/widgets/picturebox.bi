@@ -4,9 +4,6 @@
 
     File: picturebox.bi
 
-    Targets: FreeBASIC fb dialect; the including application selects the native backend.
-    Module API: omaGUI declarations and implementation for picturebox.
-
     Purpose:
 
         Declare a framed display surface compatible with classic PictureBox
@@ -20,6 +17,14 @@
         - retain optional caller-supplied client and text colors
         - expose flat, single-line, and sunken border styles
         - provide a clipped client area for child widgets
+
+    Targets:
+
+        FreeBASIC builds with built-in gfxlib; gfxlib3 is optional when supplied by the compiler.
+
+    Module API:
+
+        Declarations for the picturebox component in the omaGUI include graph.
 
     This file intentionally does NOT contain:
 
@@ -39,6 +44,8 @@
 Const PICTUREBOX_BORDER_NONE As Integer = 0
 Const PICTUREBOX_BORDER_SINGLE As Integer = 1
 Const PICTUREBOX_BORDER_SUNKEN As Integer = 2
+' Keep this distinct from SUNKEN for VBDOS Double Line controls.
+Const PICTUREBOX_BORDER_DOUBLE As Integer = 3
 
 Type PictureBoxData
     As String text

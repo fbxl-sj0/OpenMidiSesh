@@ -16,24 +16,11 @@
     This file intentionally does NOT contain:
 
         - application-specific build instructions
-        - private build-tool locations
+        - an upstream commit identity
         - the license text
 -->
 
-# omaGUI dependency snapshot
-
-OpenSesh maintains this copy downstream of the Tiko fork's omaGUI tree at
-`42ff302a9eb225b31c15671b9825fa502dd0215a` (2026-10-06). The update includes
-batched glyph rendering, byte-span helpers, text caches, retained palette
-tracking, and the theme-frame widget.
-
-OpenSesh retains its source documentation, narrowly explained lint annotations,
-CSS selector bounds checks, and the allocation query before image byte-array
-bound checks. Portable label text styles and literal label colors remain
-available, including the distinction between opaque white and theme-following
-text. Existing public declarations and third-party notices are preserved.
-The manifests identify the resulting downstream bytes; they do not claim
-byte identity with Tiko or that our remaining changes were pushed upstream.
+# Shared omaGUI tree
 
 This directory is the common omaGUI development tree. `TREE.sha256` records
 every file in the tree except itself, including this document and
@@ -53,6 +40,33 @@ Arial-derived bitmap tables. Applications using that subset must define
 The full local tree retains the historical font tables for existing projects.
 They are development assets and are not part of the redistributable subset.
 Font sources and license details are described in `assets/fonts/FONTS.md`.
+
+The October 7 shared snapshot starts from Tiko's optimized tree at
+`e5a29867c3bef9dea5b4a796459dd80407906854`, which incorporates OpenSesh's
+maintained overlay on `40cd4f73835973b69ed692bd51619449626bf0ff`.
+Both copies retain the CSS
+selector bounds checks, unallocated image-array guard, label styles and
+literal-color support. The shared APIs include byte-span comparison, font
+metrics, palette roles, bounded menu update scopes, cached display captions,
+clipped popup replay and retained paint bounds.
+
+The Optical FreeBASIC and newjrpg copies contribute VBDOS border styles,
+same-frame TextBox KeyDown remapping, guarded modal dialog registration, and
+duplicate-widget protection. The OpenSesh copy contributes the allocation
+query for raster input, a bounds check for bare CSS class selectors, and
+trailing-NUL handling in RTF input.
+
+The retained renderer and textbox compare cached observations without
+constructing temporary strings. Raster palette fields retain their named
+components. Observation matching stays on the GUI thread and checks the
+recorded lengths and offsets before comparing source bytes. DOSBox-X timed
+idle remains opt-in and requires a gfxlib with the matching backend entrypoint.
+
+Semantic lint must compile `omaGUI.bi` with `OMAGUI_IMPLEMENTATION` in a real
+root and select the same platform and font definitions as the application.
+Implementation `.bas` files are includes, so compiling them independently
+does not represent the library's build model. A validator must reject missing
+compiler facts rather than fall back to heuristic name resolution.
 
 omaGUI is MIT licensed; see `LICENSE`. Generated font subsets use the SIL Open
 Font License 1.1; see `assets/fonts/OFL-1.1.txt`. The CHM reader uses

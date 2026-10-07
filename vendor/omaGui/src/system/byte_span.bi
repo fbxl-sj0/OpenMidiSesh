@@ -38,7 +38,35 @@ Function oma_BytesEqual(ByVal firstBytes As Const Any Ptr, _
     If byteCount < 0 Then Return 0
     If byteCount = 0 Then Return -1
     If firstBytes = 0 OrElse secondBytes = 0 Then Return 0
-#If Defined(__FB_DOS__) Or Defined(OMAGUI_TEST_BYTE_SPAN_WORDS)
+#If Defined(__FB_DOS__) Or (Defined(OMAGUI_TEST_BYTE_SPAN_X86) And Defined(__FB_X86__))
+    ' DPMI supplies flat data and extra segments, and the x86 ABI enters with
+    ' a clear direction flag. REP compares complete words without a BASIC
+    ' loop per word. The final zero to three bytes stay inside the span.
+    ' The compiler preserves the callee-saved registers used by this block.
+    ' Numeric assembler labels remain local when GCC inlines the block.
+    Dim As Integer equalResult = -1
+    Asm
+        mov esi, [firstBytes]
+        mov edi, [secondBytes]
+        mov ecx, [byteCount]
+        shr ecx, 2
+        jz 1f
+        repe
+        cmpsd
+        jne 2f
+    1:
+        mov ecx, [byteCount]
+        and ecx, 3
+        jz 3f
+        repe
+        cmpsb
+        je 3f
+    2:
+        mov dword ptr [equalResult], 0
+    3:
+    End Asm
+    Return equalResult
+#ElseIf Defined(OMAGUI_TEST_BYTE_SPAN_WORDS)
     ' DJGPP's memcmp visits one byte per loop. Equal words can be skipped
     ' together because this API observes equality only, including NUL bytes.
     ' Compare complete words first; the tail must never read a partial word.

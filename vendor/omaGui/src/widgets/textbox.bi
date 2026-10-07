@@ -4,9 +4,6 @@
 
     File: textbox.bi
 
-    Targets: FreeBASIC fb dialect; the including application selects the native backend.
-    Module API: omaGUI declarations and implementation for textbox.
-
     Purpose:
 
         Declare the reusable editable text widget used by editor popups and
@@ -26,10 +23,18 @@
         - expose an optional byte limit for native editing commands
         - retain optional caller-supplied client and text colors
         - optionally style embedded glyphs without changing editor metrics
-        - support single-line masked display without replacing editor text
+        - support masked single-line input without replacing editor text
         - expose optional synchronous KeyDown, KeyPress, and KeyUp callbacks
         - retain optional syntax-highlighting mode and semantic color metadata
           for keywords, types, objects, members, procedures, and literals
+
+    Targets:
+
+        FreeBASIC builds with built-in gfxlib; gfxlib3 is optional when supplied by the compiler.
+
+    Module API:
+
+        Declarations for the textbox component in the omaGUI include graph.
 
     This file intentionally does NOT contain:
 
@@ -37,11 +42,6 @@
         - keyboard polling
         - application-specific text validation
 '/
-
-' -------------------------------------------------------------------------
-' Implementation
-' -------------------------------------------------------------------------
-
 
 #ifndef __TEXTBOX_BI__
 #define __TEXTBOX_BI__
@@ -162,6 +162,8 @@ Type TextBoxKeyEventHandler As Function( _
 Const TEXTBOX_SCROLLBAR_NONE As Integer = 0
 Const TEXTBOX_SCROLLBAR_AUTO As Integer = 1
 Const TEXTBOX_SCROLLBAR_ALWAYS As Integer = 2
+Const TEXTBOX_BORDER_NONE As Integer = 0
+Const TEXTBOX_BORDER_SINGLE As Integer = 1
 
 Const TEXTBOX_SYNTAX_NONE As Integer = 0
 Const TEXTBOX_SYNTAX_FREEBASIC As Integer = 1
@@ -243,9 +245,9 @@ Type TextBoxData
     As Any Ptr key_up_handler
     ' Appended opt-in state preserves existing field offsets. Rebuild clients
     ' with this header when the record grows; it is not a frozen binary ABI.
-    ' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
+    ' FB-LINTER: DISABLE-NEXT-LINE FBL008 FBL-SEC-004 REASON: These are mask-state fields, not stored source text.
     As Integer password_character, password_saved_wordwrap
-    ' fblint: disable-next-line FBL-SEC-004 FBL008 REASON: This implements masked text input; the source contains no credential literal.
+    ' FB-LINTER: DISABLE-NEXT-LINE FBL008 FBL-SEC-004 REASON: This cached display contains only mask glyphs.
     As String password_display
     As String placeholder_text
     ' Existing editors keep visible selections on blur unless opted out.
@@ -322,6 +324,8 @@ Type TextBoxData
     As TextBoxMetricsStateHandler metrics_row_state_handler
     As Integer rendered_caret_x, rendered_caret_y
     As Integer rendered_caret_w, rendered_caret_h
+    ' VBDOS BorderStyle affects the frame without changing editor metrics.
+    As Integer border_style
 End Type
 Declare Function textbox_Create( _
     ByVal nm As String, ByVal txt As String, _
@@ -334,6 +338,8 @@ Declare Sub textbox_Render(ByVal w As Widget Ptr)
 ' Applications using visual callbacks must append their external model state
 ' before assigning this observation to Widget.render_observation.
 Declare Function textbox_GetRenderObservation(ByVal w As Widget Ptr) As String
+Declare Function textbox_RenderObservationMatches(ByVal w As Widget Ptr, _
+    ByRef previousKey As Const String, ByVal observationOffset As Integer) As Integer
 Declare Function textbox_GetRenderDamage(ByVal w As Widget Ptr, _
     ByRef previousKey As Const String, ByRef nextKey As Const String, _
     ByRef x As Integer, ByRef y As Integer, _
@@ -346,8 +352,7 @@ Declare Function textbox_GetCursorRowRenderDamage(ByVal w As Widget Ptr, _
     ByRef widthValue As Integer, ByRef heightValue As Integer) As Integer
 Declare Sub textbox_Update(ByVal w As Widget Ptr)
 Declare Function textbox_GetText(ByVal w As Widget Ptr) As String
-' fblint: disable-next-line FBL008 REASON: This implements masked text input; the source contains no credential literal.
-' Zero clears password mode; visible ASCII bytes 33..126 select its mask.
+' Zero clears mask mode; visible ASCII bytes 33..126 select its glyph.
 ' Only single-line TextBoxes accept a mask. Text/selection queries stay real.
 Declare Function textbox_SetPasswordChar( _
     ByVal w As Widget Ptr, ByVal character_code As Integer _
@@ -440,6 +445,10 @@ Declare Function textbox_SetInputLimit(ByVal w As Widget Ptr, ByVal byte_limit A
 Declare Function textbox_GetInputLimit(ByVal w As Widget Ptr) As Long
 Declare Function textbox_SetTextStyle(ByVal w As Widget Ptr, ByVal text_style As Integer) As Integer
 Declare Function textbox_GetTextStyle(ByVal w As Widget Ptr) As Integer
+Declare Function textbox_SetBorderStyle( _
+    ByVal w As Widget Ptr, ByVal border_style As Integer _
+) As Integer
+Declare Function textbox_GetBorderStyle(ByVal w As Widget Ptr) As Integer
 Declare Function textbox_SetBackgroundColor( _
     ByVal w As Widget Ptr, ByVal background_color As ULong _
 ) As Integer

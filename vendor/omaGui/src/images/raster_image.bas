@@ -4,14 +4,6 @@
 
     File: raster_image.bas
 
-    Targets: FreeBASIC fb dialect; the including application selects the native backend.
-    Module API: Implements raster_image.bi; declarations there define the interface.
-    Ownership:
-
-        Decoders stage bounded pixel arrays and codec scratch buffers.
-        A successful decode transfers the image to its caller; failure
-        releases temporary allocations and leaves no partial image.
-
     Purpose:
 
         Load the small raster format set used by omaGUI technical documents.
@@ -25,6 +17,20 @@
         - decode 8-bit baseline sequential JPEG images
         - decode classic ICO bitmaps and their transparent masks
         - return owned 32-bit gfxlib image buffers with checked dimensions
+
+    Ownership:
+
+        The caller owns a successfully loaded RasterImage and releases it with
+        rasterimage_Destroy. The loader closes its file handles and transient
+        files before returning.
+
+    Targets:
+
+        FreeBASIC builds with built-in gfxlib; gfxlib3 is optional when supplied by the compiler.
+
+    Module API:
+
+        Implementation unit assembled by omaGUI.bi when OMAGUI_IMPLEMENTATION is defined.
 
     This file intentionally does NOT contain:
 
@@ -161,16 +167,17 @@ End Function
 Function rasterimage_DetectFormat( _
     bytes() As UByte, ByVal byteCount As LongInt _
 ) As Integer
-    ' Dimension zero is the runtime's safe allocation query, including empty arrays.
-    If UBound(bytes, 0) <> 1 Then Return RASTERIMAGE_FORMAT_UNKNOWN ' fblint: disable-line FBL-ARR-004 REASON: Dimension zero safely queries allocation before querying element bounds.
+    ' Dimension zero safely reports whether the byte array is allocated.
+    ' fblint: disable-next-line FBL-ARR-004 -- this query does not read an element bound.
+    If UBound(bytes, 0) <> 1 Then Return RASTERIMAGE_FORMAT_UNKNOWN
     Dim As Integer firstIndex
     Dim As Integer lastIndex
 
     If byteCount < 1 Then Return RASTERIMAGE_FORMAT_UNKNOWN
     ' FreeBASIC reports UBound=-1 for an unallocated dynamic array.
-    If UBound(bytes) < LBound(bytes) Then Return RASTERIMAGE_FORMAT_UNKNOWN ' fblint: disable-line FBL-ARR-004 REASON: The dimension-count guard rejects unallocated byte arrays before element-bound queries.
-    firstIndex = LBound(bytes) ' fblint: disable-line FBL-ARR-004 REASON: The dimension-count guard rejects unallocated byte arrays before element-bound queries.
-    lastIndex = UBound(bytes) ' fblint: disable-line FBL-ARR-004 REASON: The dimension-count guard rejects unallocated byte arrays before element-bound queries.
+    If UBound(bytes) < LBound(bytes) Then Return RASTERIMAGE_FORMAT_UNKNOWN
+    firstIndex = LBound(bytes)
+    lastIndex = UBound(bytes)
     If firstIndex <> 0 OrElse lastIndex < firstIndex OrElse _
        byteCount > CLngInt(lastIndex) + 1 Then Return RASTERIMAGE_FORMAT_UNKNOWN
     If byteCount >= 8 Then
@@ -427,7 +434,7 @@ Private Function rastergif_CollectSubBlocks( _
 End Function
 
 
-' fblint: disable-next-line FBL110 FBL111 REASON: The bounded GIF state machine owns one code table and staged frame buffer.
+' fblint: disable-next-line FBL110,FBL111 -- GIF block state and output bounds stay together in this decoder pass.
 Private Function rastergif_Decode( _
     bytes() As UByte, ByVal byteCount As LongInt, _
     ByRef loadedImage As RasterImage Ptr, _
@@ -513,10 +520,11 @@ Private Function rastergif_Decode( _
             Return 0
         End If
         For colorTableIndex = 0 To globalPaletteCount - 1
+            Dim As UByte globalPaletteRed = bytes(position + colorTableIndex * 3)
+            Dim As UByte globalPaletteGreen = bytes(position + colorTableIndex * 3 + 1)
+            Dim As UByte globalPaletteBlue = bytes(position + colorTableIndex * 3 + 2)
             globalPalette(colorTableIndex) = RGB( _
-                bytes(position + colorTableIndex * 3), _
-                bytes(position + colorTableIndex * 3 + 1), _
-                bytes(position + colorTableIndex * 3 + 2) _
+                globalPaletteRed, globalPaletteGreen, globalPaletteBlue _
             )
         Next colorTableIndex
         position += paletteByteCount
@@ -626,10 +634,11 @@ Private Function rastergif_Decode( _
                 End If
                 activePaletteCount = localPaletteCount
                 For colorTableIndex = 0 To localPaletteCount - 1
+                    Dim As UByte activePaletteRed = bytes(position + colorTableIndex * 3)
+                    Dim As UByte activePaletteGreen = bytes(position + colorTableIndex * 3 + 1)
+                    Dim As UByte activePaletteBlue = bytes(position + colorTableIndex * 3 + 2)
                     activePalette(colorTableIndex) = RGB( _
-                        bytes(position + colorTableIndex * 3), _
-                        bytes(position + colorTableIndex * 3 + 1), _
-                        bytes(position + colorTableIndex * 3 + 2) _
+                        activePaletteRed, activePaletteGreen, activePaletteBlue _
                     )
                 Next colorTableIndex
                 position += paletteByteCount
@@ -1085,7 +1094,7 @@ Private Function rasterjpeg_ConsumeRestart( _
 End Function
 
 
-' fblint: disable-next-line FBL110 FBL111 REASON: The staged JPEG decoder shares component buffers and one failure cleanup path.
+' fblint: disable-next-line FBL110,FBL111 -- JPEG marker, scan and output state stay together in this decoder pass.
 Private Function rasterjpeg_Decode( _
     bytes() As UByte, ByVal byteCount As LongInt, _
     ByRef loadedImage As RasterImage Ptr, _
@@ -1700,9 +1709,9 @@ Private Function rasterimage_CreateScratchDirectory( _
     Dim As ULong timerPart
 
     scratchDirectory = ""
-    rootCandidates(0) = Environ("TMPDIR") ' fblint: disable-line FBL750 REASON: Empty environment candidates are skipped; CurDir is the final scratch-directory fallback.
-    rootCandidates(1) = Environ("TEMP") ' fblint: disable-line FBL750 REASON: Empty environment candidates are skipped; CurDir is the final scratch-directory fallback.
-    rootCandidates(2) = Environ("TMP") ' fblint: disable-line FBL750 REASON: Empty environment candidates are skipped; CurDir is the final scratch-directory fallback.
+    rootCandidates(0) = Environ("TMPDIR")
+    rootCandidates(1) = Environ("TEMP")
+    rootCandidates(2) = Environ("TMP")
     rootCandidates(3) = CurDir
     timerPart = CULng(CLngInt(Timer * 1000.0) And &h7FFFFFFF)
 

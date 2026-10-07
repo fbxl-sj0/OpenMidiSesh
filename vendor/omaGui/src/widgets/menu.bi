@@ -64,6 +64,9 @@ Type MenuData ' fblint: disable-line FBL910 REASON: This record is process-local
     As Any Ptr menubar_handler, menubar_context
     As Integer count, selected
     As Integer item_height
+    ' Explicit GUI-thread update scopes defer metrics until the final contents
+    ' are ready. Ordinary setters still publish their sizes immediately.
+    As Integer sizing_depth, sizing_height_pending, sizing_width_pending
     ' Insets are shared by sizing, drawing, pointer rows, and submenu placement.
     As Integer vertical_inset, caption_inset, shortcut_inset, separator_inset
     ' Optional caption adjustment leaves the item hit areas and highlight fixed.
@@ -81,10 +84,29 @@ End Type
 Declare Function menu_Create( _
     ByVal nm As String, ByVal x As Integer, ByVal y As Integer _
 ) As Widget Ptr
+Declare Function menu_GetRenderObservation(ByVal w As Widget Ptr) As String
+Declare Function menu_GetRenderBounds(ByVal w As Widget Ptr, ByRef x As Integer, _
+    ByRef y As Integer, ByRef widthValue As Integer, ByRef heightValue As Integer) As Integer
+' Begin and End must be balanced on the GUI thread. Do not show or render a
+' menu during the scope; nested scopes publish sizes only at the outer End.
+Declare Function menu_BeginUpdate(ByVal m As Widget Ptr) As Integer
+Declare Function menu_EndUpdate(ByVal m As Widget Ptr) As Integer
 Declare Sub menu_AddItem( _
     ByVal m As Widget Ptr, ByVal txt As String, _
     ByVal cb As Sub(ByVal As Integer) _
 )
+/'
+    Display-text insertion stores a caption exactly as supplied. Applications
+    that already translated it use this path to avoid translating a result
+    again, which can select a different catalog phrase. Ordinary insertion
+    continues to apply the GUI text transform once. All calls own copies of
+    caption bytes and run on the GUI thread, including inside update scopes.
+'/
+Declare Sub menu_AddDisplayItem( _
+    ByVal m As Widget Ptr, ByVal txt As String, _
+    ByVal cb As Sub(ByVal As Integer) _
+)
+Declare Sub menu_AddDisplayCommand(ByVal m As Widget Ptr, ByVal text As String, ByVal commandId As Integer)
 Declare Sub menu_AddSeparator(ByVal m As Widget Ptr)
 Declare Sub menu_AddCommand(ByVal m As Widget Ptr, ByVal text As String, ByVal commandId As Integer)
 /'

@@ -4,9 +4,6 @@
 
     File: inputdialog.bas
 
-    Targets: FreeBASIC fb dialect; the including application selects the native backend.
-    Module API: Implements inputdialog.bi; declarations there define the interface.
-
     Purpose:
 
         Implement a bounded modal prompt for text and boolean input.
@@ -17,6 +14,14 @@
         - retain user values while the caller inspects the completed result
         - report accept and cancel without applying application policy
         - release dialog metadata through the normal widget lifecycle
+
+    Targets:
+
+        FreeBASIC builds with built-in gfxlib; gfxlib3 is optional when supplied by the compiler.
+
+    Module API:
+
+        Implementation unit assembled by omaGUI.bi when OMAGUI_IMPLEMENTATION is defined.
 
     This file intentionally does NOT contain:
 
@@ -217,7 +222,12 @@ Function inputdialog_Create( _
     gui_SetParent cancel_button, dialog_data->window_widget
     ' Escape is resolved by the GUI manager within this modal tree.
     gui_SetCancelAction cancel_button, -1
-    gui_SetModalRoot root_widget
+    ' The modal stack accepts only registered roots.
+    gui_AddWidget root_widget
+    If gui_TrySetModalRoot(root_widget) = 0 Then
+        gui_RemoveWidgetPtr root_widget
+        Return 0
+    End If
     gui_SetFocus dialog_data->fields(0)
     Return root_widget
 End Function

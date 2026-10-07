@@ -37,6 +37,9 @@
 
 Const LABEL_MAXIMUM_WRAPPED_LINES As Integer = 256
 Const LABEL_MAXIMUM_ALIGNED_TEXT_BYTES As Integer = 1048576
+Const LABEL_BORDER_NONE As Integer = 0
+Const LABEL_BORDER_SINGLE As Integer = 1
+Const LABEL_BORDER_DOUBLE As Integer = 2
 
 Type LabelData
     As String text

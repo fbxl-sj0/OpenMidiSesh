@@ -3,23 +3,47 @@
     File: docs/LINTING.md
     Purpose: describe the strict lint boundary and validator corrections.
     Responsibilities: make the source policy and its verification reproducible.
-    This file does not claim compiler-backed semantic or runtime validation.
+    This file does not claim native target execution or release qualification.
 -->
 
 # Strict lint
 
 Run `tools/lint.ps1` from PowerShell for Windows, and repeat with `-Target linux`.
-Supply `-LinterPath` when fblint is installed elsewhere. The runner includes all
+Supply `-LinterPath`, `-CompilerPath` and `-CompilerIncludePath` when the tools
+are installed elsewhere.
+The compiler must export complete schema-27 models and structured diagnostics.
+The runner includes all
 application modules, internal editor includes, root test sources and the exact
 GUI source subset in `SNAPSHOT.sha256`. Generated directories and intentional
 validator regression inputs in `tools/fblint` are outside that boundary.
 
 The strict profile uses strict headers, strict tabs, honored line suppressions
 and failure on warnings. It disables no rule family and accepts no warning
-baseline. Compiler-backed semantic checks are unavailable through this runner
-because fblint does not accept the application's include-path context. Native
-compilation with all compiler warnings and target execution remain separate
-required checks.
+baseline. `--require-semantic` rejects missing or incomplete compiler facts.
+The runner supplies the native target, GCC backend, multithreaded mode, GUI
+include directory and compiler headers. The real GUI and safety-test roots
+select redistributable fonts in their own source definitions.
+
+omaGUI's `.bas` implementation files are compiled through
+`src/omagui_runtime.bas`, then analyzed using their own physical source paths.
+The semantic context must contain every selected GUI input. The linter reuses
+one model within that invocation and verifies the compiler-recorded SHA-256
+of every source before reuse. Application and test `.bas` files are separate
+compiler roots. Each application header is assigned to an actual including
+root and must have compiler facts; it has no include-only exemption.
+The runner produces one summary for each compilation context. `-ListScopes`
+lists those contexts without running a scan.
+
+The context-aware validator patch is retained in
+`tools/fblint/semantic-context.patch`. It adds typed build-context options and
+keeps source-specific rule indexes separate from reusable graph metadata.
+`tools/fblint/test_semantic_context.py` checks included files, absent files,
+inactive includes and paths containing spaces against real compiler exports.
+
+These exports are compiler front-end checks on the selected Windows or Linux
+target. Native compilation with all warnings and target execution remain
+separate required checks. In particular, a Linux export on Windows is not a
+native Linux test.
 
 Keep a line suppression only for a reviewed false positive or documented API
 constraint. Typical examples are bounded framebuffer pointer copies, a shared

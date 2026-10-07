@@ -2272,7 +2272,7 @@ Sub graphicshape_Render(ByVal w As Widget Ptr)
 
         If (d->shape_kind = GUI_SHAPE_TEXTBOX OrElse _
             d->shape_kind = GUI_SHAPE_EDITBOX) AndAlso _
-           Int(Timer * 2) Mod 2 = 0 Then
+           gui_CaretBlinkVisible(Timer) <> 0 Then
             backend_PrintFontAlpha _
                 w->ax + 3 + backend_GetTextWidthFont(d->label, d->font_id), _
                 w->ay + ((w->h - backend_GetTextHeightFont(d->font_id)) \ 2), _

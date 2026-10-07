@@ -4,9 +4,6 @@
 
     File: htmlview.bas
 
-    Targets: FreeBASIC fb dialect; the including application selects the native backend.
-    Module API: Implements htmlview.bi; declarations there define the interface.
-
     Purpose:
 
         Implement a bounded, display-only HTML viewer with omaGUI primitives.
@@ -22,6 +19,14 @@
         - build replacement documents cooperatively on the GUI thread
         - scroll through pointer, wheel, scrollbar, and keyboard input
         - report activated links without opening them
+
+    Targets:
+
+        FreeBASIC builds with built-in gfxlib; gfxlib3 is optional when supplied by the compiler.
+
+    Module API:
+
+        Implementation unit assembled by omaGUI.bi when OMAGUI_IMPLEMENTATION is defined.
 
     This file intentionally does NOT contain:
 
@@ -2970,7 +2975,7 @@ Private Sub htmlview_InitializeParseContext( _
 End Sub
 
 
-' fblint: disable-next-line FBL110 FBL111 REASON: The resumable tag dispatcher advances one bounded parse cursor.
+' fblint: disable-next-line FBL110,FBL111 -- This bounded step advances markup and style-stack state together.
 Private Function htmlview_ParseContextStep( _
     ByRef parseContext As HtmlViewParseContext, _
     ByVal timeBudgetMilliseconds As Integer _

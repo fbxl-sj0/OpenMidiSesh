@@ -129,17 +129,43 @@ Type Widget_Struct_ ' fblint: disable-line FBL910 REASON: This record is process
     ' every visual dependency, including application-owned callback state.
     ' No observation preserves conservative repainting of the complete scene.
     As Function(ByVal As Widget_Struct_ Ptr) As String render_observation
+    ' An optional exact matcher can compare borrowed retained bytes without
+    ' allocating the observation again. Bind it through the setter below;
+    ' replacing the observer automatically disables its old matcher.
+    As Function(ByVal As Widget_Struct_ Ptr, ByRef As Const String, _
+        ByVal As Integer) As Integer render_observation_match
+    As Function(ByVal As Widget_Struct_ Ptr) As String render_match_owner
+    ' Optional GUI-thread footprint for painters with known decoration bounds.
+    ' Return nonzero only when the drawable-clipped rectangle contains every
+    ' painted pixel, including owned popups. Bind through the setter so a
+    ' replacement painter cannot inherit that contract. Zero keeps full redraw.
+    As Function(ByVal As Widget_Struct_ Ptr, ByRef As Integer, ByRef As Integer, _
+        ByRef As Integer, ByRef As Integer) As Integer render_bounds
+    As Sub(ByVal As Widget_Struct_ Ptr) render_bounds_owner
+    ' A top-level window may report a rectangle it paints completely opaque.
+    ' This read-only GUI-thread contract can omit covered earlier painters.
+    ' It describes filled pixels, not the bounding box of a popup branch.
+    As Function(ByVal As Widget_Struct_ Ptr, ByRef As Integer, ByRef As Integer, _
+        ByRef As Integer, ByRef As Integer) As Integer render_opaque_bounds
+    As Sub(ByVal As Widget_Struct_ Ptr) render_opaque_owner
     ' Optional narrower damage for an observation change such as caret blink.
     ' Return zero to repaint both complete widget rectangles.
     As Function(ByVal As Widget_Struct_ Ptr, ByRef As Const String, _
         ByRef As Const String, ByRef As Integer, ByRef As Integer, _
         ByRef As Integer, ByRef As Integer) As Integer render_damage
     As String retained_key
+    As Integer retained_observation_offset
     As Integer retained_valid, retained_visible
     As Integer retained_x, retained_y, retained_w, retained_h
+    As Integer retained_bounds_valid
+    As Integer retained_paint_x, retained_paint_y, retained_paint_w, retained_paint_h
 End Type
 
 Type Widget As Widget_Struct_
+
+' First half-second is visible. Keep epoch-based Timer values in Double;
+' multiplying them before an Integer conversion overflows on 32-bit targets.
+Declare Function gui_CaretBlinkVisible(ByVal secondsValue As Double) As Integer
 
 Declare Sub gui_SetTabStop(ByVal w As Widget Ptr, ByVal enabled As Integer)
 Declare Function gui_GetTabStop(ByVal w As Widget Ptr) As Integer
@@ -267,6 +293,15 @@ Declare Sub gui_InvalidateAll()
 Declare Sub gui_InvalidateRect(ByVal x As Integer, ByVal y As Integer, _
     ByVal widthValue As Integer, ByVal heightValue As Integer)
 Declare Function gui_PrepareRetainedFrame() As Integer
+Declare Sub gui_SetRenderBoundsHandler(ByVal w As Widget Ptr, _
+    ByVal boundsHandler As Function(ByVal As Widget Ptr, ByRef As Integer, _
+        ByRef As Integer, ByRef As Integer, ByRef As Integer) As Integer)
+Declare Sub gui_SetOpaqueRenderBoundsHandler(ByVal w As Widget Ptr, _
+    ByVal boundsHandler As Function(ByVal As Widget Ptr, ByRef As Integer, _
+        ByRef As Integer, ByRef As Integer, ByRef As Integer) As Integer)
+Declare Sub gui_SetRenderObservationMatcher(ByVal w As Widget Ptr, _
+    ByVal matchHandler As Function(ByVal As Widget Ptr, ByRef As Const String, _
+        ByVal As Integer) As Integer)
 Declare Sub gui_GetDamageRect(ByVal index As Integer, ByRef x As Integer, _
     ByRef y As Integer, ByRef widthValue As Integer, ByRef heightValue As Integer)
 

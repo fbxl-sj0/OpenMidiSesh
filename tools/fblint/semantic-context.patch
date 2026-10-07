@@ -1,0 +1,809 @@
+--- a/src/fb_linter.bas
++++ b/src/fb_linter.bas
+@@ -48,7 +48,7 @@
+ Const FBLINT_SEVERITY_ERROR As Integer = 2
+ 
+ Const FBLINT_VERSION As String = "1.0.0"
+-Const FBLINT_RULESET_VERSION As String = "2026.10.086"
++Const FBLINT_RULESET_VERSION As String = "2026.10.087"
+ Const FBLINT_CONFIG_FILE_NAME As String = "fblint.toml"
+ Const MAX_COPYRIGHT_SCAN_BYTES As Integer = 4096
+ 
+@@ -180,6 +180,12 @@
+     StdinFilename As String
+     ConfigPath As String
+     CompilerPath As String
++    SemanticRoot As String
++    CompilerIncludes As String
++    CompilerDefines As String
++    CompilerTarget As String
++    CompilerBackend As String
++    CompilerMultithreaded As Integer
+     SemanticAnalysis As Integer
+     RequireSemantic As Integer
+     ShowSemantic As Integer
+@@ -3731,6 +3737,7 @@
+ End Function
+ 
+ #Include Once "fb_linter_project_index.bi"
++#Define FBLINT_SCHEMA27_TRACE
+ #Include Once "fb_linter_semantic.bi"
+ #Include Once "fb_linter_parser_rules.bi"
+ #Include Once "fb_linter_string_literal_rules.bi"
+@@ -3841,7 +3848,6 @@
+ #Include Once "fb_linter_parameter_loops.bi"
+ #Include Once "fb_linter_option_explicit.bi"
+ #Include Once "fb_linter_conversion_rules.bi"
+-#Include Once "fb_linter_logic_rules.bi"
+ #Include Once "fb_linter_bidi_context.bi"
+ #Include Once "fb_linter_bidi_rules.bi"
+ #Include Once "fb_linter_todo_comments.bi"
+@@ -6191,7 +6197,6 @@
+         RunAssignmentRuleChecks FilePath
+         RunConstantRuleChecks FilePath
+         RunConversionRuleChecks FilePath
+-        RunCaseLiteralOrChecks FilePath
+         RunLogicalExpressionRuleChecks FilePath
+         RunEnumRuleChecks FilePath
+         ConstantFinishReporting
+@@ -6866,6 +6871,12 @@
+     Options.StdinFilename = ""
+     Options.ConfigPath = ""
+     Options.CompilerPath = ""
++    Options.SemanticRoot = ""
++    Options.CompilerIncludes = ""
++    Options.CompilerDefines = ""
++    Options.CompilerTarget = ""
++    Options.CompilerBackend = ""
++    Options.CompilerMultithreaded = 0
+     Options.SemanticAnalysis = -1
+     Options.RequireSemantic = 0
+     Options.ShowSemantic = 0
+@@ -7011,7 +7022,8 @@
+ 
+ Function CommandOptionConsumesValue(ByRef OptionText As String) As Integer
+     Select Case LCase(OptionText)
+-        Case "--csv", "--target", "--profile", "--compiler", "--virtual-near-miss-distance", _
++        Case "--compiler-target", "--compiler-backend", "--semantic-root", "--compiler-include", "--compiler-define", _
++             "--csv", "--target", "--profile", "--compiler", "--virtual-near-miss-distance", _
+              "--override-visibility-change", "--override-ignored-functions", _
+              "--indent-width", "--expected-line-ending", _
+              "--max-line-length", "--max-routine-lines", _
+@@ -8952,6 +8964,12 @@
+     Print "    --csv <path>             Also write the legacy CSV report."
+     Print "    --target <name>          windows, linux, haiku, bsd, cygwin, embedded, nuttx,"
+     Print "                             js, android, dos, wii, xbox."
++    Print "  --compiler-target <name>       Select the actual compilation target"
++    Print "  --compiler-backend <name>      Select the actual compilation backend"
++    Print "  --compiler-multithreaded       Compile with FreeBASIC -mt"
++    Print "  --semantic-root <path>         Compile this root for included source inputs"
++    Print "  --compiler-include <path>      Add a compiler include directory (repeatable)"
++    Print "  --compiler-define <name>       Add a compiler definition (repeatable)"
+     Print "    --compiler <path>        Compiler with -semantic-model support (default: discover)."
+     Print "    --no-semantic            Disable compiler-backed parsing; use local approximations."
+     Print "    --require-semantic       Fail if any .bas root lacks accepted current compiler facts."
+@@ -9184,6 +9202,36 @@
+                     "--compiler", "a compiler executable path")
+                 ArgIndex += 2
+ 
++            Case "--compiler-target"
++                Options.CompilerTarget = RequiredOptionValue(ArgIndex, ArgText, "a FreeBASIC target")
++                ArgIndex += 2
++
++            Case "--compiler-backend"
++                Options.CompilerBackend = RequiredOptionValue(ArgIndex, ArgText, "a FreeBASIC backend")
++                ArgIndex += 2
++
++            Case "--compiler-multithreaded"
++                Options.CompilerMultithreaded = -1
++                ArgIndex += 1
++
++            Case "--semantic-root"
++                Options.SemanticRoot = RequiredOptionValue(ArgIndex, _
++                    "--semantic-root", "a compilation root path")
++                ArgIndex += 2
++
++            Case "--compiler-include", "--compiler-define"
++                ValueText = RequiredOptionValue(ArgIndex, ArgText, "a compiler context value")
++                If InStr(ValueText, Chr(10)) OrElse InStr(ValueText, Chr(13)) Then
++                    Print "fb-linter: compiler context values must be single-line"
++                    End 2
++                End If
++                If LCase(ArgText) = "--compiler-include" Then
++                    Options.CompilerIncludes += ValueText + Chr(10)
++                Else
++                    Options.CompilerDefines += ValueText + Chr(10)
++                End If
++                ArgIndex += 2
++
+             Case "--no-semantic"
+                 Options.SemanticAnalysis = 0
+                 ArgIndex += 1
+@@ -9817,6 +9865,7 @@
+ 
+ TimingMainScanSeconds = ElapsedTimerSeconds(PhaseStartedAt)
+ CleanupStandardInput
++FblintClearContextModel
+ 
+ If OpenPrimaryOutput() = 0 Then End 2
+ 
+--- a/src/fb_linter_semantic.bi
++++ b/src/fb_linter_semantic.bi
+@@ -253,7 +253,7 @@
+ Const FBLINT_MAX_SEMANTIC_SYMBOL_TYPES As LongInt = 250000
+ ' FBC permits up to one million identities per semantic-model domain.
+ Const FBLINT_MAX_SEMANTIC_MODEL_IDENTITIES As LongInt = 1000000
+-Const FBLINT_MAX_SEMANTIC_EXPRESSION_SPANS As LongInt = 1000000
++Const FBLINT_MAX_SEMANTIC_EXPRESSION_SPANS As LongInt = 250000
+ Const FBLINT_MAX_SEMANTIC_BINDING_DECLARATIONS As LongInt = 250000
+ Const FBLINT_MAX_SEMANTIC_BINDING_REFERENCES As LongInt = 250000
+ Const FBLINT_MAX_SEMANTIC_DISCARDED_CALLS As LongInt = 250000
+@@ -9975,6 +9975,13 @@
+ #Include "fb_linter_semantic_c_formats.bi"
+ #Include "fb_linter_semantic_constants.bi"
+ 
++' The context cache retains validated, source-independent graph metadata.
++' Rule indexes are rebuilt for each physical source. The analyzer verifies
++' every source and the artifact hash before allowing this metadata to persist.
++Dim Shared As String ContextRetainedModelPath
++Dim Shared ContextLatestTypes() As String
++Dim Shared ContextCanonicalIds() As LongInt
++
+ Function FblintValidateSemanticModel(ByRef ModelPath As String, _
+     ByRef SourcePath As String, _
+     ByRef SymbolCountOut As Integer, ByRef ProcedureCountOut As Integer, _
+@@ -10055,7 +10062,7 @@
+     ExpressionCount = 0
+     FblintSemanticCompilerVersion = ""
+     FblintSemanticSchemaVersion = ""
+-    ResetSchema27Facts
++    If ModelPath <> ContextRetainedModelPath OrElse Schema27FactsComplete = 0 Then ResetSchema27Facts
+     ResetSemanticContracts
+     ResetSemanticCFormats
+     ResetSemanticConstants
+@@ -10421,10 +10428,32 @@
+                     Return 0
+                 End If
+             ElseIf SchemaVersion = FBLINT_SEMANTIC_SCHEMA_V27 Then
+-                If FblintValidateSchema27Metadata(ModelPath, LatestTypes(), CanonicalIds()) = 0 Then
+-                    TraceLog "invalid schema 27 graph: " + Schema27Failure
+-                    Close #FileNumber
+-                    Return 0
++                If ModelPath = ContextRetainedModelPath AndAlso Schema27FactsComplete <> 0 Then
++                    ReDim LatestTypes(0 To UBound(ContextLatestTypes))
++                    ReDim CanonicalIds(0 To UBound(ContextCanonicalIds))
++                    For metadataIndex As Integer = 0 To UBound(ContextLatestTypes)
++                        LatestTypes(metadataIndex) = ContextLatestTypes(metadataIndex)
++                    Next metadataIndex
++                    For metadataIndex As Integer = 0 To UBound(ContextCanonicalIds)
++                        CanonicalIds(metadataIndex) = ContextCanonicalIds(metadataIndex)
++                    Next metadataIndex
++                Else
++                    If FblintValidateSchema27Metadata(ModelPath, LatestTypes(), CanonicalIds()) = 0 Then
++                        TraceLog "invalid schema 27 graph: " + Schema27Failure
++                        Close #FileNumber
++                        Return 0
++                    End If
++                    If Len(Options.SemanticRoot) Then
++                        ContextRetainedModelPath = ModelPath
++                        ReDim ContextLatestTypes(0 To UBound(LatestTypes))
++                        ReDim ContextCanonicalIds(0 To UBound(CanonicalIds))
++                        For metadataIndex As Integer = 0 To UBound(LatestTypes)
++                            ContextLatestTypes(metadataIndex) = LatestTypes(metadataIndex)
++                        Next metadataIndex
++                        For metadataIndex As Integer = 0 To UBound(CanonicalIds)
++                            ContextCanonicalIds(metadataIndex) = CanonicalIds(metadataIndex)
++                        Next metadataIndex
++                    End If
+                 End If
+             End If
+             HeaderSeen = -1
+@@ -11207,6 +11236,7 @@
+ 
+ #Include "fb_linter_semantic_temp.bi"
+ #Include "fb_linter_compiler_diagnostics.bi"
++#Include "fb_linter_semantic_context.bi"
+ 
+ Function FblintLaunchCompiler(ByRef CompilerPath As String, _
+     ByRef SourcePath As String, ByRef ModelPath As String, _
+@@ -11260,8 +11290,11 @@
+     End If
+ 
+     TargetOption = FblintSemanticTargetArgument()
++    If Len(Options.CompilerTarget) Then TargetOption = "-target " + FblintQuoteWindowsArgument(Options.CompilerTarget)
+     If Len(TargetOverride) Then TargetOption = "-target " + TargetOverride
+     CommandText = FblintQuoteWindowsArgument(CompilerPath)
++    If Len(Options.CompilerBackend) Then CommandText += " -gen " + FblintQuoteWindowsArgument(Options.CompilerBackend)
++    If Options.CompilerMultithreaded <> 0 Then CommandText += " -mt"
+     If EmitPreprocessed <> 0 Then
+         ' Preprocessing must be exclusive of -r. Combining those options
+         ' makes the driver append backend code to the preprocessed output.
+@@ -11289,6 +11322,8 @@
+     If Len(IncludePath) <> 0 Then
+         CommandText += " -i " + FblintQuoteWindowsArgument(IncludePath)
+     End If
++    CommandText += FblintContextArguments(Options.CompilerIncludes, " -i ")
++    CommandText += FblintContextArguments(Options.CompilerDefines, " -d ")
+     If Len(TargetOption) <> 0 Then CommandText += " " + TargetOption
+     CommandText += " " + FblintQuoteWindowsArgument(SourcePath)
+ 
+@@ -11961,7 +11996,7 @@
+ 
+     FblintSemanticAnalyzedFile = FilePath
+     ResetCompilerDiagnostics
+-    ResetSchema27Facts
++    If Len(ContextRetainedModelPath) = 0 OrElse Schema27FactsComplete = 0 Then ResetSchema27Facts
+     ResetSemanticContracts
+     ResetSemanticIncludes
+     ResetSemanticCFormats
+@@ -12145,7 +12180,7 @@
+     Erase FblintSemanticSymbolTypes
+     Erase FblintSemanticNestedShadowSymbolNames
+ 
+-    If FileExtensionLower(FilePath) <> ".bas" Then Exit Function
++    If FileExtensionLower(FilePath) <> ".bas" AndAlso Len(Options.SemanticRoot) = 0 Then Exit Function
+ 
+     If Options.SemanticAnalysis = 0 Then
+         FblintSetSemanticStatus FilePath, "disabled", "semantic-analysis-disabled"
+@@ -12154,6 +12189,13 @@
+ 
+     If Options.StdinMode <> 0 Then
+         FblintSetSemanticStatus FilePath, "stdin", "stdin-not-compiled"
++        Exit Function
++    End If
++
++    ' Every input in this invocation uses the same compilation context.
++    ' A failed export cannot become valid merely by selecting another include.
++    If Len(Options.SemanticRoot) AndAlso ContextAnalysisFailed <> 0 Then
++        FblintSetSemanticStatus FilePath, "unavailable", ContextFailureReason
+         Exit Function
+     End If
+ 
+@@ -12178,6 +12220,23 @@
+     End If
+ 
+     SourcePath = SourceReadPath(FilePath)
++    Dim As String CompileRootPath = SourcePath
++    Dim As Integer ReusedContext
++    If Len(Options.SemanticRoot) Then CompileRootPath = SourceReadPath(Options.SemanticRoot)
++    If Len(Options.SemanticRoot) AndAlso Len(ContextModelPath) Then
++        If FblintContextSourcesCurrent() = 0 Then
++            FblintSetSemanticStatus FilePath, "unavailable", "context-source-changed"
++            Exit Function
++        End If
++        BasePath = ContextBasePath
++        ModelPath = ContextModelPath
++        OutputPath = ContextOutputPath
++        DiagnosticPath = ContextDiagnosticPath
++        CompilerOutput = ContextCompilerOutput
++        CompilerExitCode = 0
++        ReusedContext = -1
++    End If
++    If ReusedContext = 0 Then
+     If FblintCreateSemanticPaths(BasePath, ModelPath, OutputPath) = 0 Then
+         FblintSetSemanticStatus FilePath, "unavailable", "temporary-path-failed"
+         TraceLog "could not allocate semantic temporary paths for " + FilePath
+@@ -12186,7 +12245,7 @@
+     ExpressionModelPath = BasePath + ".fbcexpr"
+     If CompilerDiagnosticsUnsupported = 0 Then DiagnosticPath = BasePath + ".fbcdia"
+ 
+-    LaunchSucceeded = FblintLaunchCompiler(CompilerPath, SourcePath, _
++    LaunchSucceeded = FblintLaunchCompiler(CompilerPath, CompileRootPath, _
+         ModelPath, OutputPath, CompilerOutput, CompilerExitCode, 0, "", 0, DiagnosticPath)
+     If LaunchSucceeded AndAlso Len(DiagnosticPath) > 0 AndAlso _
+        InStr(UCase(CompilerOutput), "SEMANTIC-DIAGNOSTICS") > 0 Then
+@@ -12194,7 +12253,7 @@
+         If FblintCompilerOptionUnsupported(DiagnosticProbeText) Then
+             CompilerDiagnosticsUnsupported = -1
+             DiagnosticPath = ""
+-            LaunchSucceeded = FblintLaunchCompiler(CompilerPath, SourcePath, ModelPath, OutputPath, CompilerOutput, CompilerExitCode, 0)
++            LaunchSucceeded = FblintLaunchCompiler(CompilerPath, CompileRootPath, ModelPath, OutputPath, CompilerOutput, CompilerExitCode, 0)
+         End If
+     End If
+     If LaunchSucceeded = 0 Then
+@@ -12204,9 +12263,11 @@
+         TraceLog "could not launch semantic compiler for " + FilePath
+         Exit Function
+     End If
++    End If
++    If CompilerExitCode <> 0 Then TraceLog "semantic compiler failed: " + CompilerOutput
+     FblintSemanticPendingOutput = CompilerOutput
+     If Len(DiagnosticPath) > 0 Then
+-        If LoadCompilerDiagnostics(DiagnosticPath, SourcePath, CompilerExitCode) = 0 Then _
++        If LoadCompilerDiagnostics(DiagnosticPath, CompileRootPath, CompilerExitCode) = 0 Then _
+             TraceLog "structured compiler diagnostics unavailable for " + FilePath
+     End If
+ 
+@@ -12221,6 +12282,22 @@
+ 
+     ModelValid = FblintValidateSemanticModel(ModelPath, SourcePath, _
+         Symbols, Procedures, TypeFacts, Nodes, ImplicitCallCount)
++    If ModelValid <> 0 AndAlso CompilerExitCode = 0 AndAlso Len(Options.SemanticRoot) Then
++        If FblintSemanticSchemaVersion <> FBLINT_SEMANTIC_SCHEMA_V27 OrElse _
++           FblintCaptureContextSources(ModelPath, SourcePath) = 0 Then
++            FblintSetSemanticStatus FilePath, "unavailable", "source-not-in-context"
++            If ReusedContext = 0 Then FblintDeleteSemanticTemps BasePath, ModelPath, ExpressionModelPath, OutputPath
++            Return 0
++        End If
++        If ReusedContext = 0 Then
++            ContextBasePath = BasePath
++            ContextModelPath = ModelPath
++            ContextModelDigest = FblintContextDigest(ModelPath)
++            ContextOutputPath = OutputPath
++            ContextDiagnosticPath = DiagnosticPath
++            ContextCompilerOutput = CompilerOutput
++        End If
++    End If
+     If ModelValid <> 0 AndAlso CompilerExitCode = 0 Then
+         FblintSemanticAuthoritative = -1
+         If FblintSemanticSchemaHasMetadata(FblintSemanticSchemaVersion) = 0 Then
+@@ -12258,7 +12335,7 @@
+             Else
+                 ExpressionCompilerExitCode = -1
+                 LaunchSucceeded = FblintLaunchCompiler(CompilerPath, _
+-                    SourcePath, ExpressionModelPath, OutputPath, _
++                    CompileRootPath, ExpressionModelPath, OutputPath, _
+                     ExpressionCompilerOutput, ExpressionCompilerExitCode, -1)
+                 If LaunchSucceeded <> 0 AndAlso ExpressionCompilerExitCode = 0 Then
+                     If FblintAppendSemanticPrecedenceExpressions( _
+@@ -12318,8 +12395,13 @@
+         End If
+     End If
+ 
+-    FblintDeleteSemanticTemps BasePath, ModelPath, _
+-        ExpressionModelPath, OutputPath
++    If ModelPath <> ContextModelPath Then
++        FblintDeleteSemanticTemps BasePath, ModelPath, ExpressionModelPath, OutputPath
++    End If
++    If Len(Options.SemanticRoot) AndAlso FblintSemanticAuthoritative = 0 Then
++        ContextAnalysisFailed = -1
++        ContextFailureReason = "context-analysis-failed"
++    End If
+ #Else
+     FblintSetSemanticStatus FilePath, "unavailable", "host-launcher-unsupported"
+ #Endif
+--- a/src/fb_linter_semantic_status.bi
++++ b/src/fb_linter_semantic_status.bi
+@@ -50,8 +50,8 @@
+         .SchemaText = ""
+         .ProducerText = ""
+         .Required = (Options.RequireSemantic <> 0 AndAlso _
+-            FileExtensionLower(.Path) = ".bas")
+-        If FileExtensionLower(.Path) = ".bi" Then
++            (FileExtensionLower(.Path) = ".bas" OrElse Len(Options.SemanticRoot) > 0))
++        If FileExtensionLower(.Path) = ".bi" AndAlso Len(Options.SemanticRoot) = 0 Then
+             .StateText = "include-only"
+             .ReasonText = "header-requires-bas-root"
+         End If
+@@ -135,7 +135,7 @@
+             .StateText = "incomplete"
+             .ReasonText = "selected-fact-retention-failed"
+         End If
+-        If FileExtensionLower(.Path) <> ".bas" Then
++        If FileExtensionLower(.Path) <> ".bas" AndAlso Len(Options.SemanticRoot) = 0 Then
+             SemanticSkippedCount += 1
+         ElseIf .StateText = "accepted" Then
+             SemanticAcceptedCount += 1
+--- /dev/null
++++ b/src/fb_linter_semantic_context.bi
+@@ -0,0 +1,139 @@
++' Project: fb-linter
++' File: fb_linter_semantic_context.bi
++' Purpose: Analyze included sources in their actual compilation context.
++' Responsibilities: Quote build inputs and own one source-verified model cache.
++' This file intentionally does NOT validate semantic records or report lint rules.
++'
++' The scan is single-threaded. This process owns the reserved compiler paths
++' until the scan finishes. FILE records in a validated schema-27 model supply
++' physical source hashes. Every reuse checks those hashes against disk, so a
++' changed include cannot silently inherit facts from an earlier compilation.
++
++#Ifndef FB_LINTER_SEMANTIC_CONTEXT_BI
++#Define FB_LINTER_SEMANTIC_CONTEXT_BI
++
++#Ifdef __FB_WIN32__
++#Include Once "win/wincrypt.bi"
++#Endif
++
++Type FblintContextSource
++    Path As String
++    Digest As String
++End Type
++
++Dim Shared ContextSources() As FblintContextSource
++Dim Shared As Integer ContextSourceCount
++Dim Shared As String ContextBasePath, ContextModelPath, ContextOutputPath
++Dim Shared As String ContextDiagnosticPath, ContextCompilerOutput, ContextModelDigest
++Dim Shared As Integer ContextAnalysisFailed
++Dim Shared As String ContextFailureReason
++
++Function FblintContextArguments(ByRef Values As String, ByRef FlagText As String) As String
++    Dim As String ResultText
++    Dim As Integer Cursor = 1, LineEnd
++    Do While Cursor <= Len(Values)
++        LineEnd = InStr(Cursor, Values, Chr(10))
++        If LineEnd = 0 Then Exit Do
++        ResultText += FlagText + FblintQuoteWindowsArgument(Mid(Values, Cursor, LineEnd - Cursor))
++        Cursor = LineEnd + 1
++    Loop
++    Return ResultText
++End Function
++
++Function FblintContextDigest(ByRef FilePath As String) As String
++#Ifdef __FB_WIN32__
++    Dim As HCRYPTPROV Provider
++    Dim As HCRYPTHASH HashHandle
++    Dim As Integer FileNumber = FreeFile, Valid = -1
++    Dim As LongInt Remaining
++    Dim As DWORD ByteCount, DigestSize = 32
++    Dim As UByte Buffer(0 To 65535), Digest(0 To 31)
++    Dim As String ResultText
++    If CryptAcquireContextA(@Provider, Null, Null, PROV_RSA_AES, CRYPT_VERIFYCONTEXT) = 0 Then Return ""
++    If CryptCreateHash(Provider, CALG_SHA_256, 0, 0, @HashHandle) = 0 Then
++        CryptReleaseContext(Provider, 0)
++        Return ""
++    End If
++    If Open(FilePath For Binary Access Read As #FileNumber) <> 0 Then
++        Valid = 0
++    Else
++        Remaining = Lof(FileNumber)
++        Do While Remaining > 0
++            ByteCount = IIf(Remaining > Sizeof(Buffer), Sizeof(Buffer), Remaining)
++            If Get(#FileNumber, , Buffer(0), ByteCount) <> 0 Then Valid = 0: Exit Do
++            If CryptHashData(HashHandle, @Buffer(0), ByteCount, 0) = 0 Then Valid = 0: Exit Do
++            Remaining -= ByteCount
++        Loop
++        Close #FileNumber
++    End If
++    If Valid <> 0 AndAlso CryptGetHashParam(HashHandle, HP_HASHVAL, @Digest(0), @DigestSize, 0) <> 0 Then
++        For I As Integer = 0 To 31
++            ResultText += LCase(Hex(Digest(I), 2))
++        Next I
++    End If
++    CryptDestroyHash(HashHandle)
++    CryptReleaseContext(Provider, 0)
++    Return ResultText
++#Else
++    Return ""
++#Endif
++End Function
++
++Function FblintContextSourcesCurrent() As Integer
++    If ContextSourceCount = 0 Then Return 0
++    If FblintContextDigest(ContextModelPath) <> ContextModelDigest Then Return 0
++    For I As Integer = 0 To ContextSourceCount - 1
++        If FblintContextDigest(ContextSources(I).Path) <> ContextSources(I).Digest Then Return 0
++    Next I
++    Return -1
++End Function
++
++Function FblintCaptureContextSources(ByRef ModelPath As String, ByRef SourcePath As String) As Integer
++    Dim As Integer FileNumber = FreeFile, Present, Valid = -1
++    Dim As String LineText, PhysicalPath, SourceKind
++    If ContextSourceCount = 0 Then
++        ' Bound metadata storage independently of the compiler's artifact size.
++        ReDim ContextSources(0 To 4095)
++        If Open(ModelPath For Input As #FileNumber) <> 0 Then Return 0
++        Do While Eof(FileNumber) = 0
++            Line Input #FileNumber, LineText
++            If Left(LineText, 5) <> "FILE" + Chr(9) Then Continue Do
++            SourceKind = FblintTsvField(LineText, 6)
++            If SourceKind <> "regular" Then Continue Do
++            If ContextSourceCount >= 4096 Then Valid = 0: Exit Do
++            If FblintSemanticDecodeField(FblintTsvField(LineText, 2), PhysicalPath) = 0 Then Valid = 0: Exit Do
++            With ContextSources(ContextSourceCount)
++                .Path = PhysicalPath
++                .Digest = LCase(FblintTsvField(LineText, 4))
++                If FblintContextDigest(.Path) <> .Digest Then Valid = 0: Exit Do
++            End With
++            ContextSourceCount += 1
++        Loop
++        Close #FileNumber
++        If Valid = 0 Then ContextSourceCount = 0: Erase ContextSources: Return 0
++    End If
++    For I As Integer = 0 To ContextSourceCount - 1
++        If ComparablePath(ContextSources(I).Path) = ComparablePath(SourcePath) Then Present = -1
++    Next I
++    Return Present
++End Function
++
++Sub FblintClearContextModel()
++    If Len(ContextBasePath) Then
++        Dim As String ExpressionPath = ContextBasePath + ".fbcexpr"
++        FblintDeleteSemanticTemps ContextBasePath, ContextModelPath, ExpressionPath, ContextOutputPath
++    End If
++    ContextRetainedModelPath = ""
++    Erase ContextLatestTypes
++    Erase ContextCanonicalIds
++    ContextBasePath = ""
++    ContextModelPath = ""
++    ContextSourceCount = 0
++    ContextAnalysisFailed = 0
++    ContextFailureReason = ""
++    Erase ContextSources
++End Sub
++
++#Endif
++
++' end of fb_linter_semantic_context.bi
+--- a/src/fb_linter_semantic_schema27.bi
++++ b/src/fb_linter_semantic_schema27.bi
+@@ -10,6 +10,12 @@
+ #Ifndef FB_LINTER_SEMANTIC_SCHEMA27_BI
+ #Define FB_LINTER_SEMANTIC_SCHEMA27_BI
+ 
++#Ifdef FBLINT_SCHEMA27_TRACE
++#Define Schema27Trace(MessageText) TraceLog MessageText
++#Else
++#Define Schema27Trace(MessageText)
++#Endif
++
+ ' -------------------------------------------------------------------------
+ ' Per-model record index
+ ' -------------------------------------------------------------------------
+@@ -19,6 +25,11 @@
+ Const SCHEMA27_BYTE_LIMIT As LongInt = 512 * 1024 * 1024
+ Const SCHEMA27_ROW_LIMIT As LongInt = 16 * 1024 * 1024
+ Const SCHEMA27_HASH_SIZE As Integer = 65536
++' Large exports need more buckets to keep decoded-key comparisons bounded in
++' practice. Two fixed arrays cost at most eight MiB; small models retain the
++' original hash width. Neither the byte budget nor record validation changes.
++Const SCHEMA27_MAX_HASH_SIZE As Integer = 1048576
++Const SCHEMA27_HASH_ROW_BYTES As Integer = 128
+ Const SCHEMA27_FNV_OFFSET As ULong = 2166136261
+ Const SCHEMA27_FNV_PRIME As ULong = 16777619
+ Const SCHEMA27_TAGS As String = "|FBCSEM|M|D|S|B|I|P|V|N|E|END|T|A|F|G|U|C|H|K|J|O|Q|Y|Z|ASM|DCL|CTX|OPT|USE|FILE|SRC|SRE|INC|MAP|ORIG|LOC|PPB|PPD|PPE|PPT|PPS|MD|MT|MI|MA|MS|MC|ME|ML|MR|ST|STE|BLK|BEND|OWN|CAP|ACC|SOP|EX|NT|PH|NP|EV|CB|CN|CE|CL|DI|"
+@@ -52,8 +63,9 @@
+ Dim Shared As String Schema27LinePool
+ Dim Shared As Long Schema27TagHeads(0 To 67), Schema27TagTails(0 To 67)
+ Dim Shared As Long Schema27TagCounts(0 To 67)
+-Dim Shared As Long Schema27HashHeads(0 To SCHEMA27_HASH_SIZE - 1)
+-Dim Shared As Long Schema27AliasHeads(0 To SCHEMA27_HASH_SIZE - 1)
++Dim Shared As Long Schema27HashHeads(0 To SCHEMA27_MAX_HASH_SIZE - 1)
++Dim Shared As Long Schema27AliasHeads(0 To SCHEMA27_MAX_HASH_SIZE - 1)
++Dim Shared As Integer Schema27HashSize = SCHEMA27_HASH_SIZE
+ Dim Shared As Integer Schema27FactsComplete
+ Dim Shared As String Schema27Failure
+ 
+@@ -65,6 +77,7 @@
+     Erase Schema27TagCounts
+     Erase Schema27HashHeads
+     Erase Schema27AliasHeads
++    Schema27HashSize = SCHEMA27_HASH_SIZE
+     Schema27RowCount = 0
+     Schema27Capacity = 0
+     Schema27AliasCount = 0
+@@ -103,8 +116,8 @@
+ End Function
+ 
+ Function Schema27Bucket(ByRef KeyText As String) As Integer
+-    ' Only the low sixteen bits select a bucket. Rotation-only mixing leaves
+-    ' trailing numeric IDs outside those bits, clustering hundreds of keys.
++    ' The active power-of-two table selects low hash bits. Rotation-only mixing
++    ' leaves trailing numeric IDs outside those bits, clustering many keys.
+     ' FNV-1a mixes each decoded byte into a fixed-width unsigned accumulator;
+     ' its 32-bit wrap is intentional on both 32-bit and 64-bit hosts.
+     ' Full key equality, not the hash, still decides record identity.
+@@ -112,7 +125,7 @@
+     For I As Integer = 1 To Len(KeyText)
+         HashValue = (HashValue Xor CULng(Asc(KeyText, I))) * SCHEMA27_FNV_PRIME
+     Next I
+-    Return HashValue And (SCHEMA27_HASH_SIZE - 1)
++    Return HashValue And (Schema27HashSize - 1)
+ End Function
+ 
+ Function Schema27Find(ByVal TagText As String, ByVal First As String = "", _
+@@ -245,7 +258,6 @@
+         Return 0
+     End If
+     If TagText = "K" AndAlso OldIndex > 0 AndAlso Left(Fields(3), 24) = "unevaluated-query-range-" Then Return 0
+-    If TagText = "K" AndAlso OldIndex > 0 AndAlso Left(Fields(3), 12) = "select-case-" Then Return 0
+     If TagText = "K" AndAlso OldIndex > 0 AndAlso _
+        (Schema20Choice(Fields(3), "|formal-span-kind|assignment-target-dtype|assignment-kind|unevaluated-query-input|") OrElse _
+         Left(Fields(3), 11) = "size-query-" OrElse Left(Fields(3), 16) = "pointer-address-" OrElse _
+@@ -382,6 +394,11 @@
+     If FileSize > 0 Then Get #FileNumber, FileSize, FinalByte
+     Close #FileNumber
+     If FileSize = 0 OrElse FileSize > SCHEMA27_BYTE_LIMIT OrElse FinalByte <> 10 Then Return 0
++    While Schema27HashSize < SCHEMA27_MAX_HASH_SIZE AndAlso _
++          Schema27HashSize < FileSize \ SCHEMA27_HASH_ROW_BYTES
++        Schema27HashSize *= 2
++    Wend
++    Schema27Trace("schema 27 index: " + ModelPath)
+     Schema27LinePool = Space$(FileSize)
+     Schema27LinePoolUsed = 0
+     If Open(ModelPath For Input As #FileNumber) <> 0 Then Return 0
+@@ -404,9 +421,11 @@
+     Loop
+     Valid = (Valid <> 0 AndAlso FooterSeen <> 0 AndAlso Eof(FileNumber) <> 0)
+     Close #FileNumber
++    Schema27Trace("schema 27 indexed rows=" + LTrim(Str(Schema27RowCount)))
+     If Valid <> 0 Then Valid = Schema27ValidateGraphs()
+     If Valid <> 0 Then
+         Schema27Failure = "shared symbol metadata"
++        Schema27Trace("schema 27 shared symbol metadata")
+         Valid = FblintValidateSchema20Metadata(ModelPath, LatestTypes(), CanonicalIds(), "27")
+     End If
+     If Valid = 0 Then
+@@ -419,6 +438,7 @@
+         Schema27Failure = ""
+         Schema27FactsComplete = -1
+     End If
++    Schema27Trace("schema 27 metadata status=" + LTrim(Str(Valid)))
+     Return Valid
+ End Function
+ 
+@@ -438,6 +458,7 @@
+     Capacity As Long
+     AliasCount As Long
+     AliasCapacity As Long
++    HashSize As Integer
+     LinePoolUsed As Long
+     LinePool As String
+     FactsComplete As Integer
+@@ -450,11 +471,14 @@
+ 
+ Function Schema27SuspendIndex(ByRef Saved As Schema27IndexSnapshot) As Integer
+     If Saved.Active <> 0 OrElse Schema27RowCount < 0 OrElse _
+-       Schema27Capacity < Schema27RowCount Then Return 0
++       Schema27Capacity < Schema27RowCount OrElse _
++       Schema27HashSize < SCHEMA27_HASH_SIZE OrElse _
++       Schema27HashSize > SCHEMA27_MAX_HASH_SIZE Then Return 0
+     Saved.RowCount = Schema27RowCount
+     Saved.Capacity = Schema27RowCount + 1
+     Saved.AliasCount = Schema27AliasCount
+     Saved.AliasCapacity = Schema27AliasCount + 1
++    Saved.HashSize = Schema27HashSize
+     Saved.LinePoolUsed = Schema27LinePoolUsed
+     Swap Schema27LinePool, Saved.LinePool
+     Saved.FactsComplete = Schema27FactsComplete
+@@ -464,8 +488,8 @@
+     Saved.ConditionalTop = Schema27ConditionalTop
+     ReDim Saved.Rows(0 To Saved.RowCount)
+     ReDim Saved.Aliases(0 To Saved.AliasCount)
+-    ReDim Saved.HashHeads(0 To SCHEMA27_HASH_SIZE - 1)
+-    ReDim Saved.AliasHeads(0 To SCHEMA27_HASH_SIZE - 1)
++    ReDim Saved.HashHeads(0 To Saved.HashSize - 1)
++    ReDim Saved.AliasHeads(0 To Saved.HashSize - 1)
+     ' SWAP transfers the managed strings rather than copying their storage
+     ' descriptors. No caller may retain a row reference across this scope.
+     For RowIndex As LongInt = 1 To Saved.RowCount
+@@ -479,7 +503,7 @@
+         Saved.TagTails(TagIndex) = Schema27TagTails(TagIndex)
+         Saved.TagCounts(TagIndex) = Schema27TagCounts(TagIndex)
+     Next TagIndex
+-    For Bucket As Integer = 0 To SCHEMA27_HASH_SIZE - 1
++    For Bucket As Integer = 0 To Saved.HashSize - 1
+         Saved.HashHeads(Bucket) = Schema27HashHeads(Bucket)
+         Saved.AliasHeads(Bucket) = Schema27AliasHeads(Bucket)
+     Next Bucket
+@@ -491,6 +515,7 @@
+ Sub Schema27ResumeIndex(ByRef Saved As Schema27IndexSnapshot)
+     If Saved.Active = 0 Then Exit Sub
+     ResetSchema27Facts
++    Schema27HashSize = Saved.HashSize
+     If Saved.Capacity > 0 Then ReDim Schema27Rows(0 To Saved.Capacity - 1)
+     If Saved.AliasCapacity > 0 Then ReDim Schema27Aliases(0 To Saved.AliasCapacity - 1)
+     For RowIndex As LongInt = 1 To Saved.RowCount
+@@ -504,7 +529,7 @@
+         Schema27TagTails(TagIndex) = Saved.TagTails(TagIndex)
+         Schema27TagCounts(TagIndex) = Saved.TagCounts(TagIndex)
+     Next TagIndex
+-    For Bucket As Integer = 0 To SCHEMA27_HASH_SIZE - 1
++    For Bucket As Integer = 0 To Saved.HashSize - 1
+         Schema27HashHeads(Bucket) = Saved.HashHeads(Bucket)
+         Schema27AliasHeads(Bucket) = Saved.AliasHeads(Bucket)
+     Next Bucket
+--- a/src/fb_linter_semantic_schema27_graphs.bi
++++ b/src/fb_linter_semantic_schema27_graphs.bi
+@@ -20,7 +20,6 @@
+ #Include Once "fb_linter_semantic_sequence_branches.bi"
+ #Include Once "fb_linter_semantic_wide_literals.bi"
+ #Include Once "fb_linter_semantic_query_inputs.bi"
+-#Include Once "fb_linter_semantic_select_inputs.bi"
+ 
+ ' Schema-27 S records use FBC's procedure class code for prototype owners.
+ Const SCHEMA27_PROCEDURE_CLASS As LongInt = 3
+@@ -437,21 +436,25 @@
+ #Include "fb_linter_semantic_schema27_macros.bi"
+ 
+ Function Schema27ValidateGraphs() As Integer
++    Schema27Trace("schema 27 references")
+     If Schema27ValidateReferences() = 0 Then Return 0
+     Schema27Failure = "source closure"
++    Schema27Trace("schema 27 source closure")
+     If Schema27ValidateSourceClosure() = 0 Then Return 0
+     Schema27Failure = "macro graph"
++    Schema27Trace("schema 27 macro graph")
+     If Schema27ValidateMacros() = 0 Then Return 0
+     Schema27Failure = "AST payload"
++    Schema27Trace("schema 27 AST payload")
+     If Schema27ValidateNodes() = 0 Then Return 0
+     Schema27Failure = "procedure flow"
++    Schema27Trace("schema 27 procedure flow")
+     If Schema27ValidateFlow() = 0 Then Return 0
+     Schema27Failure = "procedure exits"
++    Schema27Trace("schema 27 procedure exits")
+     If Schema27ValidateProcedureExits() = 0 OrElse Schema27ValidateSequenceBranches() = 0 Then Return 0
+     Schema27Failure = "unevaluated query inputs"
+     If Schema27ValidateQueryInputs() = 0 Then Return 0
+-    Schema27Failure = "select case inputs"
+-    If Schema27ValidateSelectInputs() = 0 Then Return 0
+     Schema27Failure = "wide literal prefixes"
+     If Schema27ValidateWideLiterals() = 0 Then Return 0
+     Schema27Failure = ""
+--- a/test_secondary_semantic_query.bas
++++ b/test_secondary_semantic_query.bas
+@@ -6,6 +6,7 @@
+ #Lang "fb"
+ #Include Once "test_fixture_symbol_classes.bi"
+ Const FBLINT_MAX_SEMANTIC_SYMBOL_TYPES As LongInt = 250000
++Const FBLINT_MAX_SEMANTIC_MODEL_IDENTITIES As LongInt = 1000000
+ Const FBLINT_MAX_SEMANTIC_PROCEDURE_PARAMETERS As LongInt = 1024
+ Const FBLINT_SEMANTIC_MAX_INTEGER As LongInt = 4294967295
+ Const DECIMAL_RADIX As Integer = 10
+@@ -25,12 +26,13 @@
+     Expected.ConditionalTop = Schema27ConditionalTop
+     Expected.AliasCount = Schema27AliasCount
+     Expected.AliasCapacity = Schema27AliasCapacity
++    Expected.HashSize = Schema27HashSize
+     Expected.LinePoolUsed = Schema27LinePoolUsed
+     Expected.LinePool = Schema27LinePool
+     ReDim Expected.Rows(0 To Schema27RowCount)
+     ReDim Expected.Aliases(0 To Schema27AliasCount)
+-    ReDim Expected.HashHeads(0 To SCHEMA27_HASH_SIZE - 1)
+-    ReDim Expected.AliasHeads(0 To SCHEMA27_HASH_SIZE - 1)
++    ReDim Expected.HashHeads(0 To Expected.HashSize - 1)
++    ReDim Expected.AliasHeads(0 To Expected.HashSize - 1)
+     For RowIndex As LongInt = 1 To Schema27RowCount
+         Expected.Rows(RowIndex) = Schema27Rows(RowIndex)
+     Next RowIndex
+@@ -42,14 +44,15 @@
+         Expected.TagTails(TagIndex) = Schema27TagTails(TagIndex)
+         Expected.TagCounts(TagIndex) = Schema27TagCounts(TagIndex)
+     Next TagIndex
+-    For Bucket As Integer = 0 To SCHEMA27_HASH_SIZE - 1
++    For Bucket As Integer = 0 To Expected.HashSize - 1
+         Expected.HashHeads(Bucket) = Schema27HashHeads(Bucket)
+         Expected.AliasHeads(Bucket) = Schema27AliasHeads(Bucket)
+     Next Bucket
+ End Sub
+ 
+ Function RootMatches(ByRef Expected As Schema27IndexSnapshot) As Integer
+-    If Schema27RowCount <> Expected.RowCount OrElse Schema27Capacity <= Schema27RowCount OrElse _
++    If Schema27HashSize <> Expected.HashSize OrElse _
++       Schema27RowCount <> Expected.RowCount OrElse Schema27Capacity <= Schema27RowCount OrElse _
+        Expected.Capacity <= Expected.RowCount OrElse _
+        Schema27AliasCount <> Expected.AliasCount OrElse Schema27AliasCapacity <= Schema27AliasCount OrElse _
+        Expected.AliasCapacity <= Expected.AliasCount OrElse _
+@@ -82,7 +85,7 @@
+            Schema27TagTails(TagIndex) <> Expected.TagTails(TagIndex) OrElse _
+            Schema27TagCounts(TagIndex) <> Expected.TagCounts(TagIndex) Then Return 0
+     Next TagIndex
+-    For Bucket As Integer = 0 To SCHEMA27_HASH_SIZE - 1
++    For Bucket As Integer = 0 To Expected.HashSize - 1
+         If Schema27HashHeads(Bucket) <> Expected.HashHeads(Bucket) OrElse _
+            Schema27AliasHeads(Bucket) <> Expected.AliasHeads(Bucket) Then Return 0
+     Next Bucket
+@@ -98,6 +101,21 @@
+ Dim As LongInt AliasRow = Schema27First("ST")
+ If AliasRow < 1 Then End 1
+ If Schema27AddAlias(AliasRow, "secondary-query-test") = 0 Then End 1
++' Exercise a large root table across small accepted and rejected query models.
++' Reindex the real producer keys; no synthetic compiler facts are introduced.
++Schema27HashSize = SCHEMA27_MAX_HASH_SIZE
++Erase Schema27HashHeads
++Erase Schema27AliasHeads
++For RowIndex As Long = 1 To Schema27RowCount
++    Dim As Integer Bucket = Schema27Bucket(Schema27Rows(RowIndex).KeyText)
++    Schema27Rows(RowIndex).NextHash = Schema27HashHeads(Bucket)
++    Schema27HashHeads(Bucket) = RowIndex
++Next RowIndex
++For AliasIndex As Long = 1 To Schema27AliasCount
++    Dim As Integer Bucket = Schema27Bucket(Schema27Aliases(AliasIndex).KeyText)
++    Schema27Aliases(AliasIndex).NextHash = Schema27AliasHeads(Bucket)
++    Schema27AliasHeads(Bucket) = AliasIndex
++Next AliasIndex
+ Schema27Rows(AliasRow).WorkCount = 37
+ Schema27Rows(AliasRow).WorkValue = -9
+ Schema27Rows(AliasRow).WorkOrdinal = 11

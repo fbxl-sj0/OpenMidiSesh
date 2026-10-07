@@ -84,8 +84,9 @@ stores the resolved screen position in `ax` and `ay`. Parent cycles and overly
 deep invalid hierarchies are rejected.
 
 `gui_AddWidget` makes duplicate names unique by adding a numeric suffix.
-`gui_AddGeneratedWidget` is an importer fast path that skips this scan, so its
-caller must supply unique names.
+Registering the same pointer more than once does not append a duplicate or
+change its name. `gui_AddGeneratedWidget` is an importer fast path that skips
+the name scan, so its caller must supply unique names.
 
 Use `gui_RemoveWidget(name)` to destroy a widget tree. Do not delete registered
 widgets directly. `gui_ResetForTest` destroys every registered widget and
@@ -386,10 +387,14 @@ its complete tree.
 
 ### 4.3 Modal roots
 
-`gui_SetModalRoot(root)` limits input to one widget tree while leaving the
-desktop visible behind it. `gui_ClearModalRoot` releases it, and
-`gui_IsModalOpen` reports the state. The built-in file and confirmation dialogs
-set and clear modal state as part of their lifecycle.
+`gui_SetModalRoot(root)` limits input to one registered widget tree while
+leaving the desktop visible behind it. `gui_TrySetModalRoot` reports whether a
+root could be activated, including when the modal stack is full.
+`gui_ClearModalRoot` releases it, and `gui_IsModalOpen` reports the state.
+Built-in file, input, color, and confirmation dialog constructors register
+their roots and activate modal state before returning. Existing callers may
+still call `gui_AddWidget` on the returned root; registering that same pointer
+again is harmless. Removing the dialog root releases its modal state.
 
 ### 4.4 Anchors
 
@@ -1689,6 +1694,7 @@ types remain in the named public header.
 - Clip stack: `backend_SetClip` and `backend_ResetClip`
 - Input state: `input_MouseX`, `input_MouseY`, `input_MouseButtons`,
   `input_MouseWheel`, `input_KeyPressed`, `input_KeyPressEvent`,
+  `input_AnyKeyPressed`, `input_SetKeyEventMapping`,
   `input_ModifiedKeyPressEvent`, `input_ControlShortcutPressed`,
   `input_AltShortcutPressed`, and `input_PollTextInput`
 - Test input: `input_MockMouse`, `input_MockKey`, `input_MockKeyPress`,
@@ -1708,14 +1714,15 @@ needed by application code.
 ### GUI manager
 
 - Registry: `gui_Init`, `gui_ResetForTest`, `gui_AddWidget`,
-  `gui_AddGeneratedWidget`, `gui_RemoveWidget`, and `gui_FindWidget`
+  `gui_AddGeneratedWidget`, `gui_IsWidgetRegistered`, `gui_RemoveWidget`, and
+  `gui_FindWidget`
 - Hierarchy and order: `gui_SetParent` and `gui_BringToFront`
 - Focus and modal state: `gui_SetFocus`, `gui_GetFocus`, `gui_MoveFocus`,
   `gui_SetTabOrder`, `gui_GetTabOrder`, `gui_SetDefaultAction`,
   `gui_GetDefaultAction`, `gui_SetCancelAction`, `gui_GetCancelAction`,
   `gui_SetMnemonic`, `gui_SetMnemonicTarget`, `gui_GetMnemonicTarget`,
-  `gui_IsKeyboardNavigationActive`, `gui_SetModalRoot`, `gui_ClearModalRoot`,
-  and `gui_IsModalOpen`
+  `gui_IsKeyboardNavigationActive`, `gui_TrySetModalRoot`,
+  `gui_SetModalRoot`, `gui_ClearModalRoot`, and `gui_IsModalOpen`
 - Layout: `gui_SetViewportSize`, `gui_GetViewportSize`, `gui_SetAnchors`, and
   `gui_ResetAnchors`
 - Frame dispatch: `gui_UpdateAll` and `gui_RenderAll`
@@ -1734,8 +1741,9 @@ needed by application code.
 - Label state: `label_CreateWithColor`, `label_SetFont`, `label_SetWordWrap`, and
   `label_GetRenderedLineCount`, `label_SetTextColor`, `label_GetTextColor`,
   `label_SetTextStyle`, `label_GetTextStyle`, `label_SetTextColorLiteral`,
-  `label_SetBackgroundColor`, `label_ClearBackgroundColor`, and
-  `label_GetBackgroundColor`
+  `label_SetBackgroundColor`, `label_ClearBackgroundColor`,
+  `label_GetBackgroundColor`, `label_SetBorderStyle`, and
+  `label_GetBorderStyle`
 - Button state: `button_SetBackgroundColor`, `button_ClearBackgroundColor`, and
   `button_GetBackgroundColor`
 - CheckBox color state: `checkbox_SetBackgroundColor`,
@@ -1759,6 +1767,7 @@ needed by application code.
   `textbox_ReplaceSelection`, `textbox_ReplaceAll`, `textbox_Paste`,
   `textbox_SetReadOnly`, `textbox_GetReadOnly`,
   `textbox_SetInputLimit`, `textbox_GetInputLimit`,
+  `textbox_SetBorderStyle`, `textbox_GetBorderStyle`,
   `textbox_SetBackgroundColor`, `textbox_ClearBackgroundColor`,
   `textbox_GetBackgroundColor`, `textbox_SetForegroundColor`,
   `textbox_ClearForegroundColor`, `textbox_GetForegroundColor`,
@@ -1786,7 +1795,7 @@ needed by application code.
   `picturebox_SetBackgroundColor`, `picturebox_ClearBackgroundColor`, and
   `picturebox_GetBackgroundColor`, `picturebox_SetForegroundColor`,
   `picturebox_ClearForegroundColor`, `picturebox_GetForegroundColor`,
-  `picturebox_SetPixelCanvas`, `picturebox_SetPixelCanvasToClient`,
+  `picturebox_GetBorderStyle`, `picturebox_SetPixelCanvas`, `picturebox_SetPixelCanvasToClient`,
   `picturebox_SetPixel`, `picturebox_ReadPixel`, and `picturebox_ClearPixels`
 - GroupBox state: `groupbox_SetText`, `groupbox_SetBackgroundColor`,
   `groupbox_ClearBackgroundColor`, `groupbox_GetBackgroundColor`,
@@ -1951,6 +1960,12 @@ complete prior palette, including custom classic colors, after each control.
 Retained rendering observes both forms of palette and the panel motif fields.
 These operations belong to the GUI thread.
 
+A focused TextBox calls its KeyDown source handler before built-in navigation
+and editing. The handler may remap a scan code or set it to zero to suppress
+that input for the current hold. Ordered raw events retain the physical code
+so KeyUp can still identify the released key. The input manager clears the
+mapping after release.
+
 `themeframe_Create` has the same geometry, fallback color, and filled flag as
 `rectwidget_Create`. Filled frames retain the supplied application color in
 every theme. Unfilled frames use one border and corner-bracket motif, with
@@ -1977,5 +1992,11 @@ a currently registered capture. Both return an empty string when absent.
 `gui_CreateWidgetBase` allocates an initialized, visible and enabled base for
 custom controls. The caller owns it until registration transfers its lifetime
 to the manager. Built-in constructors initialize their own widget state.
+
+Label borders accept `LABEL_BORDER_NONE`, `LABEL_BORDER_SINGLE`, and
+`LABEL_BORDER_DOUBLE`. PictureBox accepts the corresponding single and double
+styles plus its recessed style; the double style keeps a two-pixel child inset.
+TextBox accepts `TEXTBOX_BORDER_NONE` and `TEXTBOX_BORDER_SINGLE`. Changing its
+frame leaves the editor's text and caret metrics intact.
 
 <!-- end of MANUAL.md -->

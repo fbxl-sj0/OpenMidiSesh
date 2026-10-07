@@ -134,6 +134,12 @@ Declare Function backend_RestoreDisplay(ByRef display_state As Const BackendDisp
 
 Declare Sub backend_Clear(ByVal clr As ULong = 0)
 Declare Sub backend_Flip()
+/'
+    Wait between foreground GUI polls, outside drawing and application locks.
+    Nonpositive waits return immediately; waits are capped at one second.
+    OMAGUI_DOSBOX_X_IDLE selects the qualified DOSBox-X host idle API on DOS.
+'/
+Declare Sub backend_Idle(ByVal milliseconds As Integer)
 Declare Function backend_GetWorkPage() As Integer
 
 /'

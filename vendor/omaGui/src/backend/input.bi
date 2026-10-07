@@ -3,9 +3,6 @@
     ---------------
     File: input.bi
 
-    Targets: FreeBASIC fb dialect; the including application selects the native backend.
-    Module API: omaGUI declarations and implementation for input.
-
     Purpose:
         Declare the gfxlib input and deterministic test-input interface.
 
@@ -14,6 +11,14 @@
         - retain native pointer, key, and modifier transitions between frames
         - allow the GUI manager to route one pointer event to one widget
         - provide deterministic mouse, wheel, keyboard, and text test input
+
+    Targets:
+
+        FreeBASIC builds with built-in gfxlib; gfxlib3 is optional when supplied by the compiler.
+
+    Module API:
+
+        Declarations for the input component in the omaGUI include graph.
 
     This file intentionally does NOT contain:
         - platform polling implementation
@@ -74,6 +79,12 @@ Declare Function input_Touch( _
 Declare Function input_AnyKeyPressed() As Integer
 Declare Function input_KeyPressed(ByVal k As Integer) As Integer
 Declare Function input_KeyPressEvent(ByVal k As Integer) As Integer
+' A focused control may remap its current key or suppress it by mapping to 0.
+' The mapping remains active while the physical key is held and is cleared
+' when that key is released. Ordered raw events remain unchanged for KeyUp.
+Declare Function input_SetKeyEventMapping( _
+    ByVal sourceScanCode As Integer, ByVal targetScanCode As Integer _
+) As Integer
 Declare Function input_ModifiedKeyPressEvent( _
     ByVal k As Integer, _
     ByVal requiredModifiers As Integer _

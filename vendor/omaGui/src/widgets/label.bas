@@ -596,7 +596,14 @@ Sub label_Render(ByVal w As Widget Ptr)
        Abs(CLngInt(w->ay)) > LABEL_LAYOUT_COORDINATE_LIMIT Then Exit Sub
     backend_SetClip w->ax, w->ay, w->w, w->h
     If dataValue->backgroundColorOverride Then backend_Rect w->ax, w->ay, w->w, w->h, dataValue->backgroundColor, -1
-    backend_Rect w->ax, w->ay, w->w, w->h, theme_GetClassicColor(GUI_CLASSIC_COLOR_WINDOW_FRAME), 0
+    Dim As ULong border_color = _
+        theme_GetClassicColor(GUI_CLASSIC_COLOR_WINDOW_FRAME)
+    backend_Rect w->ax, w->ay, w->w, w->h, border_color, 0
+    If dataValue->borderStyle = LABEL_BORDER_DOUBLE AndAlso _
+       w->w > 2 AndAlso w->h > 2 Then
+        backend_Rect w->ax + 1, w->ay + 1, w->w - 2, w->h - 2, _
+            border_color, 0
+    End If
     If w->w > 4 AndAlso w->h > 4 Then
         ' A borrowed stack copy changes only the layout rectangle, never the
         ' registry widget or its owned data. Two pixels separate text and frame.
@@ -610,7 +617,8 @@ End Sub
 
 Function label_SetBorderStyle(ByVal w As Widget Ptr, ByVal borderStyle As Integer) As Integer
     If w = 0 OrElse w->data = 0 OrElse w->destroy <> @label_Destroy Then Return 0
-    If borderStyle < 0 OrElse borderStyle > 1 Then Return 0
+    If borderStyle < LABEL_BORDER_NONE OrElse _
+       borderStyle > LABEL_BORDER_DOUBLE Then Return 0
     Cast(LabelData Ptr, w->data)->borderStyle = borderStyle
     Return -1
 End Function

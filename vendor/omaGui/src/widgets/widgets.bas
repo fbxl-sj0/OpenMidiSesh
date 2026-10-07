@@ -4,9 +4,6 @@
 
     File: widgets.bas
 
-    Targets: FreeBASIC fb dialect; the including application selects the native backend.
-    Module API: Implements widgets.bi; declarations there define the interface.
-
     Purpose:
         Manage widget registration, hierarchy, input, drawing, and layout.
 
@@ -27,6 +24,14 @@
         - dispatch widget updates and rendering in registry order
         - cancel private input state when controls become ineligible
         - tolerate callbacks which remove or replace their own widget tree
+
+    Targets:
+
+        FreeBASIC builds with built-in gfxlib; gfxlib3 is optional when supplied by the compiler.
+
+    Module API:
+
+        Implementation unit assembled by omaGUI.bi when OMAGUI_IMPLEMENTATION is defined.
 
     This file intentionally does NOT contain:
         - individual widget behavior or appearance
@@ -277,8 +282,12 @@ End Function
 
 
 Private Sub gui_AppendWidget(ByVal w As Widget Ptr)
-    gui_InvalidateAll
     If w = 0 Then Exit Sub
+    ' Never link one widget pointer into the registry more than once.
+    If gui_IsRegisteredWidget(w) <> 0 Then Exit Sub
+    ' Registering a hidden popup changes no pixels. Its first visible frame
+    ' supplies damage through retained observation or conservative repainting.
+    If w->visible <> 0 Then gui_InvalidateAll
 
     gui_NextRegistryId += 1
     If gui_NextRegistryId = 0 Then gui_NextRegistryId = 1
@@ -315,6 +324,7 @@ Sub gui_AddWidget(ByVal w As Widget Ptr)
     Dim As Integer suffix
 
     If w = 0 Then Exit Sub
+    If gui_IsRegisteredWidget(w) <> 0 Then Exit Sub
 
     /'
         Names are public lookup keys. Preserve the original manager contract
@@ -532,6 +542,22 @@ Private Function gui_FindStackRoot(ByVal w As Widget Ptr) As Widget Ptr
 End Function
 
 
+Private Function gui_GetRetainedPaintBounds(ByVal w As Widget Ptr, _
+    ByRef x As Integer, ByRef y As Integer, ByRef widthValue As Integer, _
+    ByRef heightValue As Integer) As Integer
+    x = w->ax: y = w->ay: widthValue = w->w: heightValue = w->h
+    If w->render_bounds = 0 OrElse w->render_bounds_owner <> w->render Then Return 0
+    If w->render_bounds(w, x, y, widthValue, heightValue) = 0 Then Return 0
+    ' Both scene replay and damage use this read-only GUI-thread contract.
+    ' A declined or malformed rectangle keeps the conservative path.
+    If widthValue <= 0 OrElse heightValue <= 0 Then Return 0
+    Dim As Integer screenWidth, screenHeight
+    backend_GetSize screenWidth, screenHeight
+    If x < 0 OrElse y < 0 OrElse x >= screenWidth OrElse y >= screenHeight Then Return 0
+    If widthValue > screenWidth - x OrElse heightValue > screenHeight - y Then Return 0
+    Return -1
+End Function
+
 Sub gui_BringToFront(ByVal w As Widget Ptr)
     Dim As Widget Ptr current
     Dim As Widget Ptr keepHead
@@ -540,19 +566,39 @@ Sub gui_BringToFront(ByVal w As Widget Ptr)
     Dim As Widget Ptr moveTail
     Dim As Widget Ptr nextWidget
     Dim As Widget Ptr stackRoot
+    Dim As Integer foundMember, needsReorder
 
     stackRoot = gui_FindStackRoot(w)
-    gui_InvalidateAll
     If stackRoot = 0 Then Exit Sub
-
     /'
-        A callback can request foreground activation while the manager is
-        traversing the registry. Defer that mutation until the frame ends so
-        no widget is skipped or updated twice through changed next pointers.
+        Foreground requests made during registry traversal are deferred.
+        Keep the latest request even if that tree is currently foremost: an
+        earlier request in this frame may already be waiting to replace it.
     '/
     If gui_UpdateInProgress <> 0 Then
         widget_pending_front = stackRoot
         Exit Sub
+    End If
+    current = widget_list_head
+    While current <> 0
+        If current = stackRoot OrElse gui_IsWithinTree(current, stackRoot) <> 0 Then
+            foundMember = -1
+        ElseIf foundMember <> 0 Then
+            needsReorder = -1
+        End If
+        current = current->next_widget
+    Wend
+    ' Repeated activation of the already foremost tree changes no paint order.
+    If needsReorder = 0 Then Exit Sub
+    Dim As Integer paintX, paintY, paintWidth, paintHeight
+    If stackRoot->render_observation <> 0 AndAlso _
+       gui_GetRetainedPaintBounds(stackRoot, paintX, paintY, paintWidth, paintHeight) <> 0 Then
+        gui_InvalidateRect paintX, paintY, paintWidth, paintHeight
+        If stackRoot->retained_visible <> 0 Then gui_InvalidateRect _
+            stackRoot->retained_paint_x, stackRoot->retained_paint_y, _
+            stackRoot->retained_paint_w, stackRoot->retained_paint_h
+    Else
+        gui_InvalidateAll
     End If
 
     /'
@@ -610,6 +656,17 @@ Sub gui_SetFocus(ByVal w As Widget Ptr)
     widget_focus = w
     If widget_focus <> 0 Then widget_focus->has_focus = -1
 End Sub
+
+Function gui_CaretBlinkVisible(ByVal secondsValue As Double) As Integer
+    ' At 2^52 seconds a Double can no longer represent half-second phases.
+    ' The bounded comparison also declines negative, infinite and NaN clocks.
+    Const MAX_PHASE_SECONDS As Double = 4503599627370496.0
+    If Not (secondsValue >= 0 AndAlso secondsValue < MAX_PHASE_SECONDS) Then Return 0
+    ' INT returns Double here. Only the bounded fractional result is compared;
+    ' DOS and 32-bit Unix clocks must never be narrowed to Integer first.
+    Dim As Double fractionalSecond = secondsValue - Int(secondsValue)
+    Return IIf(fractionalSecond < 0.5, -1, 0)
+End Function
 
 
 Function gui_GetFocus() As Widget Ptr
@@ -1649,7 +1706,9 @@ Private Sub gui_DeleteWidget(ByVal target As Widget Ptr)
     Dim As Widget Ptr referenceWidget
 
     If target = 0 Then Exit Sub
-    gui_InvalidateAll
+    ' An unpainted hidden node has no surface to erase. Other removal retains
+    ' the conservative path, including visible descendants and decorations.
+    If target->visible <> 0 OrElse target->retained_visible <> 0 Then gui_InvalidateAll
 
     /'
         Mnemonic targets are weak registry references. Clear inbound pointers
@@ -2110,15 +2169,48 @@ Sub gui_UpdateAll()
     End If
 End Sub
 
+Private Function gui_FindOpaqueCover(ByVal x As Integer, ByVal y As Integer, _
+    ByVal widthValue As Integer, ByVal heightValue As Integer) As Widget Ptr
+#Ifdef OMAGUI_DISABLE_OPAQUE_CULLING
+    ' Keep a reference path for complete-framebuffer comparisons.
+    Return 0
+#Else
+    Dim As Widget Ptr result
+    Dim As Widget Ptr current = widget_list_head
+    If widthValue <= 0 OrElse heightValue <= 0 Then Return 0
+    While current <> 0
+        If current->evis <> 0 AndAlso current->is_window <> 0 AndAlso _
+           current->parent = 0 AndAlso current->render <> 0 AndAlso _
+           current->render_opaque_bounds <> 0 AndAlso current->render_opaque_owner = current->render Then
+            Dim As Integer opaqueX, opaqueY, opaqueWidth, opaqueHeight
+            If current->render_opaque_bounds(current, opaqueX, opaqueY, opaqueWidth, opaqueHeight) <> 0 AndAlso _
+               opaqueWidth > 0 AndAlso opaqueHeight > 0 Then
+                If opaqueX <= x AndAlso opaqueY <= y AndAlso _
+                   CLngInt(opaqueX) + opaqueWidth >= CLngInt(x) + widthValue AndAlso _
+                   CLngInt(opaqueY) + opaqueHeight >= CLngInt(y) + heightValue Then
+                    Dim As Integer clipX, clipY, clipWidth, clipHeight
+                    If gui_GetWidgetRenderClip(current, clipX, clipY, clipWidth, clipHeight) <> 0 AndAlso _
+                       clipX <= x AndAlso clipY <= y AndAlso _
+                       CLngInt(clipX) + clipWidth >= CLngInt(x) + widthValue AndAlso _
+                       CLngInt(clipY) + clipHeight >= CLngInt(y) + heightValue Then result = current
+                End If
+            End If
+        End If
+        current = current->next_widget
+    Wend
+    Return result
+#EndIf
+End Function
+
 Private Sub gui_RenderLayer(ByVal renderWindows As Integer)
     Dim As GUI_Theme savedTheme
     Dim As GUI_Theme widgetTheme
-    Dim As Integer bottomEdge
-    Dim As Integer leftEdge
-    Dim As Integer rightEdge
+    Dim As LongInt bottomEdge
+    Dim As LongInt leftEdge
+    Dim As LongInt rightEdge
     Dim As Integer screenHeight
     Dim As Integer screenWidth
-    Dim As Integer topEdge
+    Dim As LongInt topEdge
     Dim As Integer clipHeight
     Dim As Integer clipWidth
     Dim As Integer clipX
@@ -2131,6 +2223,19 @@ Private Sub gui_RenderLayer(ByVal renderWindows As Integer)
     gui_ResolveLayout()
     backend_GetSize screenWidth, screenHeight
 
+    /'
+        Windows paint after the desktop. A later opaque root which fills the
+        complete damage clip makes all earlier pixels irrelevant. Only skip
+        whole clips; partial coverage keeps the existing scene replay, and
+        callbacks after the covering root still run in their normal order.
+        Bounds callbacks are read-only and cannot change registry membership.
+    '/
+    Dim As Widget Ptr opaqueCover = gui_FindOpaqueCover(damageX, damageY, damageWidth, damageHeight)
+    If opaqueCover <> 0 Then
+        If renderWindows = 0 Then Exit Sub
+        curr = opaqueCover
+    End If
+
     While curr <> 0
         If curr->evis AndAlso _
            (gui_FindOwningWindow(curr) <> 0) = (renderWindows <> 0) Then
@@ -2142,8 +2247,16 @@ Private Sub gui_RenderLayer(ByVal renderWindows As Integer)
             '/
             leftEdge = curr->ax
             topEdge = curr->ay
-            rightEdge = curr->ax + curr->w
-            bottomEdge = curr->ay + curr->h
+            rightEdge = CLngInt(curr->ax) + curr->w
+            bottomEdge = CLngInt(curr->ay) + curr->h
+            Dim As Integer paintX, paintY, paintWidth, paintHeight
+            If gui_GetRetainedPaintBounds(curr, paintX, paintY, paintWidth, paintHeight) <> 0 Then
+                ' An owned popup can extend past its root widget. Replay the
+                ' root when damage intersects any part of that painted surface.
+                leftEdge = paintX: topEdge = paintY
+                rightEdge = CLngInt(paintX) + paintWidth
+                bottomEdge = CLngInt(paintY) + paintHeight
+            End If
 
             If rightEdge < leftEdge Then Swap rightEdge, leftEdge
             If bottomEdge < topEdge Then Swap bottomEdge, topEdge

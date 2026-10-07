@@ -3,9 +3,6 @@
     ---------------
     File: input_gfxlib.bas
 
-    Targets: FreeBASIC fb dialect; the including application selects the native backend.
-    Module API: omaGUI input_gfxlib implementation imported through omaGUI.bi.
-
     Purpose:
         Implement the input abstraction with FreeBASIC gfxlib calls.
 
@@ -16,6 +13,14 @@
         - retain a native window-close request until the application reads it
         - expose per-widget pointer and keyboard dispatch masks
         - provide deterministic input values for GUI tests
+
+    Targets:
+
+        FreeBASIC builds with built-in gfxlib; gfxlib3 is optional when supplied by the compiler.
+
+    Module API:
+
+        Implementation unit assembled by omaGUI.bi when OMAGUI_IMPLEMENTATION is defined.
 
     This file intentionally does NOT contain:
         - widget-specific input behavior
@@ -31,11 +36,17 @@
     so its private polling state must be shared with the accessor routines in
     this file.  It is not part of the public input API.
 '/
+' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer mX, mY, mButtons, mWheelDelta
+' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer previousWheelPosition, wheelPositionInitialized
+' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer mockX, mockY, mockButtons, mockWheelDelta
+' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer useMockMouse, useMockTouch, useMockKeys, useMockText
+' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer pointerDispatchEnabled = -1, keyboardDispatchEnabled = -1
+' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As String textBuffer, mockText
 
 ' Ten contacts bound both native polling and deterministic input fixtures.
@@ -59,17 +70,32 @@ Const INPUT_KEY_LAST = 255
     only reports the final state, so ScreenEvent records each press together
     with the modifier state that existed at that instant.
 '/
+' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer inputNativeModifiers
+' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer inputKeyPressEvents(0 To INPUT_KEY_LAST)
+' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer inputKeyPressChords(0 To INPUT_KEY_LAST)
+' KeyDown callbacks can change a physical key's meaning for its focused
+' control. Raw ordered records remain intact so KeyUp still sees the real key.
+Dim Shared As Integer inputKeyOverrideActive(0 To INPUT_KEY_LAST)
+Dim Shared As Integer inputKeyOverrideTarget(0 To INPUT_KEY_LAST)
+Dim Shared As Integer inputEffectiveKeyPressed(0 To INPUT_KEY_LAST)
+Dim Shared As Integer inputEffectiveKeyPressEvents(0 To INPUT_KEY_LAST)
+Dim Shared As Integer inputEffectiveKeyPressChords(0 To INPUT_KEY_LAST)
 ' Track both Shift keys separately. Releasing one must not release the other.
+' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer inputNativeModifierKeys(0 To INPUT_KEY_LAST)
 
 ' All event storage belongs to the GUI input thread. No callback or pointer
 ' escapes these fixed buffers. Mock records become visible only at Update.
+' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As InputKeyEvent inputKeyEvents(0 To INPUT_KEY_EVENT_CAPACITY - 1)
+' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As InputKeyEvent mockKeyEvents(0 To INPUT_KEY_EVENT_CAPACITY - 1)
+' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Long inputKeyEventLength, mockKeyEventLength
+' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer inputKeyEventOverflow, mockKeyEventOverflow
 
 /'
@@ -79,18 +105,28 @@ Dim Shared As Integer inputKeyEventOverflow, mockKeyEventOverflow
     release-driven widgets keep their ordinary capture semantics.
 '/
 Const INPUT_POINTER_EVENT_CAPACITY As Long = 64
+' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Long inputPointerEventX(0 To INPUT_POINTER_EVENT_CAPACITY - 1)
+' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Long inputPointerEventY(0 To INPUT_POINTER_EVENT_CAPACITY - 1)
+' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer inputPointerEventButtons( _
     0 To INPUT_POINTER_EVENT_CAPACITY - 1 _
 )
+' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Long inputPointerEventHead, inputPointerEventTail
+' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Long inputPointerEventCount
+' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer inputNativeButtons, inputNativeButtonsInitialized
+' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer inputNativeX, inputNativeY
+' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer inputWindowCloseRequested
 
+' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer mockKeys(0 To INPUT_KEY_LAST)
+' FB-LINTER: DISABLE-NEXT-LINE FBL301
 Dim Shared As Integer mockPreviousKeys(0 To INPUT_KEY_LAST)
 ' A restored GUI must not interpret the key/button that ended external drawing
 ' as a new activation. This suppression belongs to the GUI input thread.
@@ -150,6 +186,43 @@ Private Function input_ModifierForScanCode( _
 End Function
 
 
+Private Function input_RawKeyPressed(ByVal scanCode As Integer) As Integer
+    If scanCode < 0 OrElse scanCode > INPUT_KEY_LAST Then Return 0
+    If useMockKeys Then Return IIf(mockKeys(scanCode) <> 0, -1, 0)
+    Return IIf(MultiKey(scanCode) <> 0, -1, 0)
+End Function
+
+
+Private Function input_MappedScanCode(ByVal scanCode As Integer) As Integer
+    If scanCode < 0 OrElse scanCode > INPUT_KEY_LAST Then Return 0
+    If inputKeyOverrideActive(scanCode) Then _
+        Return inputKeyOverrideTarget(scanCode)
+    Return scanCode
+End Function
+
+
+Private Sub input_RebuildKeyView()
+    For scan_code As Integer = 0 To INPUT_KEY_LAST
+        inputEffectiveKeyPressed(scan_code) = 0
+        inputEffectiveKeyPressEvents(scan_code) = 0
+        inputEffectiveKeyPressChords(scan_code) = 0
+    Next scan_code
+
+    For source_code As Integer = 0 To INPUT_KEY_LAST
+        Dim As Integer target_code = input_MappedScanCode(source_code)
+        If target_code <= 0 Then Continue For
+        If inputSuppressedKeys(source_code) = 0 AndAlso _
+           input_RawKeyPressed(source_code) Then _
+            inputEffectiveKeyPressed(target_code) = -1
+        If inputKeyPressEvents(source_code) Then
+            inputEffectiveKeyPressEvents(target_code) = -1
+            inputEffectiveKeyPressChords(target_code) Or= _
+                inputKeyPressChords(source_code)
+        End If
+    Next source_code
+End Sub
+
+
 Private Sub input_RecordKeyEvent( _
     ByVal eventKind As Long, ByVal scanCode As Long, _
     ByVal characterByte As Long, ByVal modifiers As Long _
@@ -161,6 +234,7 @@ Private Sub input_RecordKeyEvent( _
         ' One bit per complete chord (0..7), not an OR of unrelated presses.
         inputKeyPressChords(scanCode) Or= 1 Shl (modifiers And 7)
     End If
+    input_RebuildKeyView
     If inputKeyEventLength >= INPUT_KEY_EVENT_CAPACITY Then
         inputKeyEventOverflow = -1
         Exit Sub
@@ -416,8 +490,13 @@ Sub input_Update()
     End If
     inputSuppressText = 0
     For keyIndex As Integer = 0 To INPUT_KEY_LAST
+        If inputKeyOverrideActive(keyIndex) AndAlso _
+           input_RawKeyPressed(keyIndex) = 0 Then
+            inputKeyOverrideActive(keyIndex) = 0
+            inputKeyOverrideTarget(keyIndex) = 0
+        End If
         If inputSuppressedKeys(keyIndex) Then
-            Dim As Integer held_key = IIf(useMockKeys, mockKeys(keyIndex), MultiKey(keyIndex))
+            Dim As Integer held_key = input_RawKeyPressed(keyIndex)
             If held_key = 0 Then
                 inputSuppressedKeys(keyIndex) = 0
             Else
@@ -425,7 +504,11 @@ Sub input_Update()
             End If
             inputKeyPressEvents(keyIndex) = 0
         End If
+        If inputKeyOverrideActive(keyIndex) AndAlso _
+           inputKeyOverrideTarget(keyIndex) = 0 AndAlso _
+           input_RawKeyPressed(keyIndex) Then inputSuppressText = -1
     Next keyIndex
+    input_RebuildKeyView
     If useMockText Then
         textBuffer = IIf(inputSuppressText, "", mockText)
         mockText = ""
@@ -507,19 +590,39 @@ Function input_AnyKeyPressed() As Integer
     Return 0
 End Function
 
+
 Function input_KeyPressed(ByVal k As Integer) As Integer
     If k < 0 OrElse k > INPUT_KEY_LAST Then Return 0
     If keyboardDispatchEnabled = 0 Then Return 0
-    If inputSuppressedKeys(k) Then Return 0
-
-    If useMockKeys Then Return mockKeys(k)
-    Return MultiKey(k)
+    Return inputEffectiveKeyPressed(k)
 End Function
 
 Function input_KeyPressEvent(ByVal k As Integer) As Integer
     If k < 0 OrElse k > INPUT_KEY_LAST Then Return 0
     If keyboardDispatchEnabled = 0 Then Return 0
-    Return inputKeyPressEvents(k)
+    Return inputEffectiveKeyPressEvents(k)
+End Function
+
+
+Function input_SetKeyEventMapping( _
+    ByVal sourceScanCode As Integer, ByVal targetScanCode As Integer _
+) As Integer
+    If sourceScanCode < 0 OrElse sourceScanCode > INPUT_KEY_LAST OrElse _
+       targetScanCode < 0 OrElse targetScanCode > INPUT_KEY_LAST Then Return 0
+
+    If sourceScanCode = targetScanCode Then
+        inputKeyOverrideActive(sourceScanCode) = 0
+        inputKeyOverrideTarget(sourceScanCode) = 0
+    Else
+        inputKeyOverrideActive(sourceScanCode) = -1
+        inputKeyOverrideTarget(sourceScanCode) = targetScanCode
+        If targetScanCode = 0 Then
+            inputSuppressText = -1
+            textBuffer = ""
+        End If
+    End If
+    input_RebuildKeyView
+    Return -1
 End Function
 
 Function input_KeyEventCount() As Long
@@ -546,7 +649,8 @@ Function input_KeyEvent( _
     modifiers = INPUT_MODIFIER_NONE
     If input_ReadKeyEvent(CLng(eventIndex), eventValue) = 0 Then Return 0
     If eventValue.event_kind = INPUT_KEY_EVENT_RELEASE Then Return 0
-    scanCode = eventValue.scan_code
+    scanCode = input_MappedScanCode(eventValue.scan_code)
+    If scanCode = 0 Then Return 0
     modifiers = eventValue.modifiers
     Return -1
 End Function
@@ -566,7 +670,7 @@ Function input_ModifiedKeyPressEvent( _
     ' Three independent modifier bits give eight possible chords.
     For modifierChordIndex As Integer = 0 To 7
         If (modifierChordIndex And requiredModifiers) = requiredModifiers AndAlso _
-           (inputKeyPressChords(k) And _
+           (inputEffectiveKeyPressChords(k) And _
             (1 Shl modifierChordIndex)) <> 0 Then Return -1
     Next modifierChordIndex
     Return 0
@@ -585,7 +689,7 @@ Function input_ExactModifiedKeyPressEvent( _
         menu bindings: a Ctrl+Shift chord must not activate a Ctrl-only item.
     '/
     Return IIf( _
-        (inputKeyPressChords(k) And (1 Shl modifiers)) <> 0, -1, 0 _
+        (inputEffectiveKeyPressChords(k) And (1 Shl modifiers)) <> 0, -1, 0 _
     )
 End Function
 
@@ -657,6 +761,8 @@ Sub input_MockKey(ByVal k As Integer, ByVal state As Integer)
 
     mockKeys(k) = state
     useMockKeys = 1
+    ' Held mock keys are observable immediately, like native MultiKey state.
+    input_RebuildKeyView
 End Sub
 
 Sub input_MockKeyPress( _
@@ -752,6 +858,11 @@ Sub input_ResetForTest()
         mockPreviousKeys(keyIndex) = 0
         inputKeyPressEvents(keyIndex) = 0
         inputKeyPressChords(keyIndex) = 0
+        inputKeyOverrideActive(keyIndex) = 0
+        inputKeyOverrideTarget(keyIndex) = 0
+        inputEffectiveKeyPressed(keyIndex) = 0
+        inputEffectiveKeyPressEvents(keyIndex) = 0
+        inputEffectiveKeyPressChords(keyIndex) = 0
     Next keyIndex
 End Sub
 
@@ -791,7 +902,6 @@ Sub input_ResumeAfterScreenChange()
             If event_value.type = FB.EVENT_WINDOW_CLOSE Then inputWindowCloseRequested = -1
         Next event_index
         If useMockText = 0 Then
-            ' fblint: disable-next-line FBL311 REASON: The loop counter bounds repeated work; the cursor or stream state supplies each value.
             For key_index As Integer = 1 To MAX_DISCARDED_EVENTS
                 If Len(Inkey) = 0 Then Exit For
             Next key_index
@@ -802,6 +912,11 @@ Sub input_ResumeAfterScreenChange()
         inputKeyPressChords(keyIndex) = 0
         mockPreviousKeys(keyIndex) = mockKeys(keyIndex)
         inputSuppressedKeys(keyIndex) = IIf(useMockKeys, mockKeys(keyIndex), MultiKey(keyIndex))
+        inputKeyOverrideActive(keyIndex) = 0
+        inputKeyOverrideTarget(keyIndex) = 0
+        inputEffectiveKeyPressed(keyIndex) = 0
+        inputEffectiveKeyPressEvents(keyIndex) = 0
+        inputEffectiveKeyPressChords(keyIndex) = 0
     Next keyIndex
 End Sub
 
