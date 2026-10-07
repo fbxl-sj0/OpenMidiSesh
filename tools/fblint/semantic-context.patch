@@ -5,7 +5,7 @@
  
  Const FBLINT_VERSION As String = "1.0.0"
 -Const FBLINT_RULESET_VERSION As String = "2026.10.086"
-+Const FBLINT_RULESET_VERSION As String = "2026.10.087"
++Const FBLINT_RULESET_VERSION As String = "2026.10.088"
  Const FBLINT_CONFIG_FILE_NAME As String = "fblint.toml"
  Const MAX_COPYRIGHT_SCAN_BYTES As Integer = 4096
  
@@ -548,27 +548,71 @@
      Schema27RowCount = 0
      Schema27Capacity = 0
      Schema27AliasCount = 0
-@@ -103,8 +116,8 @@
+@@ -102,9 +115,7 @@
+         LTrim(Str(Len(Second))) + ":" + Second + LTrim(Str(Len(Third))) + ":" + Third
  End Function
  
- Function Schema27Bucket(ByRef KeyText As String) As Integer
+-Function Schema27Bucket(ByRef KeyText As String) As Integer
 -    ' Only the low sixteen bits select a bucket. Rotation-only mixing leaves
 -    ' trailing numeric IDs outside those bits, clustering hundreds of keys.
-+    ' The active power-of-two table selects low hash bits. Rotation-only mixing
-+    ' leaves trailing numeric IDs outside those bits, clustering many keys.
++Function Schema27Hash(ByRef KeyText As String) As ULong
      ' FNV-1a mixes each decoded byte into a fixed-width unsigned accumulator;
      ' its 32-bit wrap is intentional on both 32-bit and 64-bit hosts.
      ' Full key equality, not the hash, still decides record identity.
-@@ -112,7 +125,7 @@
+@@ -112,13 +123,23 @@
      For I As Integer = 1 To Len(KeyText)
          HashValue = (HashValue Xor CULng(Asc(KeyText, I))) * SCHEMA27_FNV_PRIME
      Next I
 -    Return HashValue And (SCHEMA27_HASH_SIZE - 1)
-+    Return HashValue And (Schema27HashSize - 1)
++    Return HashValue
++End Function
++
++Function Schema27Bucket(ByRef KeyText As String) As Integer
++    ' Rule-owned indexes retain their original fixed-width bucket contract.
++    Return Schema27Hash(KeyText) And (SCHEMA27_HASH_SIZE - 1)
++End Function
++
++Function Schema27IndexBucket(ByRef KeyText As String) As Integer
++    ' Only the model-owned tables use the larger active bucket width.
++    Return Schema27Hash(KeyText) And (Schema27HashSize - 1)
  End Function
  
  Function Schema27Find(ByVal TagText As String, ByVal First As String = "", _
-@@ -382,6 +395,11 @@
+     ByVal Second As String = "", ByVal Third As String = "") As Long
+     Dim As String KeyText = Schema27Key(TagText, First, Second, Third)
+-    Dim As Long RowIndex = Schema27HashHeads(Schema27Bucket(KeyText))
++    Dim As Long RowIndex = Schema27HashHeads(Schema27IndexBucket(KeyText))
+     Do While RowIndex > 0
+         If Schema27Rows(RowIndex).KeyText = KeyText Then Return RowIndex
+         RowIndex = Schema27Rows(RowIndex).NextHash
+@@ -147,7 +168,7 @@
+ End Function
+ 
+ Function Schema27Alias(ByRef KeyText As String) As Long
+-    Dim As Long AliasIndex = Schema27AliasHeads(Schema27Bucket(KeyText))
++    Dim As Long AliasIndex = Schema27AliasHeads(Schema27IndexBucket(KeyText))
+     Do While AliasIndex > 0
+         If Schema27Aliases(AliasIndex).KeyText = KeyText Then Return Schema27Aliases(AliasIndex).RowIndex
+         AliasIndex = Schema27Aliases(AliasIndex).NextHash
+@@ -157,7 +178,7 @@
+ 
+ Function Schema27AddAlias(ByVal RowIndex As Long, ByRef KeyText As String, _
+     ByVal Refresh As Integer = 0) As Integer
+-    Dim As Integer Bucket = Schema27Bucket(KeyText)
++    Dim As Integer Bucket = Schema27IndexBucket(KeyText)
+     If RowIndex < 1 OrElse RowIndex > Schema27RowCount OrElse Schema27Rows(RowIndex).AliasIndex > 0 Then Return 0
+     If Refresh = 0 AndAlso Schema27Alias(KeyText) > 0 Then Return 0
+     If Schema27AliasCount + 1 >= Schema27AliasCapacity Then
+@@ -274,7 +295,7 @@
+         Schema27LinePoolUsed += .LineLength
+         .KeyText = KeyText
+         .ModuleOrdinal = ModuleOrdinal
+-        Bucket = Schema27Bucket(KeyText)
++        Bucket = Schema27IndexBucket(KeyText)
+         .NextHash = Schema27HashHeads(Bucket)
+         Schema27HashHeads(Bucket) = Schema27RowCount
+     End With
+@@ -382,6 +403,11 @@
      If FileSize > 0 Then Get #FileNumber, FileSize, FinalByte
      Close #FileNumber
      If FileSize = 0 OrElse FileSize > SCHEMA27_BYTE_LIMIT OrElse FinalByte <> 10 Then Return 0
@@ -580,7 +624,7 @@
      Schema27LinePool = Space$(FileSize)
      Schema27LinePoolUsed = 0
      If Open(ModelPath For Input As #FileNumber) <> 0 Then Return 0
-@@ -404,9 +422,11 @@
+@@ -404,9 +430,11 @@
      Loop
      Valid = (Valid <> 0 AndAlso FooterSeen <> 0 AndAlso Eof(FileNumber) <> 0)
      Close #FileNumber
@@ -592,7 +636,7 @@
          Valid = FblintValidateSchema20Metadata(ModelPath, LatestTypes(), CanonicalIds(), "27")
      End If
      If Valid = 0 Then
-@@ -419,6 +439,7 @@
+@@ -419,6 +447,7 @@
          Schema27Failure = ""
          Schema27FactsComplete = -1
      End If
@@ -600,7 +644,7 @@
      Return Valid
  End Function
  
-@@ -438,6 +459,7 @@
+@@ -438,6 +467,7 @@
      Capacity As Long
      AliasCount As Long
      AliasCapacity As Long
@@ -608,7 +652,7 @@
      LinePoolUsed As Long
      LinePool As String
      FactsComplete As Integer
-@@ -450,11 +472,14 @@
+@@ -450,11 +480,14 @@
  
  Function Schema27SuspendIndex(ByRef Saved As Schema27IndexSnapshot) As Integer
      If Saved.Active <> 0 OrElse Schema27RowCount < 0 OrElse _
@@ -624,7 +668,7 @@
      Saved.LinePoolUsed = Schema27LinePoolUsed
      Swap Schema27LinePool, Saved.LinePool
      Saved.FactsComplete = Schema27FactsComplete
-@@ -464,8 +489,8 @@
+@@ -464,8 +497,8 @@
      Saved.ConditionalTop = Schema27ConditionalTop
      ReDim Saved.Rows(0 To Saved.RowCount)
      ReDim Saved.Aliases(0 To Saved.AliasCount)
@@ -635,7 +679,7 @@
      ' SWAP transfers the managed strings rather than copying their storage
      ' descriptors. No caller may retain a row reference across this scope.
      For RowIndex As LongInt = 1 To Saved.RowCount
-@@ -479,7 +504,7 @@
+@@ -479,7 +512,7 @@
          Saved.TagTails(TagIndex) = Schema27TagTails(TagIndex)
          Saved.TagCounts(TagIndex) = Schema27TagCounts(TagIndex)
      Next TagIndex
@@ -644,7 +688,7 @@
          Saved.HashHeads(Bucket) = Schema27HashHeads(Bucket)
          Saved.AliasHeads(Bucket) = Schema27AliasHeads(Bucket)
      Next Bucket
-@@ -491,6 +516,7 @@
+@@ -491,6 +524,7 @@
  Sub Schema27ResumeIndex(ByRef Saved As Schema27IndexSnapshot)
      If Saved.Active = 0 Then Exit Sub
      ResetSchema27Facts
@@ -652,7 +696,7 @@
      If Saved.Capacity > 0 Then ReDim Schema27Rows(0 To Saved.Capacity - 1)
      If Saved.AliasCapacity > 0 Then ReDim Schema27Aliases(0 To Saved.AliasCapacity - 1)
      For RowIndex As LongInt = 1 To Saved.RowCount
-@@ -504,7 +530,7 @@
+@@ -504,7 +538,7 @@
          Schema27TagTails(TagIndex) = Saved.TagTails(TagIndex)
          Schema27TagCounts(TagIndex) = Saved.TagCounts(TagIndex)
      Next TagIndex
@@ -661,6 +705,15 @@
          Schema27HashHeads(Bucket) = Saved.HashHeads(Bucket)
          Schema27AliasHeads(Bucket) = Saved.AliasHeads(Bucket)
      Next Bucket
+@@ -543,7 +577,7 @@
+     Case "20"
+         Return FblintValidateSchema20Metadata(ModelPath, LatestTypes(), CanonicalIds())
+     Case "27"
+-        WorkLeft -= Schema27RowCount + SCHEMA27_HASH_SIZE * 2
++        WorkLeft -= Schema27RowCount + Schema27HashSize * 2
+         If WorkLeft < 0 Then Return 0
+         Dim As Schema27IndexSnapshot Saved
+         If Schema27SuspendIndex(Saved) = 0 Then Return 0
 --- a/src/fb_linter_semantic_schema27_graphs.bi
 +++ b/src/fb_linter_semantic_schema27_graphs.bi
 @@ -437,16 +437,22 @@
@@ -686,6 +739,62 @@
      If Schema27ValidateProcedureExits() = 0 OrElse Schema27ValidateSequenceBranches() = 0 Then Return 0
      Schema27Failure = "unevaluated query inputs"
      If Schema27ValidateQueryInputs() = 0 Then Return 0
+--- a/src/fb_linter_select_inputs.bi
++++ b/src/fb_linter_select_inputs.bi
+@@ -6,7 +6,10 @@
+ #Ifndef FB_LINTER_SELECT_INPUTS_BI
+ #Define FB_LINTER_SELECT_INPUTS_BI
+ 
+-Const SELECT_INPUT_WORK_LIMIT As LongInt = 8000000
++' Five receipt sweeps share this finite visit budget with lowering checks.
++' Use the model row ceiling so provenance-heavy GUI units can complete the
++' same validation, while pathological receipt graphs still stop at a limit.
++Const SELECT_INPUT_WORK_LIMIT As LongInt = SCHEMA27_ROW_LIMIT
+ Const SELECT_INPUT_SELECT_TOKEN As LongInt = 270
+ Const SELECT_INPUT_CASE_TOKEN As LongInt = 271
+ 
+@@ -194,15 +197,6 @@
+ 
+ #Include Once "fb_linter_select_lowering.bi"
+ 
+-' The first pass recognizes receipt families only. Their payload and key
+-' shapes are checked by the later grammar or lowering pass that owns them.
+-Private Function SelectInputKnownReceipt(ByRef PropertyText As String) As Integer
+-    Dim As Integer Separator = InStr(PropertyText, ":")
+-    If Separator = 0 Then Return 0
+-    Return Schema20Choice(Left(PropertyText, Separator - 1), _
+-        "|select-case-clause|select-case-alternative|select-case-end|select-case-comparison|select-case-constant|select-case-table|")
+-End Function
+-
+ ' -------------------------------------------------------------------------
+ ' Complete, order-independent per-root index
+ ' -------------------------------------------------------------------------
+@@ -212,7 +206,10 @@
+     Alternatives() As SelectInputAlternative, ByRef AlternativeCount As LongInt, ByRef WorkLeft As LongInt) As Integer
+     GroupCount = 0: ClauseCount = 0: AlternativeCount = 0
+     Erase Groups: Erase Clauses: Erase Alternatives
+-    If Schema27RowCount > SELECT_INPUT_WORK_LIMIT OrElse WorkLeft < 0 Then Return 0
++    ' The model row budget bounds allocation; WorkLeft separately bounds
++    ' visits to CASE receipts and their lowering records. Most GUI rows are
++    ' macro/source provenance and do not consume this consumer's work budget.
++    If Schema27RowCount > SCHEMA27_ROW_LIMIT OrElse WorkLeft < 0 Then Return 0
+     Dim As Long RowSlots()
+     ' This four-byte row map is bounded before allocation. The larger typed
+     ' records grow only for actual SELECT/CASE observations, not all AST rows.
+@@ -231,7 +228,12 @@
+                 Dim As LongInt BlockRow = Groups(GroupCount).ConstructRow
+                 If RowSlots(BlockRow) <> 0 Then Return 0
+                 RowSlots(BlockRow) = CLng(GroupCount)
+-            ElseIf SelectInputKnownReceipt(PropertyText) = 0 Then
++            ElseIf Left(PropertyText, Len("select-case-clause:")) <> "select-case-clause:" AndAlso _
++                   Left(PropertyText, Len("select-case-alternative:")) <> "select-case-alternative:" AndAlso _
++                   Left(PropertyText, Len("select-case-comparison:")) <> "select-case-comparison:" AndAlso _
++                   Left(PropertyText, Len("select-case-constant:")) <> "select-case-constant:" AndAlso _
++                   Left(PropertyText, Len("select-case-table:")) <> "select-case-table:" AndAlso _
++                   Left(PropertyText, Len("select-case-end:")) <> "select-case-end:" Then
+                 Return 0
+             End If
+         End If
 --- a/test_secondary_semantic_query.bas
 +++ b/test_secondary_semantic_query.bas
 @@ -6,6 +6,7 @@
@@ -739,7 +848,7 @@
          If Schema27HashHeads(Bucket) <> Expected.HashHeads(Bucket) OrElse _
             Schema27AliasHeads(Bucket) <> Expected.AliasHeads(Bucket) Then Return 0
      Next Bucket
-@@ -98,6 +101,21 @@
+@@ -98,6 +101,22 @@
  Dim As LongInt AliasRow = Schema27First("ST")
  If AliasRow < 1 Then End 1
  If Schema27AddAlias(AliasRow, "secondary-query-test") = 0 Then End 1
@@ -749,15 +858,29 @@
 +Erase Schema27HashHeads
 +Erase Schema27AliasHeads
 +For RowIndex As Long = 1 To Schema27RowCount
-+    Dim As Integer Bucket = Schema27Bucket(Schema27Rows(RowIndex).KeyText)
++    If Schema27Bucket(Schema27Rows(RowIndex).KeyText) >= SCHEMA27_HASH_SIZE Then End 1
++    Dim As Integer Bucket = Schema27IndexBucket(Schema27Rows(RowIndex).KeyText)
 +    Schema27Rows(RowIndex).NextHash = Schema27HashHeads(Bucket)
 +    Schema27HashHeads(Bucket) = RowIndex
 +Next RowIndex
 +For AliasIndex As Long = 1 To Schema27AliasCount
-+    Dim As Integer Bucket = Schema27Bucket(Schema27Aliases(AliasIndex).KeyText)
++    Dim As Integer Bucket = Schema27IndexBucket(Schema27Aliases(AliasIndex).KeyText)
 +    Schema27Aliases(AliasIndex).NextHash = Schema27AliasHeads(Bucket)
 +    Schema27AliasHeads(Bucket) = AliasIndex
 +Next AliasIndex
  Schema27Rows(AliasRow).WorkCount = 37
  Schema27Rows(AliasRow).WorkValue = -9
  Schema27Rows(AliasRow).WorkOrdinal = 11
+@@ -107,10 +126,10 @@
+ Schema27ConditionalTop = "retained conditional top"
+ CaptureRoot Expected
+ For Iteration As Integer = 1 To 3
+-    WorkLeft = 1000000
++    WorkLeft = Schema27RowCount + Schema27HashSize * 2 + 1000000
+     If FblintValidateSecondaryMetadata(RootPath, QueryTypes(), QueryIds(), SchemaText, WorkLeft) = 0 Then End 1
+     If SchemaText <> "27" OrElse UBound(QueryTypes) < 1 OrElse RootMatches(Expected) = 0 Then End 1
+-    WorkLeft = 1000000
++    WorkLeft = Schema27RowCount + Schema27HashSize * 2 + 1000000
+     If FblintValidateSecondaryMetadata(BadPath, QueryTypes(), QueryIds(), SchemaText, WorkLeft) <> 0 Then End 1
+     If UBound(QueryTypes) >= 0 OrElse UBound(QueryIds) >= 0 OrElse RootMatches(Expected) = 0 Then End 1
+ Next Iteration
