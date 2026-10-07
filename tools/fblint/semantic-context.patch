@@ -5,7 +5,7 @@
  
  Const FBLINT_VERSION As String = "1.0.0"
 -Const FBLINT_RULESET_VERSION As String = "2026.10.086"
-+Const FBLINT_RULESET_VERSION As String = "2026.10.092"
++Const FBLINT_RULESET_VERSION As String = "2026.10.093"
  Const FBLINT_CONFIG_FILE_NAME As String = "fblint.toml"
  Const MAX_COPYRIGHT_SCAN_BYTES As Integer = 4096
  
