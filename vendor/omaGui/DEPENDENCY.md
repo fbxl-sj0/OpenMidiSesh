@@ -72,6 +72,12 @@ components. Observation matching stays on the GUI thread and checks the
 recorded lengths and offsets before comparing source bytes. DOSBox-X timed
 idle remains opt-in and requires a gfxlib with the matching backend entrypoint.
 
+The final October 7 refresh qualifies the completed key-event batch,
+same-poll TextBox presses, registry lifetime checks and the direct glyph-span
+publication path. The publication path uses one balanced screen unlock and
+bounded coverage and destination rows. The production editor build and
+hidden Desktop/Touch audits passed with these exact dependency bytes.
+
 Semantic lint must compile `omaGUI.bi` with `OMAGUI_IMPLEMENTATION` in a real
 root and select the same platform and font definitions as the application.
 Implementation `.bas` files are includes, so compiling them independently
