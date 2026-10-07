@@ -2962,7 +2962,9 @@ End Sub
 Private Function textbox_KeyJustPressed(ByVal textData As TextBoxData Ptr, ByVal keyCode As Integer, ByVal keyMask As Integer) As Integer
 
     If textData = 0 Then Return 0
-    If input_KeyPressed(keyCode) = 0 Then Return 0
+    ' A press and release can both arrive between GUI polls. Its queued
+    ' edge still edits once, even when the physical key is already up.
+    If input_KeyPressEvent(keyCode) = 0 AndAlso input_KeyPressed(keyCode) = 0 Then Return 0
     If (textData->key_latch And keyMask) <> 0 Then Return 0
 
     textData->key_latch Or= keyMask

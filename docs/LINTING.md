@@ -50,6 +50,13 @@ Conditional expression and branch-node arrays use their validated record counts.
 An unrelated 250,000-entry symbol-type limit previously rejected valid large
 GUI models. Their existing expression and node limits remain in place.
 
+The compiler coordinate-reader optimization is retained in
+`tools/fblint/semantic-coordinate-index.patch`. It caches line starts for the
+current opened source occurrence, up to eight MiB, so backward expression and
+block ranges do not repeatedly rescan large preprocessed roots. Cache exhaustion
+keeps the forward reader available. Encoding, byte-boundary validation, source
+occurrence identity and restoration of the compiler file position are unchanged.
+
 These exports are compiler front-end checks on the selected Windows or Linux
 target. Native compilation with all warnings and target execution remain
 separate required checks. In particular, a Linux export on Windows is not a

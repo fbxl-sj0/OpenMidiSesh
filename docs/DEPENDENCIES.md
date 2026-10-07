@@ -38,13 +38,14 @@ and Unicode font packs. OpenSesh selects its neutral font tables with
 Arial-derived tables, examples, tools, and generated binaries.
 
 The October 7 equalization incorporates the optimized omaGUI tree from Tiko
-commit `6019ac8a8840106dbb513b84e167147b447d9d68`, retaining the OpenSesh CSS
+commit `09f5d5081195c6aa67a84ff17c73d236c5a9149d`, retaining the OpenSesh CSS
 and image-array safety checks, label styles and literal-color support. The
 local development tree is identical to Tiko's shared copy. Both manifests
 record the merged bytes.
 
 The October 7 performance overlay preserves those downstream changes and adds
-bounded menu updates, cached display captions and clipped popup replay. The
+bounded menu updates, cached display captions, clipped popup replay, checked
+direct glyph-span writes, batched key events and registry mutation tracking. The
 maintained snapshot passed the native editor smoke and focused font/render
 checks. DOSBox-X timed idle remains opt-in with its matching gfxlib.
 

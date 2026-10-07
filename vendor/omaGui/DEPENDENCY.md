@@ -56,6 +56,16 @@ duplicate-widget protection. The OpenSesh copy contributes the allocation
 query for raster input, a bounds check for bare CSS class selectors, and
 trailing-NUL handling in RTF input.
 
+The October 7 update adds checked direct glyph-span writes for 32-bit gfxlib
+pages, retaining PUT for unsupported formats and builds. Its pixel fixture
+compares the direct path with both PUT and the original rasterizer. Input now
+publishes a completed key-event batch once before widget dispatch, so a press
+and release between polls still reaches TextBox editing. The widget registry
+tracks membership changes and performs lifetime scans only after callbacks
+mutate the registry; its regression covers replacement, removal, addition,
+and unchanged idle frames. TextBox metric comparisons use read-only byte
+pointers.
+
 The retained renderer and textbox compare cached observations without
 constructing temporary strings. Raster palette fields retain their named
 components. Observation matching stays on the GUI thread and checks the

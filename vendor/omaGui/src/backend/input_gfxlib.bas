@@ -62,6 +62,9 @@ Dim Shared As Integer mockTouchId(0 To INPUT_TOUCH_CAPACITY - 1)
 
 ' FreeBASIC gfxlib scan codes are represented by one unsigned byte.
 Const INPUT_KEY_LAST = 255
+' The GUI thread owns this callback-free input frame. Public mock/mapping
+' setters and standalone native translators keep their immediate view.
+Private Dim Shared As Integer inputKeyBatchActive
 
 /'
     Keyboard controls need edge retention for the same reason as pointer
@@ -234,7 +237,7 @@ Private Sub input_RecordKeyEvent( _
         ' One bit per complete chord (0..7), not an OR of unrelated presses.
         inputKeyPressChords(scanCode) Or= 1 Shl (modifiers And 7)
     End If
-    input_RebuildKeyView
+    If inputKeyBatchActive = 0 Then input_RebuildKeyView
     If inputKeyEventLength >= INPUT_KEY_EVENT_CAPACITY Then
         inputKeyEventOverflow = -1
         Exit Sub
@@ -388,6 +391,7 @@ Sub input_Update()
     keyboardDispatchEnabled = -1
     inputKeyEventLength = 0
     inputKeyEventOverflow = 0
+    inputKeyBatchActive = -1
 
     For keyIndex As Integer = 0 To INPUT_KEY_LAST
         inputKeyPressEvents(keyIndex) = 0
@@ -508,6 +512,8 @@ Sub input_Update()
            inputKeyOverrideTarget(keyIndex) = 0 AndAlso _
            input_RawKeyPressed(keyIndex) Then inputSuppressText = -1
     Next keyIndex
+    ' Publish held keys and all queued chords once before widget dispatch.
+    inputKeyBatchActive = 0
     input_RebuildKeyView
     If useMockText Then
         textBuffer = IIf(inputSuppressText, "", mockText)
@@ -811,6 +817,7 @@ End Sub
 ' -------------------------------------------------------------------------
 
 Sub input_ResetForTest()
+    inputKeyBatchActive = 0
     ' A test reset owns every input source. Native mouse-as-touch contacts
     ' must not override mocked coordinates on targets such as Haiku.
     useMockTouch = 1

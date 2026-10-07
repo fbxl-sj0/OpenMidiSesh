@@ -2391,7 +2391,8 @@ End Function
 
 Private Sub DrawCharFont(ByVal x As Integer, ByVal y As Integer, _
                          ByVal charCode As Integer, ByVal clr As ULong, _
-                         ByVal font_id As Integer, ByVal text_alpha As Integer)
+                         ByVal font_id As Integer, ByVal text_alpha As Integer, _
+                         ByVal screenDepth As Integer)
     Dim As UByte Ptr p = backend_FontGlyph(font_id, charCode) : If p = 0 Then Exit Sub
     Dim As Integer bearing_x
     Dim As Integer bearing_y
@@ -2406,13 +2407,10 @@ Private Sub DrawCharFont(ByVal x As Integer, ByVal y As Integer, _
     If backend_FontSpanVisible(CLngInt(x) + bearing_x, CLngInt(y) + bearing_y, _
         w, h) = 0 Then Exit Sub
 
-    Dim As Integer scrW, scrH, scrD
-    ScreenInfo scrW, scrH, scrD
-
     If text_alpha <= 0 Then Exit Sub
     If text_alpha > 255 Then text_alpha = 255
 
-    If backend_FontSpanBegin(w, h) <> 0 Then
+    If backend_FontSpanBegin(w, h, screenDepth) <> 0 Then
         For py As Integer = 0 To h - 1
             For px As Integer = 0 To w - 1
                 Dim As ULong coverage = p[2 + py * w + px]
@@ -2430,7 +2428,7 @@ Private Sub DrawCharFont(ByVal x As Integer, ByVal y As Integer, _
             Dim As Integer alpha = (CInt(p[2 + py * w + px]) * text_alpha) \ 255
 
             If alpha > 0 Then
-                If scrD < 16 Then
+                If screenDepth < 16 Then
                     If alpha > 128 Then PSet _
                         (x + bearing_x + px, y + bearing_y + py), MapColor(clr)
                 Elseif alpha = 255 Then
@@ -2524,6 +2522,7 @@ Sub backend_PrintFontAlpha(ByVal x As Integer, ByVal y As Integer, _
     End If
 #EndIf
 
+    Dim As Integer screenDepth = backend_FontSpanDepth()
     Dim As Integer curX = x
     Dim As Integer previousCellX = x
     Dim As Integer previousCellAdvance
@@ -2545,7 +2544,7 @@ Sub backend_PrintFontAlpha(ByVal x As Integer, ByVal y As Integer, _
                 curX, previousCellX, previousCellAdvance, _
                 glyphAdvance, glyph[0], bearingX, 1, 1 _
             )
-            DrawCharFont(glyphDrawX, y, charCode, clr, font_id, alpha)
+            DrawCharFont(glyphDrawX, y, charCode, clr, font_id, alpha, screenDepth)
             If glyphAdvance > 0 Then
                 previousCellX = curX
                 previousCellAdvance = glyphAdvance
@@ -2614,6 +2613,7 @@ Private Sub backend_PrintPercentStyled( _
     ) Then Exit Sub
 #EndIf
 
+    Dim As Integer screenDepth = backend_FontSpanDepth()
     byte_index = 0
     While byte_index < Len(text)
         character_code = backend_ReadUTF8Codepoint(text, byte_index)
@@ -2639,12 +2639,12 @@ Private Sub backend_PrintPercentStyled( _
         ' Normal-sized upright text needs no resampling. The span check keeps
         ' indexed-color and GPU pages on their established raster paths.
         If percent = 100 AndAlso italic = 0 AndAlso _
-           backend_FontSpanBegin(glyph_width, glyph_height) <> 0 Then
+           backend_FontSpanBegin(glyph_width, glyph_height, screenDepth) <> 0 Then
             glyph_draw_x = backend_ZeroAdvanceGlyphPenX( _
                 current_x, previous_cell_x, previous_cell_advance, _
                 glyph_advance, glyph_width, bearing_x, 100, 100 _
             )
-            DrawCharFont glyph_draw_x, y, character_code, clr, font_id, 255
+            DrawCharFont glyph_draw_x, y, character_code, clr, font_id, 255, screenDepth
             If glyph_advance > 0 Then
                 previous_cell_x = current_x
                 previous_cell_advance = glyph_advance
@@ -2681,7 +2681,7 @@ Private Sub backend_PrintPercentStyled( _
             current_x += (glyph_advance * percent + 50) \ 100
             Continue While
         End If
-        Dim As Integer useFontSpan = backend_FontSpanBegin(scaled_width, scaled_height)
+        Dim As Integer useFontSpan = backend_FontSpanBegin(scaled_width, scaled_height, screenDepth)
         For dest_y As Integer = 0 To scaled_height - 1
             source_y = (dest_y * 100) \ percent
             row_shift_hundredths = 0

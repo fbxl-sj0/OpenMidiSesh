@@ -66,6 +66,13 @@ Dim Shared As Integer gui_ViewportWidth
 Dim Shared As Integer gui_ViewportHeight
 Dim Shared As UInteger gui_LayoutGeneration
 Dim Shared As ULongInt gui_NextRegistryId
+' The GUI thread advances this serial whenever registry membership changes.
+' Keep it across initialization so callbacks cannot hide a registry reset.
+Private Dim Shared As ULongInt gui_RegistryMutationSerial
+
+#Ifdef OMAGUI_PROFILE_REGISTRY
+Private Dim Shared As ULongInt gui_ProfileRegistryLookups
+#EndIf
 
 Const GUI_LAYOUT_PARENT_GUARD As Integer = 64
 Const GUI_LAYOUT_MINIMUM_SIZE As Integer = 1
@@ -211,6 +218,12 @@ End Sub
 ' Registry Management
 ' -------------------------------------------------------------------------
 
+Private Sub gui_AdvanceRegistrySerial()
+    gui_RegistryMutationSerial += 1
+    If gui_RegistryMutationSerial = 0 Then gui_RegistryMutationSerial = 1
+End Sub
+
+
 Function gui_CreateWidgetBase() As Widget Ptr
     ' New initializes every field, including managed strings and callbacks.
     Dim As Widget Ptr w = New Widget
@@ -222,6 +235,7 @@ End Function
 
 
 Sub gui_Init()
+    gui_AdvanceRegistrySerial
     widget_list_head = 0
     widget_list_tail = 0
     gui_ResetModalRootStack()
@@ -289,6 +303,7 @@ Private Sub gui_AppendWidget(ByVal w As Widget Ptr)
     ' supplies damage through retained observation or conservative repainting.
     If w->visible <> 0 Then gui_InvalidateAll
 
+    gui_AdvanceRegistrySerial
     gui_NextRegistryId += 1
     If gui_NextRegistryId = 0 Then gui_NextRegistryId = 1
     w->registry_id = gui_NextRegistryId
@@ -308,6 +323,9 @@ Private Function gui_IsSameRegisteredWidget( _
     ByVal registryId As ULongInt _
 ) As Integer
     Dim current As Widget Ptr = widget_list_head
+#Ifdef OMAGUI_PROFILE_REGISTRY
+    gui_ProfileRegistryLookups += 1
+#EndIf
 
     If target = 0 OrElse registryId = 0 Then Return 0
     While current <> 0
@@ -1727,6 +1745,7 @@ Private Sub gui_DeleteWidget(ByVal target As Widget Ptr)
 
     While current <> 0
         If current = target Then
+            gui_AdvanceRegistrySerial
             If previous = 0 Then
                 widget_list_head = current->next_widget
             Else
@@ -1890,6 +1909,7 @@ Sub gui_UpdateAll()
     Dim As Integer previousVisible
     Dim As Integer tabCaptured
     Dim As ULongInt currentRegistryId
+    Dim As ULongInt currentRegistrySerial
     Dim As ULongInt pointerTargetRegistryId
     Dim As ULongInt keyboardFocusRegistryId
     Dim As ULongInt globalKeyboardRegistryId
@@ -2058,6 +2078,7 @@ Sub gui_UpdateAll()
         End If
         curr->updated_this_frame = 1
         currentRegistryId = curr->registry_id
+        currentRegistrySerial = gui_RegistryMutationSerial
         previousX = curr->x
         previousY = curr->y
         previousWidth = curr->w
@@ -2092,7 +2113,10 @@ Sub gui_UpdateAll()
             running twice, while a new registration ID distinguishes an
             allocator-reused address from the deleted control.
         '/
-        If gui_IsSameRegisteredWidget(curr, currentRegistryId) = 0 Then
+        ' An unchanged registry still owns the current node. Scan only after
+        ' a callback changed membership; this keeps idle updates linear.
+        If gui_RegistryMutationSerial <> currentRegistrySerial AndAlso _
+           gui_IsSameRegisteredWidget(curr, currentRegistryId) = 0 Then
             gui_ResolveLayout()
             curr = widget_list_head
             Continue While
