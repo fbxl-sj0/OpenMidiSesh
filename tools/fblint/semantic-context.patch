@@ -30,23 +30,7 @@
  #Include Once "fb_linter_semantic.bi"
  #Include Once "fb_linter_parser_rules.bi"
  #Include Once "fb_linter_string_literal_rules.bi"
-@@ -3841,7 +3848,6 @@
- #Include Once "fb_linter_parameter_loops.bi"
- #Include Once "fb_linter_option_explicit.bi"
- #Include Once "fb_linter_conversion_rules.bi"
--#Include Once "fb_linter_logic_rules.bi"
- #Include Once "fb_linter_bidi_context.bi"
- #Include Once "fb_linter_bidi_rules.bi"
- #Include Once "fb_linter_todo_comments.bi"
-@@ -6191,7 +6197,6 @@
-         RunAssignmentRuleChecks FilePath
-         RunConstantRuleChecks FilePath
-         RunConversionRuleChecks FilePath
--        RunCaseLiteralOrChecks FilePath
-         RunLogicalExpressionRuleChecks FilePath
-         RunEnumRuleChecks FilePath
-         ConstantFinishReporting
-@@ -6866,6 +6871,12 @@
+@@ -6866,6 +6873,12 @@
      Options.StdinFilename = ""
      Options.ConfigPath = ""
      Options.CompilerPath = ""
@@ -59,7 +43,7 @@
      Options.SemanticAnalysis = -1
      Options.RequireSemantic = 0
      Options.ShowSemantic = 0
-@@ -7011,7 +7022,8 @@
+@@ -7011,7 +7024,8 @@
  
  Function CommandOptionConsumesValue(ByRef OptionText As String) As Integer
      Select Case LCase(OptionText)
@@ -69,7 +53,7 @@
               "--override-visibility-change", "--override-ignored-functions", _
               "--indent-width", "--expected-line-ending", _
               "--max-line-length", "--max-routine-lines", _
-@@ -8952,6 +8964,12 @@
+@@ -8952,6 +8966,12 @@
      Print "    --csv <path>             Also write the legacy CSV report."
      Print "    --target <name>          windows, linux, haiku, bsd, cygwin, embedded, nuttx,"
      Print "                             js, android, dos, wii, xbox."
@@ -82,7 +66,7 @@
      Print "    --compiler <path>        Compiler with -semantic-model support (default: discover)."
      Print "    --no-semantic            Disable compiler-backed parsing; use local approximations."
      Print "    --require-semantic       Fail if any .bas root lacks accepted current compiler facts."
-@@ -9184,6 +9202,36 @@
+@@ -9184,6 +9204,36 @@
                      "--compiler", "a compiler executable path")
                  ArgIndex += 2
  
@@ -119,7 +103,7 @@
              Case "--no-semantic"
                  Options.SemanticAnalysis = 0
                  ArgIndex += 1
-@@ -9817,6 +9865,7 @@
+@@ -9817,6 +9867,7 @@
  
  TimingMainScanSeconds = ElapsedTimerSeconds(PhaseStartedAt)
  CleanupStandardInput
@@ -129,15 +113,6 @@
  
 --- a/src/fb_linter_semantic.bi
 +++ b/src/fb_linter_semantic.bi
-@@ -253,7 +253,7 @@
- Const FBLINT_MAX_SEMANTIC_SYMBOL_TYPES As LongInt = 250000
- ' FBC permits up to one million identities per semantic-model domain.
- Const FBLINT_MAX_SEMANTIC_MODEL_IDENTITIES As LongInt = 1000000
--Const FBLINT_MAX_SEMANTIC_EXPRESSION_SPANS As LongInt = 1000000
-+Const FBLINT_MAX_SEMANTIC_EXPRESSION_SPANS As LongInt = 250000
- Const FBLINT_MAX_SEMANTIC_BINDING_DECLARATIONS As LongInt = 250000
- Const FBLINT_MAX_SEMANTIC_BINDING_REFERENCES As LongInt = 250000
- Const FBLINT_MAX_SEMANTIC_DISCARDED_CALLS As LongInt = 250000
 @@ -9975,6 +9975,13 @@
  #Include "fb_linter_semantic_c_formats.bi"
  #Include "fb_linter_semantic_constants.bi"
@@ -593,15 +568,7 @@
  End Function
  
  Function Schema27Find(ByVal TagText As String, ByVal First As String = "", _
-@@ -245,7 +258,6 @@
-         Return 0
-     End If
-     If TagText = "K" AndAlso OldIndex > 0 AndAlso Left(Fields(3), 24) = "unevaluated-query-range-" Then Return 0
--    If TagText = "K" AndAlso OldIndex > 0 AndAlso Left(Fields(3), 12) = "select-case-" Then Return 0
-     If TagText = "K" AndAlso OldIndex > 0 AndAlso _
-        (Schema20Choice(Fields(3), "|formal-span-kind|assignment-target-dtype|assignment-kind|unevaluated-query-input|") OrElse _
-         Left(Fields(3), 11) = "size-query-" OrElse Left(Fields(3), 16) = "pointer-address-" OrElse _
-@@ -382,6 +394,11 @@
+@@ -382,6 +395,11 @@
      If FileSize > 0 Then Get #FileNumber, FileSize, FinalByte
      Close #FileNumber
      If FileSize = 0 OrElse FileSize > SCHEMA27_BYTE_LIMIT OrElse FinalByte <> 10 Then Return 0
@@ -613,7 +580,7 @@
      Schema27LinePool = Space$(FileSize)
      Schema27LinePoolUsed = 0
      If Open(ModelPath For Input As #FileNumber) <> 0 Then Return 0
-@@ -404,9 +421,11 @@
+@@ -404,9 +422,11 @@
      Loop
      Valid = (Valid <> 0 AndAlso FooterSeen <> 0 AndAlso Eof(FileNumber) <> 0)
      Close #FileNumber
@@ -625,7 +592,7 @@
          Valid = FblintValidateSchema20Metadata(ModelPath, LatestTypes(), CanonicalIds(), "27")
      End If
      If Valid = 0 Then
-@@ -419,6 +438,7 @@
+@@ -419,6 +439,7 @@
          Schema27Failure = ""
          Schema27FactsComplete = -1
      End If
@@ -633,7 +600,7 @@
      Return Valid
  End Function
  
-@@ -438,6 +458,7 @@
+@@ -438,6 +459,7 @@
      Capacity As Long
      AliasCount As Long
      AliasCapacity As Long
@@ -641,7 +608,7 @@
      LinePoolUsed As Long
      LinePool As String
      FactsComplete As Integer
-@@ -450,11 +471,14 @@
+@@ -450,11 +472,14 @@
  
  Function Schema27SuspendIndex(ByRef Saved As Schema27IndexSnapshot) As Integer
      If Saved.Active <> 0 OrElse Schema27RowCount < 0 OrElse _
@@ -657,7 +624,7 @@
      Saved.LinePoolUsed = Schema27LinePoolUsed
      Swap Schema27LinePool, Saved.LinePool
      Saved.FactsComplete = Schema27FactsComplete
-@@ -464,8 +488,8 @@
+@@ -464,8 +489,8 @@
      Saved.ConditionalTop = Schema27ConditionalTop
      ReDim Saved.Rows(0 To Saved.RowCount)
      ReDim Saved.Aliases(0 To Saved.AliasCount)
@@ -668,7 +635,7 @@
      ' SWAP transfers the managed strings rather than copying their storage
      ' descriptors. No caller may retain a row reference across this scope.
      For RowIndex As LongInt = 1 To Saved.RowCount
-@@ -479,7 +503,7 @@
+@@ -479,7 +504,7 @@
          Saved.TagTails(TagIndex) = Schema27TagTails(TagIndex)
          Saved.TagCounts(TagIndex) = Schema27TagCounts(TagIndex)
      Next TagIndex
@@ -677,7 +644,7 @@
          Saved.HashHeads(Bucket) = Schema27HashHeads(Bucket)
          Saved.AliasHeads(Bucket) = Schema27AliasHeads(Bucket)
      Next Bucket
-@@ -491,6 +515,7 @@
+@@ -491,6 +516,7 @@
  Sub Schema27ResumeIndex(ByRef Saved As Schema27IndexSnapshot)
      If Saved.Active = 0 Then Exit Sub
      ResetSchema27Facts
@@ -685,7 +652,7 @@
      If Saved.Capacity > 0 Then ReDim Schema27Rows(0 To Saved.Capacity - 1)
      If Saved.AliasCapacity > 0 Then ReDim Schema27Aliases(0 To Saved.AliasCapacity - 1)
      For RowIndex As LongInt = 1 To Saved.RowCount
-@@ -504,7 +529,7 @@
+@@ -504,7 +530,7 @@
          Schema27TagTails(TagIndex) = Saved.TagTails(TagIndex)
          Schema27TagCounts(TagIndex) = Saved.TagCounts(TagIndex)
      Next TagIndex
@@ -696,15 +663,7 @@
      Next Bucket
 --- a/src/fb_linter_semantic_schema27_graphs.bi
 +++ b/src/fb_linter_semantic_schema27_graphs.bi
-@@ -20,7 +20,6 @@
- #Include Once "fb_linter_semantic_sequence_branches.bi"
- #Include Once "fb_linter_semantic_wide_literals.bi"
- #Include Once "fb_linter_semantic_query_inputs.bi"
--#Include Once "fb_linter_semantic_select_inputs.bi"
- 
- ' Schema-27 S records use FBC's procedure class code for prototype owners.
- Const SCHEMA27_PROCEDURE_CLASS As LongInt = 3
-@@ -437,21 +436,25 @@
+@@ -437,16 +437,22 @@
  #Include "fb_linter_semantic_schema27_macros.bi"
  
  Function Schema27ValidateGraphs() As Integer
@@ -727,11 +686,6 @@
      If Schema27ValidateProcedureExits() = 0 OrElse Schema27ValidateSequenceBranches() = 0 Then Return 0
      Schema27Failure = "unevaluated query inputs"
      If Schema27ValidateQueryInputs() = 0 Then Return 0
--    Schema27Failure = "select case inputs"
--    If Schema27ValidateSelectInputs() = 0 Then Return 0
-     Schema27Failure = "wide literal prefixes"
-     If Schema27ValidateWideLiterals() = 0 Then Return 0
-     Schema27Failure = ""
 --- a/test_secondary_semantic_query.bas
 +++ b/test_secondary_semantic_query.bas
 @@ -6,6 +6,7 @@
