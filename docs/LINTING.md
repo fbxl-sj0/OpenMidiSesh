@@ -82,6 +82,11 @@ they retain no borrowed model rows. Each selected source still runs its normal
 rule checks and suppression handling. The context regression verifies that
 three included inputs reuse the expansion and report the same physical finding.
 
+FreeBASIC preprocessing can remove an integer literal's `ULL` suffix. The HTML
+entity parser uses a named `ULongInt` Unicode limit so its overflow check keeps
+the same width after preprocessing. The context regression accepts that typed
+constant and rejects the suffix-only expression when its parsed model changes.
+
 These exports are compiler front-end checks on the selected Windows or Linux
 target. Native compilation with all warnings and target execution remain
 separate required checks. In particular, a Linux export on Windows is not a

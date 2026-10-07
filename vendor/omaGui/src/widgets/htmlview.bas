@@ -67,6 +67,9 @@ Const HTMLVIEW_MAX_PARSE_SECONDS As Double = 3.0
 Const HTMLVIEW_PARSE_TIME_CHECK_INTERVAL As Long = 16
 Const HTMLVIEW_SECONDS_PER_DAY As Double = 86400.0
 Const HTMLVIEW_DEFAULT_LOAD_BUDGET_MS As Integer = 4
+
+' Keep overflow-check subtraction in the accumulator's unsigned 64-bit width.
+Const HTMLVIEW_MAX_CODEPOINT As ULongInt = &h10FFFF
 Const HTMLVIEW_MAXIMUM_LOAD_BUDGET_MS As Integer = 100
 
 Const HTMLVIEW_ALIGN_LEFT As Integer = 0
@@ -468,7 +471,7 @@ Private Function htmlview_ParseUnsigned( _
         End If
 
         If digit >= baseValue Then Return 0
-        If accumulator > (&h10FFFFULL - digit) \ baseValue Then Return 0
+        If accumulator > (HTMLVIEW_MAX_CODEPOINT - digit) \ baseValue Then Return 0
         accumulator = accumulator * baseValue + digit
     Next position
 

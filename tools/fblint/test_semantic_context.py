@@ -108,6 +108,30 @@ def check_context(linter: Path, compiler: Path) -> None:
                 or (result.stdout + result.stderr).count('compiler Boolean expansion reused') < 2):
             raise RuntimeError('Context macro replay reuse failed: ' + result.stdout + result.stderr)
         print('semantic_context_macro_replay_reuse=pass', flush=True)
+        typed_bound = 'const UnicodeBound as ulongint = &h10FFFF\n'
+        width_body = ('#define ContextPredicate(value) ((value) > 0 and (value) < ContextLimit)\n'
+                      'function ContextValue() as integer\n'
+                      ' dim value as integer = ContextLimit\n'
+                      ' dim digit as ulong = 15\n'
+                      ' dim accumulator as ulongint = 1000\n'
+                      ' dim baseValue as integer = 16\n'
+                      ' if accumulator > (BOUND_VALUE - digit) \\ baseValue then return 0\n'
+                      ' if ContextPredicate(value) then return 1\n'
+                      ' return 0\nend function\n')
+        for name, bound, declaration in (
+                ('typed_bound', 'UnicodeBound', typed_bound),
+                ('lost_suffix', '&h10FFFFULL', '')):
+            implementation.write_text(declaration + width_body.replace('BOUND_VALUE', bound))
+            result = subprocess.run(common + ['--compiler-define', 'CONTEXT_TEST',
+                                    str(implementation)], capture_output=True, text=True,
+                                    timeout=120, check=False)
+            rows = [json.loads(line) for line in result.stdout.splitlines() if line.startswith('{')]
+            summary = next(row for row in rows if row.get('type') == 'summary')
+            if (summary['semantic_accepted'] != 1
+                    or (name == 'typed_bound' and (result.returncode != 0 or summary['operational_errors'] != 0))
+                    or (name == 'lost_suffix' and (result.returncode != 2 or summary['operational_errors'] == 0))):
+                raise RuntimeError(name + ': integer-width replay proof failed: ' + result.stdout + result.stderr)
+            print('semantic_context_' + name + '=pass', flush=True)
 
 
 if __name__ == '__main__':
