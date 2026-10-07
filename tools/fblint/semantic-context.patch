@@ -716,7 +716,15 @@
          If Schema27SuspendIndex(Saved) = 0 Then Return 0
 --- a/src/fb_linter_semantic_schema27_graphs.bi
 +++ b/src/fb_linter_semantic_schema27_graphs.bi
-@@ -437,16 +437,22 @@
+@@ -21,6 +21,7 @@
+ #Include Once "fb_linter_semantic_wide_literals.bi"
+ #Include Once "fb_linter_semantic_query_inputs.bi"
+ #Include Once "fb_linter_semantic_select_inputs.bi"
++#Include Once "fb_linter_declaration_inputs.bi"
+ 
+ ' Schema-27 S records use FBC's procedure class code for prototype owners.
+ Const SCHEMA27_PROCEDURE_CLASS As LongInt = 3
+@@ -437,21 +438,29 @@
  #Include "fb_linter_semantic_schema27_macros.bi"
  
  Function Schema27ValidateGraphs() As Integer
@@ -739,6 +747,13 @@
      If Schema27ValidateProcedureExits() = 0 OrElse Schema27ValidateSequenceBranches() = 0 Then Return 0
      Schema27Failure = "unevaluated query inputs"
      If Schema27ValidateQueryInputs() = 0 Then Return 0
+     Schema27Failure = "select case inputs"
+     If Schema27ValidateSelectInputs() = 0 Then Return 0
++    Schema27Failure = "declaration typing inputs"
++    If Schema27ValidateDeclarationTypes() = 0 Then Return 0
+     Schema27Failure = "wide literal prefixes"
+     If Schema27ValidateWideLiterals() = 0 Then Return 0
+     Schema27Failure = ""
 --- a/src/fb_linter_select_inputs.bi
 +++ b/src/fb_linter_select_inputs.bi
 @@ -6,7 +6,10 @@
