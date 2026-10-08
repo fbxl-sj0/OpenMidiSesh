@@ -300,6 +300,7 @@ tools/fblint/semantic-coordinate-index.patch
 tools/fblint/semantic-replay-cache.patch
 tools/fblint/semantic-replay-enums.patch
 tools/fblint/semantic-reporting-lifetime.patch
+tools/fblint/semantic-provenance-cache.patch
 tools/fblint/test_anonymous_enum_replay.bas
 tools/fblint/test_anonymous_enum_replay.py
 tools/fblint/test_procedure_keyword_fields.bas
@@ -309,6 +310,8 @@ tools/fblint/test_callback_cast_inputs.bas
 tools/fblint/test_callback_cast_inputs.py
 tools/fblint/test_semantic_context.py
 tools/fblint/test_reporting_lifetime.py
+tools/fblint/test_expression_provenance_cache.bas
+tools/fblint/test_expression_provenance_cache.py
 tools/fetch_ci_toolchain.py
 tools/install_ci_freebasic.sh
 tools/install_ci_unix.sh

@@ -1,0 +1,134 @@
+--- a/src/fb_linter_semantic_schema27.bi
++++ b/src/fb_linter_semantic_schema27.bi
+@@ -69,7 +69,18 @@
+ Dim Shared As Integer Schema27FactsComplete
+ Dim Shared As String Schema27Failure
+ 
++' A nonce belongs to the indexed rows, including while a replay suspends them.
++' Restoring those exact rows restores their nonce; a fresh load gets a new one.
++' At exhaustion, zero disables dependent caches instead of reusing an identity.
++Const SCHEMA27_INDEX_NONCE_MAX As LongInt = &h7FFFFFFFFFFFFFFF
++Dim Shared As LongInt Schema27IndexNonce, Schema27IndexSequence
++
+ Sub ResetSchema27Facts()
++    Schema27IndexNonce = 0
++    If Schema27IndexSequence < SCHEMA27_INDEX_NONCE_MAX Then
++        Schema27IndexSequence += 1
++        Schema27IndexNonce = Schema27IndexSequence
++    End If
+     Erase Schema27Rows
+     Erase Schema27Aliases
+     Erase Schema27TagHeads
+@@ -507,6 +518,7 @@
+     HashSize As Integer
+     LinePoolUsed As Long
+     LinePool As String
++    IndexNonce As LongInt
+     FactsComplete As Integer
+     Failure As String
+     StatementTop As String
+@@ -527,6 +539,7 @@
+     Saved.HashSize = Schema27HashSize
+     Saved.LinePoolUsed = Schema27LinePoolUsed
+     Swap Schema27LinePool, Saved.LinePool
++    Saved.IndexNonce = Schema27IndexNonce
+     Saved.FactsComplete = Schema27FactsComplete
+     Saved.Failure = Schema27Failure
+     Saved.StatementTop = Schema27StatementTop
+@@ -585,6 +598,7 @@
+     Schema27AliasCapacity = Saved.AliasCapacity
+     Schema27LinePoolUsed = Saved.LinePoolUsed
+     Swap Schema27LinePool, Saved.LinePool
++    Schema27IndexNonce = Saved.IndexNonce
+     Schema27FactsComplete = Saved.FactsComplete
+     Schema27Failure = Saved.Failure
+     Schema27StatementTop = Saved.StatementTop
+--- a/src/fb_linter_expression_provenance.bi
++++ b/src/fb_linter_expression_provenance.bi
+@@ -5,6 +5,8 @@
+ ' This file intentionally does NOT claim equivalent values or runtime aliases.
+ #Ifndef FB_LINTER_EXPRESSION_PROVENANCE_BI
+ #Define FB_LINTER_EXPRESSION_PROVENANCE_BI
++
++#Include Once "crt/string.bi"
+ 
+ ' Wire validation is independent of the consumer's compiler-code policy.
+ ' Raw AST classes, dtype codes and storage attributes need a known producer.
+@@ -56,7 +58,7 @@
+     Loop
+ End Sub
+ 
+-Sub ExpressionProvenanceIndex(ByRef MaxExpressionId As LongInt, Unevaluated() As UByte, _
++Sub ExpressionProvenanceBuildIndex(ByRef MaxExpressionId As LongInt, Unevaluated() As UByte, _
+     OriginHeads() As LongInt, NextOrigins() As LongInt, ByRef WorkLeft As LongInt)
+     Dim As LongInt RowIndex = Schema27First("E")
+     Do While RowIndex > 0 AndAlso WorkLeft >= 0
+@@ -90,6 +92,68 @@
+         End If
+         RowIndex = Schema27Rows(RowIndex).NextTag
+     Loop
++End Sub
++
++' -------------------------------------------------------------------------
++' One bounded index cache and caller-owned copies
++' -------------------------------------------------------------------------
++
++' Several rule families request the same provenance graph. Keep one complete
++' result for the exact live row index. IDs refer to that index, never to a
++' replacement model. Callers may modify or release their own copied arrays.
++' The scan is single-threaded. This ceiling covers all three retained arrays.
++Const EXPRESSION_PROVENANCE_CACHE_BYTES As LongInt = 128 * 1024 * 1024
++Dim Shared As LongInt ExpressionProvenanceCacheNonce, ExpressionProvenanceCacheSeed
++Dim Shared As LongInt ExpressionProvenanceCacheMax, ExpressionProvenanceCacheRows
++Dim Shared As LongInt ExpressionProvenanceCacheWork
++Dim Shared ExpressionProvenanceCacheUnevaluated() As UByte
++Dim Shared ExpressionProvenanceCacheHeads() As LongInt
++Dim Shared ExpressionProvenanceCacheNext() As LongInt
++
++Sub ExpressionProvenanceCopy(Unevaluated() As UByte, OriginHeads() As LongInt, _
++    NextOrigins() As LongInt, SourceUnevaluated() As UByte, SourceHeads() As LongInt, _
++    SourceNext() As LongInt, ByVal MaxExpressionId As LongInt, ByVal RowCount As LongInt)
++    ReDim Unevaluated(0 To MaxExpressionId)
++    ReDim OriginHeads(0 To MaxExpressionId)
++    ReDim NextOrigins(0 To RowCount)
++    ' Validated nonnegative bounds give at least one element in every array.
++    memcpy @Unevaluated(0), @SourceUnevaluated(0), CULngInt(MaxExpressionId + 1)
++    memcpy @OriginHeads(0), @SourceHeads(0), CULngInt(MaxExpressionId + 1) * Sizeof(LongInt)
++    memcpy @NextOrigins(0), @SourceNext(0), CULngInt(RowCount + 1) * Sizeof(LongInt)
++End Sub
++
++Sub ExpressionProvenanceIndex(ByRef MaxExpressionId As LongInt, Unevaluated() As UByte, _
++    OriginHeads() As LongInt, NextOrigins() As LongInt, ByRef WorkLeft As LongInt)
++    Dim As LongInt InitialMax = MaxExpressionId
++    Dim As LongInt InitialWork = WorkLeft
++    Dim As Integer CanCache = Schema27CurrentProducerAvailable() AndAlso Schema27IndexNonce > 0
++    If CanCache AndAlso ExpressionProvenanceCacheNonce = Schema27IndexNonce AndAlso _
++       ExpressionProvenanceCacheRows = Schema27RowCount AndAlso _
++       ExpressionProvenanceCacheSeed = InitialMax AndAlso WorkLeft >= ExpressionProvenanceCacheWork Then
++        MaxExpressionId = ExpressionProvenanceCacheMax
++        ExpressionProvenanceCopy Unevaluated(), OriginHeads(), NextOrigins(), _
++            ExpressionProvenanceCacheUnevaluated(), ExpressionProvenanceCacheHeads(), _
++            ExpressionProvenanceCacheNext(), MaxExpressionId, Schema27RowCount
++        ' Caching must not relax a consumer's traversal budget.
++        WorkLeft -= ExpressionProvenanceCacheWork
++        Exit Sub
++    End If
++    ExpressionProvenanceBuildIndex MaxExpressionId, Unevaluated(), OriginHeads(), NextOrigins(), WorkLeft
++    If CanCache = 0 OrElse WorkLeft < 0 OrElse InitialMax < 0 OrElse _
++       MaxExpressionId < 0 OrElse MaxExpressionId > FBLINT_MAX_SEMANTIC_MODEL_IDENTITIES OrElse _
++       Schema27RowCount < 0 OrElse Schema27RowCount > SCHEMA27_ROW_LIMIT Then Exit Sub
++    Dim As LongInt ByteCount = (MaxExpressionId + 1) * (Sizeof(UByte) + Sizeof(LongInt)) + _
++        (CLngInt(Schema27RowCount) + 1) * Sizeof(LongInt)
++    If ByteCount > EXPRESSION_PROVENANCE_CACHE_BYTES Then Exit Sub
++    ExpressionProvenanceCacheNonce = 0
++    ExpressionProvenanceCopy ExpressionProvenanceCacheUnevaluated(), ExpressionProvenanceCacheHeads(), _
++        ExpressionProvenanceCacheNext(), Unevaluated(), OriginHeads(), NextOrigins(), _
++        MaxExpressionId, Schema27RowCount
++    ExpressionProvenanceCacheSeed = InitialMax
++    ExpressionProvenanceCacheMax = MaxExpressionId
++    ExpressionProvenanceCacheRows = Schema27RowCount
++    ExpressionProvenanceCacheWork = InitialWork - WorkLeft
++    ExpressionProvenanceCacheNonce = Schema27IndexNonce
+ End Sub
+ 
+ ' Follow the latest parser predecessor to a complete operation or leaf.

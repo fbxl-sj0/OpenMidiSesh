@@ -129,6 +129,15 @@ with `--linter`, `--compiler`, and `--includes`. It uses a genuine included sour
 and requires a complete summary: one identity cast remains visible, while the
 other is hidden only when its line suppression is honored.
 
+`tools/fblint/semantic-provenance-cache.patch` retains one completed expression
+provenance index, capped at 128 MiB. An internal index nonce changes on reset
+and follows the exact rows through suspend/resume. Each caller gets independent
+arrays and pays the original traversal charge. A failed or oversized traversal
+is never cached. Build `test_expression_provenance_cache.bas` against the patched
+reader, then run its Python companion with `--compiler` and `--reader`. Genuine
+exports check the uncached result, caller edits, exhausted budgets, replacement
+models, snapshot restoration, and nonce exhaustion.
+
 Keep a line suppression only for a reviewed false positive or documented API
 constraint. Typical examples are bounded framebuffer pointer copies, a shared
 decoder cleanup path, optional environment overrides with a defined fallback,
