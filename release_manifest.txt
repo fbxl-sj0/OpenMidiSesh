@@ -303,6 +303,9 @@ tools/fblint/test_anonymous_enum_replay.bas
 tools/fblint/test_anonymous_enum_replay.py
 tools/fblint/test_procedure_keyword_fields.bas
 tools/fblint/test_procedure_keyword_fields.py
+tools/fblint/semantic-callback-inputs.patch
+tools/fblint/test_callback_cast_inputs.bas
+tools/fblint/test_callback_cast_inputs.py
 tools/fblint/test_semantic_context.py
 tools/fetch_ci_toolchain.py
 tools/install_ci_freebasic.sh

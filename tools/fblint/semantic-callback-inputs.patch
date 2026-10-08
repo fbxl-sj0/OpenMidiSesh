@@ -1,0 +1,131 @@
+--- a/src/fb_linter_callback_inputs.bi
++++ b/src/fb_linter_callback_inputs.bi
+@@ -12,6 +12,7 @@
+     StatementRow As LongInt
+     SourceId As LongInt
+     IsExplicit As Integer
++    NeedsCallProof As Integer
+     NextStatement As Long
+ End Type
+ 
+@@ -31,6 +32,37 @@
+     Return Schema27Value(Schema27Find("CAP", LTrim(Str(ModuleOrdinal)), "procedure-callback-inputs"), 3) = "available"
+ End Function
+ 
++Private Function CallbackSignatureMark(ByVal SymbolRow As LongInt, ByVal Stamp As Long, _
++    Seen() As Long, Queue() As Long, ByRef Count As LongInt) As Integer
++    If SymbolRow = 0 OrElse Seen(SymbolRow) = Stamp Then Return -1
++    If Schema27Value(Schema27Find("F", Schema27Value(SymbolRow, 1)), 2) <> "procedure-pointer" Then Return -1
++    If Count >= UBound(Queue) Then Return 0
++    Seen(SymbolRow) = Stamp: Count += 1: Queue(Count) = CLng(SymbolRow)
++    Return -1
++End Function
++
++Private Function MarkCallbackSignature(ByVal RootRow As LongInt, ByVal Stamp As Long, Seen() As Long, _
++    Queue() As Long, ByRef WorkLeft As LongInt) As Integer
++    Dim As LongInt Count = 1, Position = 1
++    Queue(1) = CLng(RootRow): Seen(RootRow) = Stamp
++    Do While Position <= Count
++        WorkLeft -= 1: If WorkLeft < 0 Then Return 0
++        Dim As String SymbolId = Schema27Value(Queue(Position), 1)
++        Dim As LongInt TypeRow = Schema27Find("T", SymbolId), SignatureRow = Schema27Find("F", SymbolId)
++        Dim As LongInt SubType = Schema27Subject("symbol", Schema27Value(TypeRow, 7))
++        If CallbackSignatureMark(SubType, Stamp, Seen(), Queue(), Count) = 0 Then Return 0
++        For Ordinal As LongInt = 0 To Schema27Number(SignatureRow, 4) - 1
++            WorkLeft -= 1: If WorkLeft < 0 Then Return 0
++            Dim As LongInt FormalRow = Schema27Find("G", SymbolId, LTrim(Str(Ordinal)))
++            Dim As LongInt FormalType = Schema27Find("T", Schema27Value(FormalRow, 2))
++            SubType = Schema27Subject("symbol", Schema27Value(FormalType, 7))
++            If CallbackSignatureMark(SubType, Stamp, Seen(), Queue(), Count) = 0 Then Return 0
++        Next Ordinal
++        Position += 1
++    Loop
++    Return -1
++End Function
++
+ Function IndexProcedureCallbacks(Headers() As ProcedureAbiInput, ByRef HeaderCount As LongInt, _
+     Callbacks() As CallbackConventionInput, ByRef CallbackCount As LongInt) As Integer
+     HeaderCount = 0: CallbackCount = 0
+@@ -51,7 +83,7 @@
+     ReDim HeaderSlots(0 To Schema27RowCount): ReDim CallbackHeads(0 To Schema27RowCount)
+     ReDim CallbackCounts(0 To Schema27RowCount): ReDim Matched(0 To Schema27RowCount)
+     ReDim IdSeen(0 To Schema27RowCount)
+-    Dim As LongInt HeaderSlot, CallbackSlot
++    Dim As LongInt HeaderSlot, CallbackSlot, UnmatchedCallbacks
+     RowIndex = Schema27First("K")
+     Do While RowIndex > 0
+         WorkLeft -= 1: If WorkLeft < 0 Then Return 0
+@@ -78,10 +110,11 @@
+                Schema27Rows(StatementRow).ModuleOrdinal <> ModuleOrdinal OrElse _
+                Schema27Rows(SymbolRow).ModuleOrdinal <> ModuleOrdinal OrElse _
+                Schema27Rows(SourceRow).ModuleOrdinal <> ModuleOrdinal OrElse _
+-               Schema27Number(StatementRow, 5) <> SourceId OrElse _
+-               Schema27Value(Schema27Find("STE", LTrim(Str(StatementId))), 3) <> "parsed" Then Return 0
++               Schema27Number(StatementRow, 5) <> SourceId Then Return 0
++            Dim As LongInt EndingRow = Schema27Find("STE", LTrim(Str(StatementId)))
++            Dim As String EndingText = Schema27Value(EndingRow, 3)
+             If IsHeader Then
+-                If HeaderSlots(StatementRow) <> 0 Then Return 0
++                If EndingText <> "parsed" OrElse HeaderSlots(StatementRow) <> 0 Then Return 0
+                 Dim As String RoleText = FblintTsvField(Payload, 1), LibraryText = FblintTsvField(Payload, 2)
+                 Dim As String AliasText = FblintTsvField(Payload, 3), CountText = FblintTsvField(Payload, 5)
+                 Dim As LongInt CountValue
+@@ -97,12 +130,16 @@
+                 End With
+             Else
+                 Dim As String ExplicitText = FblintTsvField(Payload, 1)
++                If EndingText <> "parsed" AndAlso _
++                   (EndingText <> "unmatched" OrElse Schema27Value(EndingRow, 2) <> "unmatched") Then Return 0
+                 If Schema20Flag(ExplicitText) = 0 OrElse _
+                    Schema27Value(Schema27Find("F", Schema27Value(RowIndex, 2)), 2) <> "procedure-pointer" Then Return 0
+                 CallbackSlot += 1
+                 With Callbacks(CallbackSlot)
+                     .PropertyRow = RowIndex: .StatementRow = StatementRow: .SymbolRow = SymbolRow
+                     .SourceId = SourceId: .IsExplicit = (ExplicitText = "1")
++                    .NeedsCallProof = (EndingText = "unmatched")
++                    If .NeedsCallProof Then UnmatchedCallbacks += 1
+                     .NextStatement = CallbackHeads(StatementRow)
+                 End With
+                 CallbackHeads(StatementRow) = CLng(CallbackSlot): CallbackCounts(StatementRow) += 1
+@@ -113,6 +150,41 @@
+         End If
+         RowIndex = Schema27Rows(RowIndex).NextTag
+     Loop
++    ' CAST(SUB(...), pointer)(...) can consume and publish a void call while
++    ' the statement dispatcher retains its unmatched route. Accept a callback
++    ' receipt there only when the typed AST proves an indirect void call with
++    ' the same statement and reachable signature. Nested callback types
++    ' are part of that selected signature, even when they are not called here. Named headers still require a
++    ' parsed ending, and unused or differently typed receipts remain invalid.
++    Dim As Long Seen(), Queue()
++    If UnmatchedCallbacks > 0 Then
++        ReDim Seen(0 To Schema27RowCount): ReDim Queue(0 To Schema27Count("F") + 1)
++    End If
++    RowIndex = Schema27First("N")
++    Do While RowIndex > 0 AndAlso UnmatchedCallbacks > 0
++        WorkLeft -= 1: If WorkLeft < 0 Then Return 0
++        ' Schema-27 class 9 is CALL; datatype 0 is VOID.
++        If Schema27Number(RowIndex, 4) = 9 AndAlso Schema27Number(RowIndex, 8) = 0 AndAlso _
++           Schema27Value(Schema27Find("K", "node", Schema27Value(RowIndex, 1), "call-kind"), 4) = "indirect" Then
++            Dim As LongInt OwnerRow = Schema27Find("OWN", "node", Schema27Value(RowIndex, 1))
++            Dim As LongInt StatementRow = Schema27Find("ST", Schema27Value(OwnerRow, 3))
++            Dim As LongInt TargetRow = Schema27Subject("symbol", Schema27Value(RowIndex, 9))
++            If TargetRow = 0 OrElse MarkCallbackSignature(TargetRow, CLng(RowIndex), Seen(), Queue(), WorkLeft) = 0 Then Return 0
++            Dim As Long Slot = CallbackHeads(StatementRow)
++            Do While Slot > 0
++                WorkLeft -= 1: If WorkLeft < 0 Then Return 0
++                With Callbacks(Slot)
++                    If .NeedsCallProof AndAlso Seen(.SymbolRow) = RowIndex Then
++                        .NeedsCallProof = 0
++                        UnmatchedCallbacks -= 1
++                    End If
++                    Slot = .NextStatement
++                End With
++            Loop
++        End If
++        RowIndex = Schema27Rows(RowIndex).NextTag
++    Loop
++    If UnmatchedCallbacks <> 0 Then Return 0
+     Dim As ProcedureTypeInput TypedHeaders()
+     Dim As LongInt TypedCount
+     If IndexProcedureTypes(TypedHeaders(), TypedCount) = 0 Then Return 0

@@ -107,6 +107,15 @@ path, then run its Python companion with `--compiler` and `--reader`. Three real
 exports verify generated-name independence, distinct enum subtypes, source-name
 preservation and unchanged model records.
 
+`tools/fblint/semantic-callback-inputs.patch` validates callback casts that
+FreeBASIC's statement dispatcher labels unmatched after publishing a void call.
+Such a receipt requires an indirect void call with the same signature and
+statement owner. Named headers still require parsed endings. Build
+`test_callback_cast_inputs.bas` with the production reader includes, then run
+its Python companion with `--compiler` and `--reader`. A genuine export must
+pass, while changing a receipt to a different valid signature must fail the
+callback-input check.
+
 These exports are compiler front-end checks on the selected Windows or Linux
 target. Native compilation with all warnings and target execution remain
 separate required checks. In particular, a Linux export on Windows is not a
