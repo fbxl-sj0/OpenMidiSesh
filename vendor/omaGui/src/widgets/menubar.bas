@@ -399,6 +399,23 @@ Function menubar_GetMenuPopup( _
     Return bar_data->menu_popups(menu_index)
 End Function
 
+Function menubar_ClearMenuPopup(ByVal bar_widget As Widget Ptr, ByVal menu_index As Integer) As Integer
+    Dim As MenuBarData Ptr bar_data = menubar_HeadingData(bar_widget, menu_index)
+    If bar_data = 0 Then Return 0
+    Dim As Widget Ptr popup_root = bar_data->menu_popups(menu_index)
+    Dim As ULongInt bar_identity = bar_widget->registry_id
+    If popup_root = 0 Then Return -1
+    ' Close input ownership before removing the registered descendant tree.
+    If bar_data->open_menu = menu_index Then menubar_SetOpenState bar_widget, bar_data, -1
+    If gui_RemoveWidgetPtr(popup_root) = 0 Then Return 0
+    ' A custom descendant destructor can remove the owner too. Do not retain
+    ' bar_data across that lifetime boundary without revalidating its identity.
+    If gui_IsWidgetRegistered(bar_widget) = 0 Then Return -1
+    If bar_widget->registry_id <> bar_identity OrElse bar_widget->data <> bar_data Then Return -1
+    bar_data->menu_popups(menu_index) = 0
+    Return -1
+End Function
+
 Private Sub menubar_PointerTarget( _
     ByVal bar_widget As Widget Ptr, _
     ByVal bar_data As MenuBarData Ptr, _

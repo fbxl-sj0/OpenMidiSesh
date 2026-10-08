@@ -3,7 +3,8 @@
     File: backend_idle.bi
     Purpose: Release foreground GUI idle time to the selected platform.
     Responsibilities: Bound polling waits and support the DOSBox-X idle API.
-    This file does not draw widgets, dispatch input or schedule worker threads.
+    This file intentionally does NOT contain:
+        draw widgets, dispatch input or schedule worker threads.
 
     Calls belong to the GUI thread, after drawing and application locks are
     released. Native targets use SLEEP. DOSBox-X builds can explicitly select
@@ -21,6 +22,9 @@
     PIT input cycles independently of BIOS ticks and consumed display ticks.
     DOS_GFX_LOW_POWER=YesPlease can lower the library's timer wake rate when
     paired with this wait. A single yield alone can accelerate GUI polling.
+
+    Targets: FreeBASIC fb dialect with the native omaGUI backend.
+    Module API boundary: Bounded backend_Idle waits on the GUI thread.
 '/
 
 #pragma once

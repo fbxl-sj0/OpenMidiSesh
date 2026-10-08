@@ -89,4 +89,9 @@ Font License 1.1; see `assets/fonts/OFL-1.1.txt`. The CHM reader uses
 libmspack code under LGPL-2.1-or-later, and Spleen is BSD-2-Clause. Their
 notices and the other font-pack licenses are in `LICENSES/`.
 
+The subsequent local source synchronization is described in `SYNC.md`.
+`OMAGUI_SOURCE.sha256` identifies the current common source; the earlier
+build and audit results above remain historical evidence. The optional
+navigation profile is documented in `NAVIGATION.md`.
+
 <!-- end of DEPENDENCY.md -->

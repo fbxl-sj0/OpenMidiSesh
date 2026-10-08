@@ -34,6 +34,11 @@ root and must have compiler facts; it has no include-only exemption.
 The runner produces one summary for each compilation context. `-ListScopes`
 lists those contexts without running a scan.
 
+The shared navigation profile has its own GUI context with
+`OMAGUI_NAVIGATION_EXTENSIONS` enabled. The desktop context excludes its eight
+conditional source files; the navigation context checks every GUI source with
+that profile active. Windows import declarations belong to Windows contexts.
+
 The context-aware validator patch is retained in
 `tools/fblint/semantic-context.patch`. It adds typed build-context options and
 keeps source-specific rule indexes separate from reusable graph metadata.
@@ -86,6 +91,16 @@ FreeBASIC preprocessing can remove an integer literal's `ULL` suffix. The HTML
 entity parser uses a named `ULongInt` Unicode limit so its overflow check keeps
 the same width after preprocessing. The context regression accepts that typed
 constant and rejects the suffix-only expression when its parsed model changes.
+
+`tools/fblint/semantic-replay-enums.patch` corrects anonymous enum type keys
+after the replay-cache patch. Compiler-generated enum names use a counter shared
+with unrelated temporary symbols. Validated enum declaration order supplies
+distinct replay identities, retaining their underlying type and attributes.
+Source type names and all other frame comparisons remain intact. Build
+`test_anonymous_enum_replay.bas` with the patched linter source on the include
+path, then run its Python companion with `--compiler` and `--reader`. Three real
+exports verify generated-name independence, distinct enum subtypes, source-name
+preservation and unchanged model records.
 
 These exports are compiler front-end checks on the selected Windows or Linux
 target. Native compilation with all warnings and target execution remain

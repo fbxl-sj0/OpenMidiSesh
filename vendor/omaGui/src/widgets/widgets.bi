@@ -42,6 +42,15 @@ Const GUI_MODAL_ROOT_MAXIMUM_DEPTH As Integer = 64
 
 Type Widget_Struct_ ' fblint: disable-line FBL910 REASON: This record is process-local state, never a raw serialized or external ABI layout.
     As String name
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    ' Borrowed neighbors are validated by registry identity before use.
+    As Widget_Struct_ Ptr navigation_neighbor(0 To 3)
+    As ULongInt navigation_neighbor_id(0 To 3)
+    As String navigation_shortcut
+    ' Container metadata is opt-in; the normal anchor fields remain independent.
+    As Integer preferred_w, preferred_h, minimum_w, minimum_h, layout_weight
+    As Integer layout_row, layout_column, layout_row_span, layout_column_span
+#endif
     As Integer x, y, w, h
     As Integer ax, ay
     As Integer visible

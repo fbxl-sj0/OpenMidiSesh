@@ -1,0 +1,121 @@
+--- a/src/fb_linter_boolean_replay.bi
++++ b/src/fb_linter_boolean_replay.bi
+@@ -77,7 +77,9 @@
+ ' Exact statement and typed-node alignment, excluding source coordinates
+ ' -------------------------------------------------------------------------
+ 
+-Function BooleanReplaySymbol(ByVal IdentityText As String) As String
++#Include Once "fb_linter_boolean_replay_enums.bi"
++
++Function BooleanReplaySymbol(ByVal IdentityText As String, EnumOrdinals() As Long) As String
+     Dim As LongInt TypeRow = Schema27Find("T", IdentityText)
+     If TypeRow = 0 Then Return ""
+     Dim As String NameText, OwnerText
+@@ -91,7 +93,7 @@
+     ' Their graph identity is preserved by the parent/statement ordinals and
+     ' exact type/payload comparisons, not by a generated-name spelling guess.
+     Dim As String Result = Schema27Key("binding", Schema27Value(TypeRow, 3), NameText, OwnerText)
+-    Result += Schema27Key("binding-type", Schema27Value(TypeRow, 5), _
++    Result += Schema27Key("binding-type", BooleanReplayBindingType(TypeRow, EnumOrdinals()), _
+         Schema27Value(TypeRow, 10), Schema27Value(TypeRow, 13))
+     Dim As LongInt ConstantRow = Schema27Find("C", "symbol", IdentityText)
+     If ConstantRow > 0 Then Result += Schema27Key("binding-value", _
+@@ -99,7 +101,7 @@
+     Return Result
+ End Function
+ 
+-Function BooleanReplayPayload(ByVal RowIndex As LongInt) As String
++Function BooleanReplayPayload(ByVal RowIndex As LongInt, EnumOrdinals() As Long) As String
+     Dim As String IdentityText = Schema27Value(RowIndex, 1)
+     Dim As LongInt TypeRow = Schema27Find("NT", "node", IdentityText, "value")
+     Dim As LongInt ConstantRow = Schema27Find("C", "node", IdentityText)
+@@ -108,8 +110,8 @@
+     Result += Schema27Key("operator", Schema27Value(RowIndex, 6), Schema27Value(RowIndex, 7))
+     Result += Schema27Key("type", Schema27Value(RowIndex, 8), _
+         Schema27Value(TypeRow, 4), Schema27Value(TypeRow, 6) + ":" + Schema27Value(TypeRow, 9))
+-    Result += BooleanReplaySymbol(Schema27Value(RowIndex, 9))
+-    Result += BooleanReplaySymbol(Schema27Value(RowIndex, 10))
++    Result += BooleanReplaySymbol(Schema27Value(RowIndex, 9), EnumOrdinals())
++    Result += BooleanReplaySymbol(Schema27Value(RowIndex, 10), EnumOrdinals())
+     If ConstantRow > 0 Then Result += Schema27Key("value", _
+         Schema27Value(ConstantRow, 3), Schema27Value(ConstantRow, 4))
+     Dim As String PropertyNames(0 To 16) = {"kind", "operator-options", "byte-offset", "index-scale", _
+@@ -149,6 +151,8 @@
+         RowIndex = Schema27Rows(RowIndex).NextTag
+     Loop
+     If CaptureNodes = 0 Then FailureText = "": Return -1
++    Dim As Long EnumOrdinals()
++    If BooleanReplayEnumOrdinals(EnumOrdinals()) = 0 Then Return 0
+     RowIndex = Schema27First("N")
+     Do While RowIndex > 0
+         Schema27Rows(RowIndex).WorkOrdinal = 0
+@@ -169,7 +173,7 @@
+                 If ParentRow = 0 OrElse Schema27Rows(ParentRow).WorkOrdinal = 0 Then Return 0
+                 Nodes(NodeCount).ParentSlot = Schema27Rows(ParentRow).WorkOrdinal
+             End If
+-            Nodes(NodeCount).Payload = BooleanReplayPayload(RowIndex)
++            Nodes(NodeCount).Payload = BooleanReplayPayload(RowIndex, EnumOrdinals())
+             TextCount += Len(Nodes(NodeCount).Payload)
+             If TextCount > BOOLEAN_REPLAY_PAYLOAD_LIMIT Then
+                 FailureText = "compiler Boolean replay payload budget exceeded"
+--- /dev/null
++++ b/src/fb_linter_boolean_replay_enums.bi
+@@ -0,0 +1,58 @@
++' Project: fb-linter
++' File: fb_linter_boolean_replay_enums.bi
++' Purpose: Preserve anonymous enum identity across compiler replay frames.
++' Responsibilities: Bound enum ordinals and replace compiler-generated type spellings.
++' This file intentionally does NOT rename source types or compare complete AST frames.
++'
++' T records identify anonymous enums by their enum class and compiler origin.
++' Their generated names share a counter with unrelated compiler temporaries.
++' Declaration order supplies a distinct identity for each such enum; the frame
++' comparison still checks every statement, node type, constant and property.
++' Callers own a fully validated schema-27 index and remain on its analysis thread.
++#Ifndef FB_LINTER_BOOLEAN_REPLAY_ENUMS_BI
++#Define FB_LINTER_BOOLEAN_REPLAY_ENUMS_BI
++
++Function BooleanReplayEnumOrdinals(Ordinals() As Long) As Integer
++    Dim As LongInt RowIndex = Schema27First("T"), HighestId, Identity
++    Do While RowIndex > 0
++        If Schema27Value(RowIndex, 3) = "enum" AndAlso Schema27Value(RowIndex, 18) = "compiler" Then
++            Identity = Schema27Number(RowIndex, 1)
++            If Identity < 1 OrElse Identity > FBLINT_MAX_SEMANTIC_MODEL_IDENTITIES Then Return 0
++            If Identity > HighestId Then HighestId = Identity
++        End If
++        RowIndex = Schema27Rows(RowIndex).NextTag
++    Loop
++    ReDim Ordinals(0 To HighestId)
++    Dim As Long Count
++    RowIndex = Schema27First("T")
++    Do While RowIndex > 0
++        If Schema27Value(RowIndex, 3) = "enum" AndAlso Schema27Value(RowIndex, 18) = "compiler" Then
++            Identity = Schema27Number(RowIndex, 1)
++            Count += 1
++            Ordinals(Identity) = Count
++        End If
++        RowIndex = Schema27Rows(RowIndex).NextTag
++    Loop
++    Return -1
++End Function
++
++Function BooleanReplayBindingType(ByVal TypeRow As LongInt, Ordinals() As Long) As String
++    Dim As LongInt EnumRow, Identity
++    If Schema27Value(TypeRow, 3) = "enum" Then
++        EnumRow = TypeRow
++    Else
++        EnumRow = Schema27Find("T", Schema27Value(TypeRow, 7))
++    End If
++    If EnumRow > 0 AndAlso Schema27Value(EnumRow, 3) = "enum" AndAlso _
++       Schema27Value(EnumRow, 18) = "compiler" Then
++        Identity = Schema27Number(EnumRow, 1)
++        If Identity > 0 AndAlso Identity <= UBound(Ordinals) AndAlso Ordinals(Identity) > 0 Then
++            Return Schema27Key("compiler-enum", LTrim(Str(Ordinals(Identity))), _
++                Schema27Value(EnumRow, 6), Schema27Value(EnumRow, 10))
++        End If
++    End If
++    Return Schema27Value(TypeRow, 5)
++End Function
++
++#Endif
++' end of fb_linter_boolean_replay_enums.bi

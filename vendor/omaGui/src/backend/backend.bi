@@ -27,7 +27,16 @@
 #ifndef __BACKEND_BI__
 #define __BACKEND_BI__
 
-#include "fbgfx.bi"
+#if __FB_LANG__ <> "fb"
+    ' The public interface consistently names gfxlib's FB namespace. Fblite
+    ' headers normally export it globally; wrap the first import explicitly
+    ' so declarations do not force a dialect change in an including game.
+    Namespace FB
+    #include once "fbgfx.bi"
+    End Namespace
+#else
+    #include once "fbgfx.bi"
+#endif
 
 #ifndef RGB
 #define RGB(r,g,b) (((CUInt(r) And &hFF) Shl 16) Or ((CUInt(g) And &hFF) Shl 8) Or (CUInt(b) And &hFF))
@@ -133,7 +142,8 @@ Declare Function backend_CaptureDisplay(ByRef display_state As BackendDisplaySta
 Declare Function backend_RestoreDisplay(ByRef display_state As Const BackendDisplayState) As Integer
 
 Declare Sub backend_Clear(ByVal clr As ULong = 0)
-Declare Sub backend_Flip()
+' Applications with their own frame clock can omit the presentation wait.
+Declare Sub backend_Flip(ByVal waitForCadence As Integer = -1)
 /'
     Wait between foreground GUI polls, outside drawing and application locks.
     Nonpositive waits return immediately; waits are capped at one second.

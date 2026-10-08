@@ -154,7 +154,11 @@ Sub button_Render(ByVal w As Widget Ptr)
     If d->flatStyle <> 0 Then
         Dim As ULong flatBackground = d->normalBackground
         Dim As ULong flatForeground = d->normalForeground
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+        If d->selected <> 0 OrElse gui_ShouldShowFocus(w) Then
+#else
         If d->selected <> 0 Then
+#endif
             flatBackground = d->selectedBackground
             flatForeground = d->selectedForeground
         ElseIf d->state <> 0 Then
@@ -162,6 +166,9 @@ Sub button_Render(ByVal w As Widget Ptr)
             flatForeground = d->hotForeground
         End If
         backend_Rect(w->ax, w->ay, w->w, w->h, flatBackground, 1)
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+        backend_Rect(w->ax, w->ay, w->w, w->h, current_theme.win_border, 0)
+#endif
         button_RenderContent w, flatForeground
         Exit Sub
     End If

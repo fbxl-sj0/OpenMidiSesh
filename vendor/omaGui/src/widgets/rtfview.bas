@@ -489,6 +489,7 @@ Private Function rtfview_AppendTab( _
     ByVal d As RtfViewData Ptr, ByRef parserState As RtfViewParserState _
 ) As Integer
 
+    ' fblint: disable-next-line FBL311 REASON: The loop count supplies four spaces; the ordinal has no text meaning.
     For spaceIndex As Integer = 1 To 4
         If rtfview_AppendCodePoint(d, parserState, 32) = 0 Then Return 0
     Next spaceIndex

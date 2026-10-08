@@ -32,7 +32,11 @@
 #include once "src/widgets/checkbox.bi"
 #include once "src/backend/theme.bi"
 
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+Const LISTBOX_SCROLLBAR_WIDTH As Integer = 28 ' Touch profile uses fingertip-sized thumbs.
+#else
 Const LISTBOX_SCROLLBAR_WIDTH As Integer = 15
+#endif
 Const LISTBOX_ROW_HEIGHT As Integer = 16
 Const LISTBOX_CLIP_INSET As Integer = 1
 Const LISTBOX_TEXT_X_OFFSET As Integer = 4
@@ -495,11 +499,32 @@ Sub listbox_Update(ByVal w As Widget Ptr)
         If d->pointer_latch = 0 Then
             d->pointer_latch = -1
             d->pointer_index = pointerIndex
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+            d->navigation_drag_y = my: d->navigation_drag_top = d->scroll_top
+            d->navigation_dragged = 0
+#endif
             ' Retain the modifiers with the press, just as the row is retained.
             d->pointer_shift = input_KeyPressed(FB.SC_LSHIFT) Or input_KeyPressed(FB.SC_RSHIFT)
             d->pointer_control = input_KeyPressed(FB.SC_CONTROL)
         End If
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+        If d->pointer_index >= 0 Then
+            Dim As LongInt deltaY = CLngInt(my) - d->navigation_drag_y
+            If Abs(deltaY) >= 6 Then ' Separate a row tap from a logical-pixel swipe.
+                Dim As LongInt nextTop = d->navigation_drag_top - deltaY \ listbox_RowHeight(d)
+                If nextTop < 0 Then nextTop = 0
+                If nextTop > d->item_count Then nextTop = d->item_count
+                d->scroll_top = CInt(nextTop)
+                d->navigation_dragged = -1
+                listbox_ClampScroll w
+            End If
+        End If
+#endif
     ElseIf d->pointer_latch Then
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+        If d->navigation_dragged Then d->pointer_index = -1
+        d->navigation_dragged = 0
+#endif
         If d->pointer_index >= 0 AndAlso _
            pointerIndex = d->pointer_index Then
             If d->selection_mode = LISTBOX_SELECTION_SINGLE AndAlso d->selected_index <> d->pointer_index Then d->selection_change_count += 1
@@ -524,6 +549,16 @@ End Sub
 ' -------------------------------------------------------------------------
 ' Rendering and lifecycle
 ' -------------------------------------------------------------------------
+
+Private Sub listbox_NavigationPrint(ByVal d As ListBoxData Ptr, ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, ByVal textValue As String)
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    If d->font_scale > 0 AndAlso d->font_scale <= 2 Then
+        backend_PrintScaledFontAlpha x, y, clr, textValue, 0, d->font_scale, d->font_scale, 255
+        Exit Sub
+    End If
+#endif
+    backend_Print x, y, clr, textValue
+End Sub
 
 Sub listbox_Render(ByVal w As Widget Ptr)
     Dim As ListBoxData Ptr d
@@ -607,7 +642,7 @@ Sub listbox_Render(ByVal w As Widget Ptr)
                     For dotX As Integer = w->ax + 14 To w->ax + 20 Step 2
                         backend_Rect dotX, iy + 9, 1, 1, current_theme.bg_dark, 1
                     Next dotX
-                    backend_Print w->ax + 24, iy + LISTBOX_TEXT_Y_OFFSET, row_color, d->items(idx)
+                    listbox_NavigationPrint d, w->ax + 24, iy + LISTBOX_TEXT_Y_OFFSET, row_color, d->items(idx)
                 ElseIf d->table_column_count > 0 Then
                     Dim As Integer column_x = w->ax + 1
                     Dim As Integer field_start = 1
@@ -615,7 +650,7 @@ Sub listbox_Render(ByVal w As Widget Ptr)
                         Dim As Integer field_end = InStr(field_start, d->items(idx), Chr(9))
                         If field_end = 0 Then field_end = Len(d->items(idx)) + 1
                         backend_SetClip column_x, iy, d->table_column_widths(column_index), listbox_RowHeight(d)
-                        backend_Print column_x + 4, iy + LISTBOX_TEXT_Y_OFFSET, row_color, _
+                        listbox_NavigationPrint d, column_x + 4, iy + LISTBOX_TEXT_Y_OFFSET, row_color, _
                             Mid(d->items(idx), field_start, field_end - field_start)
                         backend_ResetClip
                         field_start = field_end + 1
@@ -624,14 +659,14 @@ Sub listbox_Render(ByVal w As Widget Ptr)
                 Else
                     Dim As Integer separatorPosition = InStr(d->items(idx), Chr(9))
                     If separatorPosition > 0 AndAlso d->right_column_offset >= 0 Then
-                        backend_Print w->ax + d->text_inset, _
+                        listbox_NavigationPrint d, w->ax + d->text_inset, _
                             iy + LISTBOX_TEXT_Y_OFFSET, row_color, _
                             Left(d->items(idx), separatorPosition - 1)
-                        backend_Print w->ax + d->right_column_offset, _
+                        listbox_NavigationPrint d, w->ax + d->right_column_offset, _
                             iy + LISTBOX_TEXT_Y_OFFSET, row_color, _
                             Mid(d->items(idx), separatorPosition + 1)
                     Else
-                        backend_Print w->ax + d->text_inset, _
+                        listbox_NavigationPrint d, w->ax + d->text_inset, _
                             iy + LISTBOX_TEXT_Y_OFFSET, row_color, d->items(idx)
                     End If
                 End If
@@ -646,7 +681,7 @@ Sub listbox_Render(ByVal w As Widget Ptr)
             Dim As Integer column_x = w->ax + 1
             For column_index As Integer = 0 To d->table_column_count - 1
                 backend_SetClip column_x, w->ay + 1, d->table_column_widths(column_index), header_height - 1
-                backend_Print column_x + 4, w->ay + 3, current_theme.text_main, d->table_column_titles(column_index)
+                listbox_NavigationPrint d, column_x + 4, w->ay + 3, current_theme.text_main, d->table_column_titles(column_index)
                 backend_ResetClip
                 column_x += d->table_column_widths(column_index)
             Next column_index

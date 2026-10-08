@@ -4,11 +4,15 @@
     Purpose: Describe the pixels painted by portable popup menus.
     Responsibilities: Observe exact node contents and bound the open popup
         branch so closing, moving and changing submenus repaint old pixels.
-    This file does not dispatch input, draw menus or own menu lifetime.
+    This file intentionally does NOT contain:
+        dispatch input, draw menus or own menu lifetime.
 
     These callbacks run read-only on the GUI thread. Menu nodes belong to
     their registered parent tree. The root painter clips each node to its
     own surface, then restores the enclosing clip before drawing children.
+
+    Targets: FreeBASIC fb dialect with the native omaGUI backend.
+    Module API boundary: Read-only menu render observation and visible branch bounds.
 '/
 
 Function menu_GetRenderObservation(ByVal w As Widget Ptr) As String

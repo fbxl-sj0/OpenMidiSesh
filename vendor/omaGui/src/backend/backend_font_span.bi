@@ -71,7 +71,7 @@ End Function
 
 Private Function backend_FontSpanBegin(ByVal widthValue As Integer, _
     ByVal heightValue As Integer, ByVal screenDepth As Integer = 0) As Integer
-#If Defined(__FB_GFXLIB3__) Or Defined(OMAGUI_DISABLE_FONT_SPANS)
+#If Defined(__FB_GFXLIB3__) Or Defined(OMAGUI_DISABLE_FONT_SPANS) Or Defined(OMAGUI_NAVIGATION_EXTENSIONS)
     ' GPU pages retain their existing drawing path. The disabling define also
     ' lets pixel comparisons qualify the new blit against the original path.
     Return 0
@@ -142,7 +142,7 @@ End Function
 ' Validate the pitch and page before deriving pointers. PUT remains the fallback.
 Private Function backend_FontSpanDirect(ByVal x As Integer, ByVal y As Integer, _
     ByVal widthValue As Integer, ByVal heightValue As Integer, ByVal clr As ULong) As Integer
-#If Defined(__FB_GFXLIB3__) Or Defined(OMAGUI_DISABLE_FONT_SPANS)
+#If Defined(__FB_GFXLIB3__) Or Defined(OMAGUI_DISABLE_FONT_SPANS) Or Defined(OMAGUI_NAVIGATION_EXTENSIONS)
     Return 0
 #Else
     If backend_FontSpanPixels = 0 OrElse widthValue <= 0 OrElse heightValue <= 0 OrElse _

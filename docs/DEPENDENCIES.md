@@ -30,7 +30,7 @@ The editor defaults to its maintained `vendor/omaGui` snapshot. Its downstream
 changes are described in `vendor/omaGui/DEPENDENCY.md`. A full local development
 tree may also contain `TREE.sha256`, which checks examples, tools and historical
 fonts. That larger tree is not published with OpenSesh.
-`SNAPSHOT.sha256` selects the 122-file redistributable runtime subset for
+`SNAPSHOT.sha256` selects the 134-file redistributable runtime subset for
 source archives and release lint. The subset includes omaGUI's MIT license,
 the licenses for its generated bitmap-font subsets, the CHM decoder license,
 and Unicode font packs. OpenSesh selects its neutral font tables with
@@ -48,6 +48,13 @@ bounded menu updates, cached display captions, clipped popup replay, checked
 direct glyph-span writes, batched key events and registry mutation tracking. The
 maintained snapshot passed the native editor smoke and focused font/render
 checks. DOSBox-X timed idle remains opt-in with its matching gfxlib.
+
+The subsequent common-tree refresh retains that overlay and adds an optional
+controller, touch, viewport and layout profile. It also provides the private
+Windows import boundary and explicit host clipboard opt-in described in
+`vendor/omaGui/NAVIGATION.md`. The redistributable subset now includes the font
+initializer and navigation sources. Semantic lint uses separate desktop and
+navigation compilation contexts for this subset.
 
 ## Audited Windows build tools
 

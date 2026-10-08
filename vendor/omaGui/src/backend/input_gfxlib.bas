@@ -28,6 +28,9 @@
 '/
 
 #lang "fb"
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+Dim Shared omagui_nav_nav_key_consumed(0 To 255) As Integer
+#endif
 
 #include once "src/widgets/widgets.bi"
 
@@ -518,6 +521,9 @@ Sub input_Update()
     If useMockText Then
         textBuffer = IIf(inputSuppressText, "", mockText)
         mockText = ""
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+        input_NavigationUpdate
+#endif
         Exit Sub
     End If
 
@@ -534,6 +540,9 @@ Sub input_Update()
 
         KeyText = Inkey
     Wend
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    input_NavigationUpdate
+#endif
 End Sub
 
 ' -------------------------------------------------------------------------
@@ -566,7 +575,11 @@ End Function
 
 Function input_TouchCount() As Integer
     If pointerDispatchEnabled = 0 Then Return 0
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    Return input_NavigationTouchCount()
+#else
     Return inputTouchContactCount
+#endif
 End Function
 
 Function input_Touch( _
@@ -577,6 +590,9 @@ Function input_Touch( _
     y = -1
     id = -1
     If pointerDispatchEnabled = 0 Then Return 0
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    Return input_NavigationTouch(contactIndex, x, y, id)
+#endif
     If contactIndex < 0 OrElse contactIndex >= inputTouchContactCount Then Return 0
     x = inputTouchX(contactIndex)
     y = inputTouchY(contactIndex)
@@ -598,6 +614,11 @@ End Function
 
 
 Function input_KeyPressed(ByVal k As Integer) As Integer
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    If k >= 0 AndAlso k <= 255 Then
+        If omagui_nav_nav_key_consumed(k) Then Return 0
+    End If
+#endif
     If k < 0 OrElse k > INPUT_KEY_LAST Then Return 0
     If keyboardDispatchEnabled = 0 Then Return 0
     Return inputEffectiveKeyPressed(k)
@@ -817,6 +838,9 @@ End Sub
 ' -------------------------------------------------------------------------
 
 Sub input_ResetForTest()
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    input_NavigationReset
+#endif
     inputKeyBatchActive = 0
     ' A test reset owns every input source. Native mouse-as-touch contacts
     ' must not override mocked coordinates on targets such as Haiku.
@@ -909,6 +933,7 @@ Sub input_ResumeAfterScreenChange()
             If event_value.type = FB.EVENT_WINDOW_CLOSE Then inputWindowCloseRequested = -1
         Next event_index
         If useMockText = 0 Then
+            ' fblint: disable-next-line FBL311 REASON: This counted drain is bounded even if the producer keeps supplying text.
             For key_index As Integer = 1 To MAX_DISCARDED_EVENTS
                 If Len(Inkey) = 0 Then Exit For
             Next key_index

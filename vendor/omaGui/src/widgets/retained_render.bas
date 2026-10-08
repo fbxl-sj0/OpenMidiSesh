@@ -254,6 +254,7 @@ Private Function gui_RetainedPrefixMatches(ByVal w As Widget Ptr, _
         If oma_BytesEqual(StrPtr(w->retained_key) + halfBytes, @paletteFields.values(0), paletteBytes) = 0 Then Return 0
     End If
     ' The comparison returns a boolean; stack addresses do not escape.
+    ' fblint: disable-next-line FBL316 REASON: oma_BytesEqual consumes these borrowed spans and returns an integer comparison.
     Return oma_BytesEqual(StrPtr(w->retained_key) + halfBytes + observedPaletteBytes, @fields.values(4), halfBytes)
 End Function
 

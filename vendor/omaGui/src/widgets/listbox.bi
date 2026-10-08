@@ -44,6 +44,10 @@ Const LISTBOX_MAX_TABLE_COLUMNS As Integer = 4
 
 Type ListBoxData
     As String items(0 To LISTBOX_MAX_ITEMS - 1)
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    ' Compatibility state belongs to the GUI thread; no retained pointer escapes.
+    As Integer font_scale, navigation_drag_y, navigation_drag_top, navigation_dragged
+#endif
     As Integer item_count
     As Integer selected_index
     As Integer scroll_top

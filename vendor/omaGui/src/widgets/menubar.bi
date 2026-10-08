@@ -127,6 +127,8 @@ Declare Function menubar_SetMenuPopup( _
 Declare Function menubar_GetMenuPopup( _
     ByVal bar_widget As Widget Ptr, ByVal menu_index As Integer _
 ) As Widget Ptr
+' Remove the owned popup tree and return this heading to its ordinary rows.
+Declare Function menubar_ClearMenuPopup(ByVal bar_widget As Widget Ptr, ByVal menu_index As Integer) As Integer
 Declare Function menubar_AddItem( _
     ByVal bar_widget As Widget Ptr, _
     ByVal menu_index As Integer, _

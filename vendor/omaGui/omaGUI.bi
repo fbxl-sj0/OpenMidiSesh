@@ -75,6 +75,13 @@
 #include once "src/widgets/canvas.bi"
 #include once "src/widgets/graphicshape.bi"
 
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+#include once "src/backend/navigation_input.bi"
+#include once "src/backend/navigation_viewport.bi"
+#include once "src/widgets/navigation.bi"
+#include once "src/widgets/layout.bi"
+#endif
+
 ' --- IMPLEMENTATIONS ---
 ' Only include implementations once per binary.
 ' Define OMAGUI_IMPLEMENTATION in ONE source file before including this.
@@ -127,6 +134,12 @@
     #include once "src/widgets/curvewidget.bas"
     #include once "src/widgets/canvas.bas"
     #include once "src/widgets/graphicshape.bas"
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    #include once "src/backend/navigation_input.bas"
+    #include once "src/backend/navigation_viewport.bas"
+    #include once "src/widgets/navigation.bas"
+    #include once "src/widgets/layout.bas"
+#endif
 #endif
 
 #endif

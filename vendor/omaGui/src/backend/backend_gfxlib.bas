@@ -31,6 +31,10 @@
 '/
 
 #lang "fb"
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+Dim Shared As Integer omagui_nav_logical_w = 2, omagui_nav_logical_h = 2
+Dim Shared As Integer omagui_nav_text_scale = 1
+#endif
 
 #include once "src/backend/backend.bi"
 #include once "src/backend/input.bi"
@@ -39,11 +43,11 @@
 #include once "crt/string.bi"
 #include once "src/backend/backend_idle.bi"
 #If Defined(__FB_WIN32__) AndAlso Not Defined(OMAGUI_PORTABLE_ONLY)
-#include once "windows.bi"
+#include once "src/backend/backend_windows.bi"
 #EndIf
 #If Defined(__FB_WIN32__) And Not Defined(__FB_GFXLIB3__) And _
     Not Defined(OMAGUI_PORTABLE_ONLY)
-#include once "win/mmsystem.bi"
+#include once "src/backend/backend_windows.bi"
 #EndIf
 #Ifdef __FB_GFXLIB3__
 #include once "fbgfx3.bi"
@@ -174,12 +178,12 @@ Private Sub backend_SetPresentationTiming(ByVal active As Integer)
     '/
     If active <> 0 Then
         If backend_TimerPeriodActive = 0 Then
-            If timeBeginPeriod(BACKEND_TIMER_PERIOD_MILLISECONDS) = 0 Then _
+            If omaGUI_NativeWindows.timeBeginPeriod(BACKEND_TIMER_PERIOD_MILLISECONDS) = 0 Then _
                 backend_TimerPeriodActive = -1
         End If
     ElseIf backend_TimerPeriodActive <> 0 Then
         ' fblint: disable-next-line FBL310 REASON: The Windows-only branch uses declarations supplied by windows.bi and the system headers.
-        timeEndPeriod BACKEND_TIMER_PERIOD_MILLISECONDS
+        omaGUI_NativeWindows.timeEndPeriod BACKEND_TIMER_PERIOD_MILLISECONDS
         backend_TimerPeriodActive = 0
     End If
 End Sub
@@ -329,7 +333,8 @@ Private Function backend_CreateScreen( _
     If (windowFlags And BACKEND_WINDOW_RESIZABLE) <> 0 Then
 #If __FB_VERSION__ >= "1.20.0"
 #If Not Defined(__FB_ANDROID__) And Not Defined(__FB_AROS__) And _
-    Not Defined(__FB_RISCOS__) And Not Defined(__FB_DOS__)
+    Not Defined(__FB_RISCOS__) And Not Defined(__FB_DOS__) And _
+    Not Defined(__FB_JS__) And Not Defined(__FB_XBOX__)
         /'
             The stable 1.10 gfxlib header has no resizable-window flag. Leave
             that mode fixed-size. Android owns surface resizing, while AROS
@@ -439,6 +444,9 @@ End Sub
 ' Helpers: Degraded Color Mapping
 ' -------------------------------------------------------------------------
 Private Function MapColor(ByVal clr As ULong) As ULong
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    clr = backend_NavigationColor(clr)
+#endif
     Dim As Integer w, h, d, bpp, pitch
     ScreenInfo w, h, d, bpp, pitch
     If d >= 16 Then Return clr
@@ -550,6 +558,9 @@ Sub backend_Init( _
     backend_WindowFlags = windowFlags
     backend_ColorDepth = 0
 
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    backend_NavigationCreate w, h, windowFlags
+#endif
     If backend_CreateScreen(w, h, windowFlags, colorDepth) = 0 Then
         /'
             A caller may request a low-depth mode that the active driver does
@@ -570,9 +581,16 @@ Sub backend_Init( _
 
     font_init_pointers()
     theme_InitClassic()
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    backend_NavigationClip 0, 0, omagui_nav_logical_w - 1, omagui_nav_logical_h - 1
+#endif
 End Sub
 
 Sub backend_Exit()
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    Window
+    View Screen
+#endif
     backend_FontSpanRelease
     If backend_HeadlessActive <> BACKEND_HEADLESS Then Screen 0
 #If Defined(__FB_WIN32__) And Not Defined(__FB_GFXLIB3__) And _
@@ -1158,12 +1176,12 @@ Function backend_RaiseWindow() As Integer
     If nativeHandle = 0 Then Return 0
 
     /'
-        Restore only minimized windows. SW_RESTORE also unmaximizes a normal
+        Restore only minimized windows. omaGUI_NativeWindows.RestoreWindow also unmaximizes a normal
         maximized window, which would surprise users when they open a file.
     '/
     ' fblint: disable-next-line FBL310 REASON: The Windows-only branch uses declarations supplied by windows.bi and the system headers.
-    If IsIconic(nativeHandle) <> 0 Then ShowWindow nativeHandle, SW_RESTORE
-    If SetForegroundWindow(nativeHandle) = 0 Then Return 0
+    If omaGUI_NativeWindows.IsIconic(nativeHandle) <> 0 Then omaGUI_NativeWindows.ShowWindow nativeHandle, omaGUI_NativeWindows.RestoreWindow
+    If omaGUI_NativeWindows.SetForegroundWindow(nativeHandle) = 0 Then Return 0
     Return -1
 #Else
     Return 0
@@ -1205,6 +1223,10 @@ Function backend_SetWindowMode( _
 End Function
 
 Sub backend_GetSize(ByRef w As Integer, ByRef h As Integer)
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    w = omagui_nav_logical_w: h = omagui_nav_logical_h
+    Exit Sub
+#endif
     If backend_HeadlessActive = BACKEND_HEADLESS Then
         w = backend_RequestedWidth
         h = backend_RequestedHeight
@@ -1338,6 +1360,9 @@ Sub backend_Clear(ByVal clr As ULong)
     If screen_w <= 0 Then screen_w = 800
     If screen_h <= 0 Then screen_h = 600
 
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    screen_w = omagui_nav_logical_w: screen_h = omagui_nav_logical_h
+#endif
     backend_Rect(0, 0, screen_w, screen_h, clr, 1)
 End Sub
 
@@ -1362,7 +1387,7 @@ Function backend_GetFontGeneration() As ULongInt
     Return backend_FontGeneration
 End Function
 
-Sub backend_Flip()
+Sub backend_Flip(ByVal waitForCadence As Integer)
     If backend_DoubleBufferActive = 0 Then Exit Sub
 
     /'
@@ -1381,7 +1406,7 @@ Sub backend_Flip()
 
     ScreenSet backend_GfxWorkPage, backend_GfxVisiblePage
 #Ifndef __FB_GFXLIB3__
-    backend_WaitForPresentationCadence()
+    If waitForCadence <> 0 Then backend_WaitForPresentationCadence()
 #EndIf
 End Sub
 
@@ -1402,6 +1427,9 @@ Function backend_DrawHorizontalSpans( _
     ByVal clr As ULong, _
     ByVal alpha As Integer _
 ) As Integer
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    Return 0
+#endif
     If backend_HeadlessActive = BACKEND_HEADLESS Then Return -1
     If alpha <= 0 Then Return -1
     If spanCount <= 0 OrElse spanCount > 4096 OrElse _
@@ -1470,6 +1498,9 @@ Function backend_DrawAlphaMask( _
     ByVal coverage As UByte Ptr, _
     ByVal clr As ULong _
 ) As Integer
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    Return 0
+#endif
     If backend_HeadlessActive = BACKEND_HEADLESS Then Return -1
     If maskWidth <= 0 OrElse maskHeight <= 0 OrElse coverage = 0 Then Return 0
 
@@ -1588,6 +1619,9 @@ Sub backend_PSetAlpha(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong
 
     ScreenInfo screen_w, screen_h, screen_d
 
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    screen_w = omagui_nav_logical_w: screen_h = omagui_nav_logical_h
+#endif
     If x < 0 Or y < 0 Or x >= screen_w Or y >= screen_h Then
         Exit Sub
     End If
@@ -1605,6 +1639,7 @@ Sub backend_PSetAlpha(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong
         The extension preserves gfxlib's alpha arithmetic in the queued GPU
         command and therefore does not cross the CPU/GPU ownership boundary.
     '/
+#ifndef OMAGUI_NAVIGATION_EXTENSIONS
     If screen_d = 32 Then
         Dim As fb.Gfx3Point gpu_point
 
@@ -1617,6 +1652,7 @@ Sub backend_PSetAlpha(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong
             Exit Sub
         End If
     End If
+#endif
 #EndIf
 
     bg = Point(x, y)
@@ -2071,6 +2107,9 @@ Private Function backend_DrawTextGfx3( _
     ByVal scale_y As Integer, _
     ByVal text_alpha As Integer _
 ) As Integer
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    Return 0
+#endif
     Dim As Integer screen_w
     Dim As Integer screen_h
     Dim As Integer screen_d
@@ -2189,6 +2228,9 @@ Private Function backend_DrawTextGfx3Percent( _
     ByVal percent As Integer, _
     ByVal italic As Integer _
 ) As Integer
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    Return 0
+#endif
 
     Dim As Integer screen_w
     Dim As Integer screen_h
@@ -2516,6 +2558,12 @@ End Sub
 Sub backend_PrintFontAlpha(ByVal x As Integer, ByVal y As Integer, _
                            ByVal clr As ULong, ByVal text As String, _
                            ByVal font_id As Integer, ByVal alpha As Integer)
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    If omagui_nav_text_scale > 1 Then
+        backend_PrintScaledFontAlpha x, y, clr, text, font_id, omagui_nav_text_scale, omagui_nav_text_scale, alpha
+        Exit Sub
+    End If
+#endif
 #Ifdef __FB_GFXLIB3__
     If backend_DrawTextGfx3(x, y, clr, text, font_id, 1, 1, alpha) Then
         Exit Sub
@@ -2928,13 +2976,21 @@ Sub backend_PrintAlignedAlpha(ByVal x As Integer, ByVal y As Integer, _
                               ByVal horizontal_align As Integer, _
                               ByVal vertical_align As Integer, _
                               ByVal alpha As Integer)
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
     backend_PrintAlignedScaledAlpha x, y, w, h, clr, text, font_id, _
-                                    horizontal_align, vertical_align, _
-                                    1, 1, alpha
+        horizontal_align, vertical_align, omagui_nav_text_scale, omagui_nav_text_scale, alpha
+#else
+    backend_PrintAlignedScaledAlpha x, y, w, h, clr, text, font_id, _
+        horizontal_align, vertical_align, 1, 1, alpha
+#endif
 End Sub
 
 Function backend_GetTextWidth(ByVal text As String) As Integer
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    Return backend_GetTextWidthFont(text, BACKEND_FONT_DEFAULT) * omagui_nav_text_scale
+#else
     Return backend_GetTextWidthFont(text, BACKEND_FONT_DEFAULT)
+#endif
 End Function
 
 Function backend_GetTextWidthFont(ByVal text As String, ByVal font_id As Integer) As Integer
@@ -3007,9 +3063,15 @@ Function backend_GetTextWidthFontPercent( _
 End Function
 
 Function backend_GetTextHeight() As Integer
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    If backend_HasFontPack(BACKEND_FONT_DEFAULT) <> 0 Then _
+        Return backend_FontPacks(BACKEND_FONT_DEFAULT).line_height * omagui_nav_text_scale
+    Return 14 * omagui_nav_text_scale
+#else
     If backend_HasFontPack(BACKEND_FONT_DEFAULT) <> 0 Then _
         Return backend_FontPacks(BACKEND_FONT_DEFAULT).line_height
     Return 14
+#endif
 End Function
 
 Function backend_GetTextHeightPercent(ByVal percent As Integer) As Integer
@@ -3097,7 +3159,7 @@ Sub backend_SetClip(ByVal x As Integer, ByVal y As Integer, ByVal w As Integer, 
         h = 1
     End If
 
-    ScreenInfo screen_w, screen_h
+    backend_GetSize screen_w, screen_h
 
     If screen_w <= 0 Or screen_h <= 0 Then
         screen_w = 1
@@ -3140,7 +3202,11 @@ Sub backend_SetClip(ByVal x As Integer, ByVal y As Integer, ByVal w As Integer, 
     backend_ClipX2(stackIndex) = x2
     backend_ClipY2(stackIndex) = y2
     backend_ClipDepth += 1
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    backend_NavigationClip x1, y1, x2, y2
+#else
     View Screen (x1, y1)-(x2, y2)
+#endif
 End Sub
 
 Sub backend_ResetClip()
@@ -3154,12 +3220,21 @@ Sub backend_ResetClip()
     If backend_ClipDepth > 0 Then backend_ClipDepth -= 1
 
     If backend_ClipDepth = 0 Then
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+        backend_NavigationClip 0, 0, omagui_nav_logical_w - 1, omagui_nav_logical_h - 1
+#else
         View Screen
+#endif
     Else
         stackIndex = backend_ClipDepth - 1
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+        backend_NavigationClip backend_ClipX1(stackIndex), backend_ClipY1(stackIndex), _
+            backend_ClipX2(stackIndex), backend_ClipY2(stackIndex)
+#else
         View Screen _
             (backend_ClipX1(stackIndex), backend_ClipY1(stackIndex))- _
             (backend_ClipX2(stackIndex), backend_ClipY2(stackIndex))
+#endif
     End If
 End Sub
 

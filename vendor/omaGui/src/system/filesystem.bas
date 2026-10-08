@@ -30,8 +30,8 @@
 #include once "dir.bi"
 #include once "vbcompat.bi"
 
-#if defined(__FB_WIN32__)
-#include once "windows.bi"
+#if defined(__FB_WIN32__) and not defined(OMAGUI_PORTABLE_ONLY)
+#include once "src/backend/backend_windows.bi"
 #endif
 
 Private Function system_EmitEntry( _
@@ -64,9 +64,9 @@ Function system_EnumerateDirectory( _
         (SYSTEM_DIRECTORY_FILES Or SYSTEM_DIRECTORY_FOLDERS)) = 0 Then _
         Return 0
 
-#if defined(__FB_WIN32__)
-    Dim As WIN32_FIND_DATAA findData
-    Dim As HANDLE findHandle
+#if defined(__FB_WIN32__) and not defined(OMAGUI_PORTABLE_ONLY)
+    Dim As omaGUI_NativeWindows.FindData findData
+    Dim As Any Ptr findHandle
     Dim As String entryName
     Dim As UInteger attributes
 
@@ -74,8 +74,8 @@ Function system_EnumerateDirectory( _
        Right(searchPattern, 1) <> Chr(92) Then searchPattern &= Chr(92)
     searchPattern &= "*"
 
-    findHandle = FindFirstFileA(StrPtr(searchPattern), @findData)
-    If findHandle = INVALID_HANDLE_VALUE Then Return 0
+    findHandle = omaGUI_NativeWindows.FindFirstFileA(StrPtr(searchPattern), @findData)
+    If findHandle = CPtr(Any Ptr, -1) Then Return 0
 
     Do
         entryName = findData.cFileName
@@ -89,9 +89,9 @@ Function system_EnumerateDirectory( _
                 entryName, attributes, handler, context _
             ) <> 0 Then Exit Do
         End If
-    Loop While FindNextFileA(findHandle, @findData) <> 0
+    Loop While omaGUI_NativeWindows.FindNextFileA(findHandle, @findData) <> 0
 
-    FindClose(findHandle)
+    omaGUI_NativeWindows.FindClose(findHandle)
 #else
     Dim As Integer attributes
     Dim As Integer stopEnumeration
@@ -147,12 +147,12 @@ Function system_IsDirectory(ByRef directoryPath As Const String) As Integer
 
     If directoryPath = "" Then Return 0
 
-#if defined(__FB_WIN32__)
-    Dim As DWORD attributes = GetFileAttributesA(StrPtr(directoryPath))
+#if defined(__FB_WIN32__) and not defined(OMAGUI_PORTABLE_ONLY)
+    Dim As ULong attributes = omaGUI_NativeWindows.GetFileAttributesA(StrPtr(directoryPath))
     ' fblint: disable-next-line FBL310 REASON: The Windows-only branch uses declarations supplied by windows.bi and the system headers.
-    If attributes = INVALID_FILE_ATTRIBUTES Then Return 0
+    If attributes = &hFFFFFFFFu Then Return 0
     ' fblint: disable-next-line FBL310 REASON: The Windows-only branch uses declarations supplied by windows.bi and the system headers.
-    Return IIf((attributes And FILE_ATTRIBUTE_DIRECTORY) <> 0, -1, 0)
+    Return IIf((attributes And SYSTEM_FILE_ATTRIBUTE_DIRECTORY) <> 0, -1, 0)
 #else
     Dim As Integer attributes
     Dim As String lookupPath = directoryPath

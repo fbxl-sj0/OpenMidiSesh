@@ -81,7 +81,24 @@ $arguments = @('--profile', 'strict', '--target', $Target,
     '--strict-headers', '--strict-tabs', '--format', $Format)
 $runtimeRoot = Join-Path $projectRoot 'src\omagui_runtime.bas'
 $applicationSources = @($sources | Where-Object { $_.FullName -ne $runtimeRoot })
-$guiSources = @((Get-Item -LiteralPath $runtimeRoot)) + $vendorSources
+$navigationPaths = @(
+    'src/backend/navigation_input.bas', 'src/backend/navigation_input.bi',
+    'src/backend/navigation_viewport.bas', 'src/backend/navigation_viewport.bi',
+    'src/widgets/navigation.bas', 'src/widgets/navigation.bi',
+    'src/widgets/layout.bas', 'src/widgets/layout.bi'
+)
+# These files belong to an explicitly enabled library profile. Select real
+# compilation contexts before asking the compiler to prove every input.
+# The Windows import boundary is outside Linux translation units.
+$profileSources = @($vendorSources | Where-Object {
+    $relative = $_.FullName.Substring($vendorRoot.Length + 1).Replace('\', '/')
+    $Target -ne 'linux' -or $relative -ne 'src/backend/backend_windows.bi'
+})
+$guiSources = @((Get-Item -LiteralPath $runtimeRoot)) + @($profileSources | Where-Object {
+    $relative = $_.FullName.Substring($vendorRoot.Length + 1).Replace('\', '/')
+    $navigationPaths -notcontains $relative
+})
+$navigationSources = @((Get-Item -LiteralPath $runtimeRoot)) + $profileSources
 # Literal include paths select candidate compilation contexts, not semantic
 # facts. The compiler must still prove that each selected header was included
 # with the active target and definitions; an inactive include fails the gate.
@@ -119,6 +136,12 @@ function Test-SourceIncludes([string] $Root, [string] $Header) {
     return $false
 }
 $scopes = @(@{ Name = 'omagui'; Sources = $guiSources; Context = @('--semantic-root', $runtimeRoot) })
+if (@($profileSources | Where-Object {
+        $navigationPaths -contains $_.FullName.Substring($vendorRoot.Length + 1).Replace('\', '/')
+    }).Count -gt 0) {
+    $scopes += @{ Name = 'omagui-navigation'; Sources = $navigationSources;
+        Context = @('--semantic-root', $runtimeRoot, '--compiler-define', 'OMAGUI_NAVIGATION_EXTENSIONS') }
+}
 $roots = @($applicationSources | Where-Object Extension -eq '.bas' | Sort-Object FullName)
 $headers = @($applicationSources | Where-Object Extension -eq '.bi')
 $rootScopes = @{}

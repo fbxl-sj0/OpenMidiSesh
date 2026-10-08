@@ -360,6 +360,9 @@ Sub gui_AddWidget(ByVal w As Widget Ptr)
     End If
 
     gui_AppendWidget w
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    gui_NavigationAttach w
+#endif
 End Sub
 
 
@@ -1814,6 +1817,9 @@ Private Sub gui_DeleteWidgetTree(ByVal target As Widget Ptr)
 End Sub
 
 Sub gui_ResetForTest()
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    gui_NavigationReset
+#endif
     gui_InvalidateAll
     gui_TextTransformHandler = 0
     While widget_list_head <> 0
@@ -2038,6 +2044,9 @@ Sub gui_UpdateAll()
         actions at the start of this update. Registry IDs make those borrowed
         identities safe to compare after a callback rebuilds a widget tree.
     '/
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    gui_NavigationPrepare
+#endif
     keyboardScope = gui_DialogActionScope()
     globalKeyboardTarget = gui_FindGlobalKeyboardWidget(keyboardScope)
     keyboardFocusTarget = widget_focus
@@ -2184,6 +2193,9 @@ Sub gui_UpdateAll()
 
     If widget_focus <> 0 AndAlso gui_CanFocus(widget_focus) = 0 Then _
         gui_SetFocus 0
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    gui_NavigationDispatch
+#endif
     gui_PreviousMouseButtons = mouseButtons
 
     If widget_pending_front <> 0 Then

@@ -2346,6 +2346,7 @@ Private Sub textbox_UpdateScrollMetrics( _
     Dim As Integer horizontalMaximum
     Dim As Integer horizontalMode
     Dim As ScrollBarData Ptr horizontalData
+    ' fblint: disable-next-line FBL311 REASON: Counted passes bound scrollbar convergence; the ordinal is not layout data.
     Dim As Integer iteration
     Dim As Integer maximumLineWidth
     Dim As Integer maximumScroll

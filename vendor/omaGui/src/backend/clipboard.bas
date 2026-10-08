@@ -16,7 +16,7 @@
 
         - make the bounded process-local clipboard the default implementation
         - use the Win32 text clipboard only in opted-in Windows builds
-        - use xclip only in opted-in supported Unix desktop builds
+        - use Wayland, X11 and optional Tk bridges in opted-in Unix builds
         - allow applications to force the portable implementation
         - reject unbounded clipboard payload growth
 
@@ -48,13 +48,13 @@
     Not Defined(OMAGUI_PORTABLE_ONLY) AndAlso _
     Defined(__FB_WIN32__)
     #Define OMAGUI_CLIPBOARD_WIN32
-    #Include Once "windows.bi"
+    #Include Once "src/backend/backend_windows.bi"
 #ElseIf Defined(OMAGUI_ENABLE_HOST_CLIPBOARD) AndAlso _
     Not Defined(OMAGUI_DISABLE_HOST_CLIPBOARD) AndAlso _
     Not Defined(OMAGUI_PORTABLE_ONLY) AndAlso _
     (Defined(__FB_LINUX__) Or Defined(__FB_FREEBSD__) Or _
      Defined(__FB_OPENBSD__))
-    #Define OMAGUI_CLIPBOARD_XCLIP
+    #Define OMAGUI_CLIPBOARD_UNIX
 #EndIf
 
 ' -------------------------------------------------------------------------
@@ -94,7 +94,7 @@ Private Function clipboard_WindowsOpen() As Integer
 
     ' fblint: disable-next-line FBL311 REASON: The loop counter bounds repeated work; the cursor or stream state supplies each value.
     For attemptIndex As Integer = 1 To CLIPBOARD_WINDOWS_OPEN_ATTEMPTS
-        If OpenClipboard(0) <> 0 Then Return 1
+        If omaGUI_NativeWindows.OpenClipboard(0) <> 0 Then Return 1
         Sleep CLIPBOARD_WINDOWS_RETRY_MILLISECONDS, 1
     Next attemptIndex
 
@@ -105,33 +105,44 @@ End Function
 
 Private Function clipboard_WindowsGetText() As String
 
-    Dim byteCount As SIZE_T
-    Dim clipboardHandle As HANDLE
+    Dim byteCount As UInteger
+    Dim clipboardHandle As Any Ptr
     Dim clipboardMemory As Any Ptr
     Dim resultText As String
 
-    If IsClipboardFormatAvailable(CF_TEXT) = 0 Then Return ""
+    If omaGUI_NativeWindows.IsClipboardFormatAvailable(omaGUI_NativeWindows.TextFormat) = 0 Then Return ""
     If clipboard_WindowsOpen() = 0 Then Return ""
 
-    clipboardHandle = GetClipboardData(CF_TEXT)
+    clipboardHandle = omaGUI_NativeWindows.GetClipboardData(omaGUI_NativeWindows.TextFormat)
 
     If clipboardHandle <> 0 Then
-        clipboardMemory = GlobalLock(clipboardHandle)
+        clipboardMemory = omaGUI_NativeWindows.GlobalLock(clipboardHandle)
 
         If clipboardMemory <> 0 Then
-            byteCount = GlobalSize(clipboardHandle)
+            byteCount = omaGUI_NativeWindows.GlobalSize(clipboardHandle)
 
             If byteCount > 0 Then
-                resultText = *Cast(ZString Ptr, clipboardMemory)
-                resultText = clipboard_BoundedText(resultText)
+                If byteCount > CLIPBOARD_MAX_TEXT_BYTES Then byteCount = CLIPBOARD_MAX_TEXT_BYTES
+                Dim As UByte Ptr bytes = clipboardMemory
+                Dim As UInteger textBytes
+                While textBytes < byteCount
+                    If bytes[textBytes] = 0 Then Exit While
+                    textBytes += 1
+                Wend
+                resultText = Space(textBytes)
+                If textBytes > 0 Then
+                For byteIndex As UInteger = 0 To textBytes - 1
+                    resultText[byteIndex] = bytes[byteIndex]
+                Next
+                End If
             End If
 
             ' Win32 import exists only inside this backend. FB-LINTER: DISABLE-NEXT-LINE FBL310
-            GlobalUnlock clipboardHandle
+            omaGUI_NativeWindows.GlobalUnlock clipboardHandle
         End If
     End If
 
-    CloseClipboard()
+    omaGUI_NativeWindows.CloseClipboard()
     Return resultText
 
 End Function
@@ -141,42 +152,42 @@ Private Function clipboard_WindowsSetText( _
     ByVal textValue As String _
 ) As Integer
 
-    Dim allocationFlags As UINT
-    Dim clipboardHandle As HANDLE
+    Dim allocationFlags As ULong
+    Dim clipboardHandle As Any Ptr
     Dim clipboardMemory As Any Ptr
-    Dim clipboardResult As HANDLE
+    Dim clipboardResult As Any Ptr
 
     If clipboard_WindowsOpen() = 0 Then Return 0
 
-    If EmptyClipboard() = 0 Then
-        CloseClipboard()
+    If omaGUI_NativeWindows.EmptyClipboard() = 0 Then
+        omaGUI_NativeWindows.CloseClipboard()
         Return 0
     End If
 
-    ' Movable ownership is required by SetClipboardData. FB-LINTER: DISABLE-NEXT-LINE FBL310
-    allocationFlags = GMEM_MOVEABLE Or GMEM_ZEROINIT
-    clipboardHandle = GlobalAlloc(allocationFlags, Len(textValue) + 1)
+    ' Movable ownership is required by omaGUI_NativeWindows.SetClipboardData. FB-LINTER: DISABLE-NEXT-LINE FBL310
+    allocationFlags = omaGUI_NativeWindows.MovableMemory Or omaGUI_NativeWindows.ZeroedMemory
+    clipboardHandle = omaGUI_NativeWindows.GlobalAlloc(allocationFlags, Len(textValue) + 1)
 
     If clipboardHandle = 0 Then
-        CloseClipboard()
+        omaGUI_NativeWindows.CloseClipboard()
         Return 0
     End If
 
-    clipboardMemory = GlobalLock(clipboardHandle)
+    clipboardMemory = omaGUI_NativeWindows.GlobalLock(clipboardHandle)
 
     If clipboardMemory = 0 Then
-        GlobalFree clipboardHandle ' Conditional Win32 import. FB-LINTER: DISABLE-LINE FBL310
-        CloseClipboard()
+        omaGUI_NativeWindows.GlobalFree clipboardHandle ' Conditional Win32 import. FB-LINTER: DISABLE-LINE FBL310
+        omaGUI_NativeWindows.CloseClipboard()
         Return 0
     End If
 
     *Cast(ZString Ptr, clipboardMemory) = textValue
-    GlobalUnlock clipboardHandle ' Conditional Win32 import. FB-LINTER: DISABLE-LINE FBL310
-    clipboardResult = SetClipboardData(CF_TEXT, clipboardHandle)
+    omaGUI_NativeWindows.GlobalUnlock clipboardHandle ' Conditional Win32 import. FB-LINTER: DISABLE-LINE FBL310
+    clipboardResult = omaGUI_NativeWindows.SetClipboardData(omaGUI_NativeWindows.TextFormat, clipboardHandle)
 
     If clipboardResult = 0 Then _
-        GlobalFree clipboardHandle ' Conditional Win32 import. FB-LINTER: DISABLE-LINE FBL310
-    CloseClipboard()
+        omaGUI_NativeWindows.GlobalFree clipboardHandle ' Conditional Win32 import. FB-LINTER: DISABLE-LINE FBL310
+    omaGUI_NativeWindows.CloseClipboard()
 
     Return IIf(clipboardResult <> 0, 1, 0)
 
@@ -184,57 +195,125 @@ End Function
 
 #EndIf
 
-' FreeBASIC pipe files let Unix hosts read arbitrary bytes in bounded chunks.
-#If Defined(OMAGUI_CLIPBOARD_XCLIP)
-Const CLIPBOARD_XCLIP_READ_CHUNK_BYTES As Integer = 4096
+' Host bridges keep native FILE opaque and import only their required APIs.
+#ifdef OMAGUI_CLIPBOARD_UNIX
+Namespace omaGUI_NativeClipboard
+Extern "C"
+    Declare Function popen(ByVal commandText As Const ZString Ptr, ByVal modeText As Const ZString Ptr) As Any Ptr
+    Declare Function pclose(ByVal fileHandle As Any Ptr) As Long
+    Declare Function fread(ByVal buffer As Any Ptr, ByVal itemSize As UInteger, ByVal itemCount As UInteger, ByVal fileHandle As Any Ptr) As UInteger
+    Declare Function fwrite(ByVal buffer As Const Any Ptr, ByVal itemSize As UInteger, ByVal itemCount As UInteger, ByVal fileHandle As Any Ptr) As UInteger
+End Extern
+End Namespace
 
-Private Function clipboard_XclipGetText() As String
-    Dim As Integer fileNumber = FreeFile
-    Dim As Integer ioResult
-    Dim As Integer bytesRead
-    Dim As Integer requestBytes
-    Dim As String resultText
-    Dim As String chunkText
-
-    If Environ("DISPLAY") = "" Then Return clipboard_FallbackText ' fblint: disable-line FBL750 REASON: An absent DISPLAY uses the in-process clipboard fallback without invoking xclip.
-    If Shell("command -v xclip >/dev/null 2>&1") <> 0 Then _
-        Return clipboard_FallbackText
-
-    ioResult = Open Pipe( _
-        "xclip -o -selection clipboard 2>/dev/null", _
-        For Input As #fileNumber _
-    )
-    If ioResult <> 0 Then Return clipboard_FallbackText
-    resultText = Space(CLIPBOARD_MAX_TEXT_BYTES)
-
-    While bytesRead < CLIPBOARD_MAX_TEXT_BYTES
-        requestBytes = CLIPBOARD_XCLIP_READ_CHUNK_BYTES
-        If requestBytes > CLIPBOARD_MAX_TEXT_BYTES - bytesRead Then _
-            requestBytes = CLIPBOARD_MAX_TEXT_BYTES - bytesRead
-        chunkText = Input$(requestBytes, #fileNumber)
-        If chunkText = "" Then Exit While
-        Mid(resultText, bytesRead + 1, Len(chunkText)) = chunkText
-        bytesRead += Len(chunkText)
-    Wend
-
-    Close #fileNumber
-    Return Left(resultText, bytesRead)
+Private Function clipboard_UnixCommandAvailable(ByVal programName As String) As Integer
+    ' Names are fixed internal constants, never pasted text.
+    Return IIf(Shell("command -v " & programName & " >/dev/null 2>&1") = 0, -1, 0)
 End Function
 
-Private Sub clipboard_XclipSetText(ByVal textValue As String)
-    Dim As Integer fileNumber = FreeFile
-    Dim As Integer ioResult
+Private Function clipboard_UnixReadCommand(ByVal commandText As String, ByRef resultText As String) As Integer
+    Dim As Any Ptr stream = omaGUI_NativeClipboard.popen(StrPtr(commandText), StrPtr("r"))
+    If stream = 0 Then Return 0
+    resultText = Space(CLIPBOARD_MAX_TEXT_BYTES)
+    Dim As UInteger receivedBytes
+    While receivedBytes < CLIPBOARD_MAX_TEXT_BYTES
+        Dim As UInteger count = omaGUI_NativeClipboard.fread(StrPtr(resultText) + receivedBytes, 1, _
+            CLIPBOARD_MAX_TEXT_BYTES - receivedBytes, stream)
+        If count = 0 Then Exit While
+        receivedBytes += count
+    Wend
+    ' Closing the read end bounds oversized producers instead of collecting
+    ' their entire output. A successful empty clipboard remains an empty string.
+    Dim As Long status = omaGUI_NativeClipboard.pclose(stream)
+    resultText = Left(resultText, receivedBytes)
+    Return IIf(status = 0 OrElse receivedBytes = CLIPBOARD_MAX_TEXT_BYTES, -1, 0)
+End Function
 
-    If Environ("DISPLAY") = "" Then Exit Sub ' fblint: disable-line FBL750 REASON: An absent DISPLAY uses the in-process clipboard fallback without invoking xclip.
-    If Shell("command -v xclip >/dev/null 2>&1") <> 0 Then Exit Sub
+Private Function clipboard_UnixWriteCommand(ByVal programName As String, ByVal commandText As String, ByVal textValue As String) As Integer
+    If clipboard_UnixCommandAvailable(programName) = 0 Then Return 0
+    Dim As Any Ptr stream = omaGUI_NativeClipboard.popen(StrPtr(commandText), StrPtr("w"))
+    If stream = 0 Then Return 0
+    Dim As UInteger expectedBytes = Len(textValue)
+    Dim As UInteger writtenBytes = omaGUI_NativeClipboard.fwrite(StrPtr(textValue), 1, expectedBytes, stream)
+    Dim As Long status = omaGUI_NativeClipboard.pclose(stream)
+    Return IIf(writtenBytes = expectedBytes AndAlso status = 0, -1, 0)
+End Function
 
-    ioResult = Open Pipe( _
-        "xclip -selection clipboard 2>/dev/null", _
-        For Output As #fileNumber _
-    )
-    If ioResult <> 0 Then Exit Sub
-    If textValue <> "" Then Print #fileNumber, textValue;
-    Close #fileNumber
+Private Function clipboard_UnixGetText() As String
+    Dim As String resultText
+    If Environ("WAYLAND_DISPLAY") <> "" AndAlso clipboard_UnixCommandAvailable("wl-paste") Then
+        If clipboard_UnixReadCommand("wl-paste --no-newline 2>/dev/null", resultText) Then Return resultText
+    End If
+    If Environ("DISPLAY") <> "" Then
+        If clipboard_UnixCommandAvailable("xclip") Then
+            If clipboard_UnixReadCommand("xclip -o -selection clipboard 2>/dev/null", resultText) Then Return resultText
+        End If
+        If clipboard_UnixCommandAvailable("xsel") Then
+            If clipboard_UnixReadCommand("xsel --clipboard --output 2>/dev/null", resultText) Then Return resultText
+        End If
+        If clipboard_UnixCommandAvailable("python3") Then
+            If clipboard_UnixReadCommand("python3 -c 'import sys, tkinter as t; r=t.Tk(); r.withdraw(); sys.stdout.write(r.clipboard_get()); r.destroy()' 2>/dev/null", resultText) Then Return resultText
+        End If
+    End If
+    Return clipboard_FallbackText
+End Function
+
+Private Function clipboard_UnixStartTkOwner( _
+    ByVal textValue As String _
+) As Integer
+
+    Dim ownerScript As String
+    Dim commandText As String
+
+    If Environ("DISPLAY") = "" Then Return 0
+    If clipboard_UnixCommandAvailable("python3") = 0 Then Return 0
+
+    /'
+        Tk normally owns the X11 selection from its process. Keep a small
+        helper alive to answer later paste requests, then exit after another
+        application replaces the clipboard owner.
+    '/
+    ownerScript = _
+        "import sys, tkinter as t" & Chr(10) & _
+        "r=t.Tk()" & Chr(10) & _
+        "r.withdraw()" & Chr(10) & _
+        "payload=sys.stdin.read()" & Chr(10) & _
+        "r.clipboard_clear()" & Chr(10) & _
+        "r.clipboard_append(payload)" & Chr(10) & _
+        "r.update()" & Chr(10) & _
+        "def check_owner():" & Chr(10) & _
+        "    try:" & Chr(10) & _
+        "        if r.selection_own_get(selection=""CLIPBOARD"") != r._w:" & Chr(10) & _
+        "            r.destroy()" & Chr(10) & _
+        "            return" & Chr(10) & _
+        "    except t.TclError:" & Chr(10) & _
+        "        r.destroy()" & Chr(10) & _
+        "        return" & Chr(10) & _
+        "    r.after(500, check_owner)" & Chr(10) & _
+        "r.after(500, check_owner)" & Chr(10) & _
+        "r.mainloop()"
+
+    /'
+        Keep the payload on the pipe rather than embedding it in the shell
+        command. The background process owns the selection after this call
+        returns and will relinquish it when a new clipboard owner appears.
+    '/
+    commandText = _
+        "python3 -c '" & ownerScript & _
+        "' <&0 >/dev/null 2>&1 &"
+
+    Return clipboard_UnixWriteCommand("python3", commandText, textValue)
+End Function
+
+Private Sub clipboard_UnixSetText(ByVal textValue As String)
+    If Environ("WAYLAND_DISPLAY") <> "" Then
+        If clipboard_UnixWriteCommand("wl-copy", "wl-copy 2>/dev/null", textValue) Then Exit Sub
+    End If
+    If Environ("DISPLAY") <> "" Then
+        If clipboard_UnixWriteCommand("xclip", "xclip -selection clipboard 2>/dev/null", textValue) Then Exit Sub
+        If clipboard_UnixWriteCommand("xsel", "xsel --clipboard --input 2>/dev/null", textValue) Then Exit Sub
+        clipboard_UnixStartTkOwner textValue
+    End If
 End Sub
 #EndIf
 
@@ -249,8 +328,8 @@ Function clipboard_GetText() As String
 
     resultText = clipboard_WindowsGetText()
     Return clipboard_BoundedText(resultText)
-#ElseIf Defined(OMAGUI_CLIPBOARD_XCLIP)
-    Return clipboard_BoundedText(clipboard_XclipGetText())
+#ElseIf Defined(OMAGUI_CLIPBOARD_UNIX)
+    Return clipboard_BoundedText(clipboard_UnixGetText())
 #Else
     Return clipboard_BoundedText(clipboard_FallbackText)
 #EndIf
@@ -264,8 +343,8 @@ Sub clipboard_SetText(ByVal txt As String)
 
 #If Defined(OMAGUI_CLIPBOARD_WIN32)
     clipboard_WindowsSetText clipboard_FallbackText
-#ElseIf Defined(OMAGUI_CLIPBOARD_XCLIP)
-    clipboard_XclipSetText clipboard_FallbackText
+#ElseIf Defined(OMAGUI_CLIPBOARD_UNIX)
+    clipboard_UnixSetText clipboard_FallbackText
 #EndIf
 
 End Sub
@@ -273,8 +352,8 @@ End Sub
 #If Defined(OMAGUI_CLIPBOARD_WIN32)
     #Undef OMAGUI_CLIPBOARD_WIN32
 #EndIf
-#If Defined(OMAGUI_CLIPBOARD_XCLIP)
-    #Undef OMAGUI_CLIPBOARD_XCLIP
+#ifdef OMAGUI_CLIPBOARD_UNIX
+    #Undef OMAGUI_CLIPBOARD_UNIX
 #EndIf
 
 ' end of clipboard.bas
