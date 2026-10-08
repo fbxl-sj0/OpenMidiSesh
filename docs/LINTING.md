@@ -138,6 +138,11 @@ reader, then run its Python companion with `--compiler` and `--reader`. Genuine
 exports check the uncached result, caller edits, exhausted budgets, replacement
 models, snapshot restoration, and nonce exhaustion.
 
+`tools/fblint/semantic-wire-copy.patch` copies fields without percent escapes
+directly. The escaped-field decoder keeps its existing validation. Build and
+run `test_wire_copy.bas` against the patched reader to check raw and escaped
+bytes, embedded NULs, long fields, and malformed escapes.
+
 Keep a line suppression only for a reviewed false positive or documented API
 constraint. Typical examples are bounded framebuffer pointer copies, a shared
 decoder cleanup path, optional environment overrides with a defined fallback,

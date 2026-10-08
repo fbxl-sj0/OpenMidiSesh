@@ -1,0 +1,16 @@
+--- a/src/fb_linter_semantic_wire.bi
++++ b/src/fb_linter_semantic_wire.bi
+@@ -124,6 +124,13 @@
+     Dim As UByte Ptr FieldBytes
+     Dim As UByte Ptr DecodedBytes
+ 
++    ' Most compiler fields are plain bytes. Assignment preserves their length,
++    ' including embedded NULs, without scanning each byte a second time.
++    If InStr(FieldText, "%") = 0 Then
++        DecodedText = FieldText
++        Return -1
++    End If
++
+     DecodedText = Space(Len(FieldText))
+     If Len(FieldText) = 0 Then Return -1
+ 
