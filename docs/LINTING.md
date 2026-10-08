@@ -121,6 +121,14 @@ target. Native compilation with all warnings and target execution remain
 separate required checks. In particular, a Linux export on Windows is not a
 native Linux test.
 
+`tools/fblint/semantic-reporting-lifetime.patch` keeps included-source suppression
+storage owned by the complete source scan. The assignment pass must leave that
+storage available to the later conversion checks. Its baseline initializes and
+finishes reporting in `ScanFile`. Run `test_reporting_lifetime.py`
+with `--linter`, `--compiler`, and `--includes`. It uses a genuine included source
+and requires a complete summary: one identity cast remains visible, while the
+other is hidden only when its line suppression is honored.
+
 Keep a line suppression only for a reviewed false positive or documented API
 constraint. Typical examples are bounded framebuffer pointer copies, a shared
 decoder cleanup path, optional environment overrides with a defined fallback,

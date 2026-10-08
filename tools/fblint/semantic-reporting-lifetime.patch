@@ -1,0 +1,23 @@
+--- a/src/fb_linter_assignment_rules.bi
++++ b/src/fb_linter_assignment_rules.bi
+@@ -667,9 +667,7 @@
+        ConstantExpressionFactsComplete = 0 OrElse FblintSemanticAnalyzedFile <> FilePath Then Exit Sub
+     ReDim OriginLines(0 To FBLINT_MAX_SEMANTIC_PROCEDURE_HEADER_CHARS)
+     ReDim OriginColumns(0 To FBLINT_MAX_SEMANTIC_PROCEDURE_HEADER_CHARS)
+-    ConstantSourceSuppressionCount = 0
+-    ReDim ConstantSuppressionSources(0 To INITIAL_ARRAY_CAPACITY - 1)
+-    ReDim ConstantSourceSuppressions(0 To INITIAL_ARRAY_CAPACITY - 1)
++    ' ScanFile owns the reporting cache through the later conversion checks.
+     For SourceIndex As Integer = 0 To ConstantExpressionSourceCount - 1
+         CacheIndex = SourceCacheLoad(ConstantExpressionSources(SourceIndex).SourcePath) - 1
+         If CacheIndex < 0 OrElse CacheIndex >= SourceCacheFileCount Then
+@@ -737,9 +735,6 @@
+             InvalidStatement = 0
+         Next LineNumber
+     Next SourceIndex
+-    ConstantSourceSuppressionCount = 0
+-    Erase ConstantSuppressionSources
+-    Erase ConstantSourceSuppressions
+ End Sub
+ 
+ #EndIf

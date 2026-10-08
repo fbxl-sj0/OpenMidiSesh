@@ -195,8 +195,17 @@ try {
         if ($reportFile) { $batchArguments += @('--output-file', $batchReport) }
         $batchArguments += @($scope.Sources | Sort-Object FullName | ForEach-Object { $_.FullName })
         Write-Output ('strict_lint_scope=' + $scope.Name)
-        & $linter @batchArguments
-        $batchExit = $LASTEXITCODE
+        # Windows PowerShell can turn native stderr into a terminating error.
+        # Read the complete diagnostic stream and preserve the native status.
+        $savedErrorAction = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+            & $linter @batchArguments
+            $batchExit = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $savedErrorAction
+        }
         if ($batchExit -lt 0) { $batchExit = 2 }
         if ($batchExit -ne 0) { $lintExit = [Math]::Max($lintExit, $batchExit) }
         if ($reportFile -and (Test-Path -LiteralPath $batchReport)) {
