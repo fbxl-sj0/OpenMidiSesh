@@ -91,6 +91,9 @@ FreeBASIC preprocessing can remove an integer literal's `ULL` suffix. The HTML
 entity parser uses a named `ULongInt` Unicode limit so its overflow check keeps
 the same width after preprocessing. The context regression accepts that typed
 constant and rejects the suffix-only expression when its parsed model changes.
+The Windows directory check likewise uses an explicit `ULong` sentinel for
+`GetFileAttributesA`: preprocessing drops the `u` suffix, and the API's failure
+value is a 32-bit unsigned attribute word.
 
 `tools/fblint/semantic-replay-enums.patch` corrects anonymous enum type keys
 after the replay-cache patch. Compiler-generated enum names use a counter shared

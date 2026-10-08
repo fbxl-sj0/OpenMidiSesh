@@ -148,10 +148,10 @@ Function system_IsDirectory(ByRef directoryPath As Const String) As Integer
     If directoryPath = "" Then Return 0
 
 #if defined(__FB_WIN32__) and not defined(OMAGUI_PORTABLE_ONLY)
+    ' GetFileAttributesA returns a 32-bit all-ones value when lookup fails.
+    Const SYSTEM_INVALID_FILE_ATTRIBUTES As ULong = &hFFFFFFFF
     Dim As ULong attributes = omaGUI_NativeWindows.GetFileAttributesA(StrPtr(directoryPath))
-    ' fblint: disable-next-line FBL310 REASON: The Windows-only branch uses declarations supplied by windows.bi and the system headers.
-    If attributes = &hFFFFFFFFu Then Return 0
-    ' fblint: disable-next-line FBL310 REASON: The Windows-only branch uses declarations supplied by windows.bi and the system headers.
+    If attributes = SYSTEM_INVALID_FILE_ATTRIBUTES Then Return 0
     Return IIf((attributes And SYSTEM_FILE_ATTRIBUTE_DIRECTORY) <> 0, -1, 0)
 #else
     Dim As Integer attributes
