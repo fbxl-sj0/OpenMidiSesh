@@ -122,6 +122,17 @@ def check_context(linter: Path, compiler: Path) -> None:
                 ('typed_bound', 'UnicodeBound', typed_bound),
                 ('lost_suffix', '&h10FFFFULL', '')):
             implementation.write_text(declaration + width_body.replace('BOUND_VALUE', bound))
+            suffix_preserved = False
+            if name == 'lost_suffix':
+                # Older compilers drop ULL; current compilers retain its type.
+                # Check the actual output before requiring the corresponding
+                # replay outcome, so fixing the producer does not break this test.
+                preprocessed = directory / 'width-expanded.bas'
+                subprocess.run([str(compiler.resolve()), '-target', 'win64', '-gen', 'gcc',
+                                '-mt', '-i', str(directory), '-d', 'CONTEXT_TEST', '-pp',
+                                '-o', str(preprocessed), str(root)], check=True,
+                               capture_output=True, text=True, timeout=120)
+                suffix_preserved = '&h10ffffull' in preprocessed.read_text().lower()
             result = subprocess.run(common + ['--compiler-define', 'CONTEXT_TEST',
                                     str(implementation)], capture_output=True, text=True,
                                     timeout=120, check=False)
@@ -129,9 +140,16 @@ def check_context(linter: Path, compiler: Path) -> None:
             summary = next(row for row in rows if row.get('type') == 'summary')
             if (summary['semantic_accepted'] != 1
                     or (name == 'typed_bound' and (result.returncode != 0 or summary['operational_errors'] != 0))
-                    or (name == 'lost_suffix' and (result.returncode != 2 or summary['operational_errors'] == 0))):
+                    or (name == 'lost_suffix' and not suffix_preserved
+                        and (result.returncode != 2 or summary['operational_errors'] == 0))
+                    or (name == 'lost_suffix' and suffix_preserved
+                        and (result.returncode not in (0, 1) or summary['errors'] != 0
+                             or summary['operational_errors'] != 0))):
                 raise RuntimeError(name + ': integer-width replay proof failed: ' + result.stdout + result.stderr)
-            print('semantic_context_' + name + '=pass', flush=True)
+            outcome = ''
+            if name == 'lost_suffix':
+                outcome = ' (preserved)' if suffix_preserved else ' (rejected)'
+            print('semantic_context_' + name + '=pass' + outcome, flush=True)
 
 
 if __name__ == '__main__':

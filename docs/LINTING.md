@@ -90,7 +90,9 @@ three included inputs reuse the expansion and report the same physical finding.
 FreeBASIC preprocessing can remove an integer literal's `ULL` suffix. The HTML
 entity parser uses a named `ULongInt` Unicode limit so its overflow check keeps
 the same width after preprocessing. The context regression accepts that typed
-constant and rejects the suffix-only expression when its parsed model changes.
+constant and checks the compiler's actual preprocessing output: a retained
+suffix must pass replay, while a dropped suffix must fail if its parsed model
+changes. This keeps the regression valid after the compiler fixes suffix output.
 The Windows directory check likewise uses an explicit `ULong` sentinel for
 `GetFileAttributesA`: preprocessing drops the `u` suffix, and the API's failure
 value is a 32-bit unsigned attribute word.
