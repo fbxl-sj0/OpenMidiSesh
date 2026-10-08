@@ -153,6 +153,15 @@ companion with `--compiler` and `--reader`. It compares every field with the
 original reader, including escaped percent bytes, missing fields, low memory
 caps, replacement models, snapshot restoration, and nonce exhaustion.
 
+`tools/fblint/semantic-boolean-index-cache.patch` retains one completed Boolean
+index, capped at 24 MiB. It restores expression scratch and the statement value
+owned by that pass; other statement scratch remains with its current consumer.
+The index nonce follows exact rows through snapshot restoration. Failed passes,
+unknown producers and exhausted identities use the original implementation.
+Build `test_boolean_index_cache.bas` against the patched reader and run its
+Python companion with `--compiler` and `--reader`. Genuine compiler exports
+check scratch restoration, ownership, replacement models and cache lifetime.
+
 Keep a line suppression only for a reviewed false positive or documented API
 constraint. Typical examples are bounded framebuffer pointer copies, a shared
 decoder cleanup path, optional environment overrides with a defined fallback,

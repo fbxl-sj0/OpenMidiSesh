@@ -1,0 +1,115 @@
+--- a/src/fb_linter_boolean_model.bi
++++ b/src/fb_linter_boolean_model.bi
+@@ -4,9 +4,9 @@
+ ' Responsibilities: Clause counts, normalized truth values and safe evaluation.
+ ' This file intentionally does NOT parse source, infer function purity or fix code.
+ '
+-' Scratch belongs to one root analysis and is rebuilt for each query. Source
+-' records and alias identities remain intact. Consumers publish only after
+-' the complete bounded pass succeeds, so missing evidence is not a clean run.
++' Source records and alias identities remain intact. A bounded owned copy
++' restores this pass's scratch for repeated queries of the same row index.
++' Consumers publish only after the complete original pass succeeds.
+ #Ifndef FB_LINTER_BOOLEAN_MODEL_BI
+ #Define FB_LINTER_BOOLEAN_MODEL_BI
+ 
+@@ -111,7 +111,7 @@
+     Return -1
+ End Function
+ 
+-Function IndexCompilerBooleanExpressions(ByRef FailureText As String) As Integer
++Function BuildCompilerBooleanExpressions(ByRef FailureText As String) As Integer
+     FailureText = "compiler Boolean expression evidence is incomplete"
+     If Schema27Count("E") > BOOLEAN_MODEL_EXPRESSION_LIMIT OrElse _
+        Schema27Count("EX") > BOOLEAN_MODEL_EXPRESSION_LIMIT OrElse _
+@@ -244,5 +244,90 @@
+     Return -1
+ End Function
+ 
++
++' -------------------------------------------------------------------------
++' One bounded copy of completed Boolean scratch
++' -------------------------------------------------------------------------
++
++' Other families reuse row scratch. Retain only this pass's E fields and ST
++' value, then restore exactly those fields for the same immutable row index.
++' A snapshot restores its row nonce; a replacement model has another nonce.
++' Failed passes are never cached. The scan is single-threaded.
++Const BOOLEAN_INDEX_CACHE_BYTES As LongInt = 24 * 1024 * 1024
++Type BooleanExpressionWork
++    RowIndex As Long
++    WorkCount As Long
++    WorkValue As Long
++    WorkOrdinal As Long
++End Type
++Type BooleanStatementWork
++    RowIndex As Long
++    WorkValue As Long
++End Type
++Dim Shared BooleanIndexExpressions() As BooleanExpressionWork
++Dim Shared BooleanIndexStatements() As BooleanStatementWork
++Dim Shared As LongInt BooleanIndexOwner, BooleanIndexRows
++Dim Shared As Long BooleanIndexExpressionCount, BooleanIndexStatementCount
++
++Function IndexCompilerBooleanExpressions(ByRef FailureText As String) As Integer
++    Dim As Integer CanCache = Schema27FactsComplete <> 0 AndAlso Schema27IndexNonce > 0 AndAlso _
++        FblintSemanticAuthoritative <> 0 AndAlso FblintSemanticCompilerVersion = FBLINT_SEMANTIC_AST_CODES_VERSION
++    If CanCache AndAlso BooleanIndexOwner = Schema27IndexNonce AndAlso BooleanIndexRows = Schema27RowCount AndAlso _
++       BooleanIndexExpressionCount = Schema27Count("E") AndAlso BooleanIndexStatementCount = Schema27Count("ST") Then
++        For Slot As Long = 1 To BooleanIndexExpressionCount
++            With BooleanIndexExpressions(Slot)
++                Schema27Rows(.RowIndex).WorkCount = .WorkCount
++                Schema27Rows(.RowIndex).WorkValue = .WorkValue
++                Schema27Rows(.RowIndex).WorkOrdinal = .WorkOrdinal
++            End With
++        Next Slot
++        For Slot As Long = 1 To BooleanIndexStatementCount
++            With BooleanIndexStatements(Slot)
++                Schema27Rows(.RowIndex).WorkValue = .WorkValue
++            End With
++        Next Slot
++        FailureText = ""
++        Return -1
++    End If
++    If BuildCompilerBooleanExpressions(FailureText) = 0 Then Return 0
++    If CanCache = 0 Then Return -1
++    Dim As LongInt ExpressionCount = Schema27Count("E"), StatementCount = Schema27Count("ST")
++    Dim As LongInt ByteCount = (ExpressionCount + 1) * Sizeof(BooleanExpressionWork) + _
++        (StatementCount + 1) * Sizeof(BooleanStatementWork)
++    If ExpressionCount < 0 OrElse ExpressionCount > BOOLEAN_MODEL_EXPRESSION_LIMIT OrElse _
++       StatementCount < 0 OrElse StatementCount > BOOLEAN_MODEL_STATEMENT_LIMIT OrElse ByteCount > BOOLEAN_INDEX_CACHE_BYTES Then Return -1
++    BooleanIndexOwner = 0
++    ReDim BooleanIndexExpressions(0 To ExpressionCount)
++    ReDim BooleanIndexStatements(0 To StatementCount)
++    Dim As LongInt RowIndex = Schema27First("E")
++    Dim As Long Slot
++    Do While RowIndex > 0
++        Slot += 1
++        With BooleanIndexExpressions(Slot)
++            .RowIndex = RowIndex
++            .WorkCount = Schema27Rows(RowIndex).WorkCount
++            .WorkValue = Schema27Rows(RowIndex).WorkValue
++            .WorkOrdinal = Schema27Rows(RowIndex).WorkOrdinal
++        End With
++        RowIndex = Schema27Rows(RowIndex).NextTag
++    Loop
++    Slot = 0
++    RowIndex = Schema27First("ST")
++    Do While RowIndex > 0
++        Slot += 1
++        With BooleanIndexStatements(Slot)
++            .RowIndex = RowIndex
++            .WorkValue = Schema27Rows(RowIndex).WorkValue
++        End With
++        RowIndex = Schema27Rows(RowIndex).NextTag
++    Loop
++    BooleanIndexExpressionCount = ExpressionCount
++    BooleanIndexStatementCount = StatementCount
++    BooleanIndexRows = Schema27RowCount
++    ' Publish only after both owned arrays contain the completed original pass.
++    BooleanIndexOwner = Schema27IndexNonce
++    Return -1
++End Function
++
+ #EndIf
+ ' end of fb_linter_boolean_model.bi
