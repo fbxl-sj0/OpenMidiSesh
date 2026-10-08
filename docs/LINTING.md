@@ -143,6 +143,16 @@ directly. The escaped-field decoder keeps its existing validation. Build and
 run `test_wire_copy.bas` against the patched reader to check raw and escaped
 bytes, embedded NULs, long fields, and malformed escapes.
 
+`tools/fblint/semantic-field-cache.patch` keeps raw field boundaries for one
+immutable row index, capped at 128 MiB of retained storage. Boundaries use the
+index nonce; a replacement model cannot reuse them. A restored snapshot uses
+the nonce of its exact rows.
+Rows that do not fit use the original reader. No semantic validation is skipped.
+Build `test_field_cache.bas` against the patched reader and run its Python
+companion with `--compiler` and `--reader`. It compares every field with the
+original reader, including escaped percent bytes, missing fields, low memory
+caps, replacement models, snapshot restoration, and nonce exhaustion.
+
 Keep a line suppression only for a reviewed false positive or documented API
 constraint. Typical examples are bounded framebuffer pointer copies, a shared
 decoder cleanup path, optional environment overrides with a defined fallback,
