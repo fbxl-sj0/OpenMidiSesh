@@ -79,7 +79,7 @@ Private Sub test_LongTransport(ByVal playbackSpeed As Double)
     scheduledNotes = 1
     nextNoteTick = TEST_NOTE_SPACING_TICKS
 
-    For frameIndex As Integer = 1 To TEST_FRAME_COUNT ' fblint: disable-line FBL311 REASON: The counter bounds repeated transport frames.
+    For frameIndex As Integer = 1 To TEST_FRAME_COUNT ' The counter bounds repeated transport frames.
         currentClock += TEST_FRAME_SECONDS
         If currentClock >= TEST_SECONDS_PER_DAY Then _
             currentClock -= TEST_SECONDS_PER_DAY

@@ -1,78 +1,86 @@
 <!--
     Project: OpenSesh
     File: docs/ARCHITECTURE.md
-    Purpose: Explain module boundaries, ownership, and platform integration.
-    Responsibilities: document stable data and control flow.
-    This file does not describe private reference-application internals.
+    Purpose: Explain how the editor's main components work together.
+    Responsibilities: describe module boundaries, data flow and platform adapters.
+    This file does not serve as a line-by-line source reference.
 -->
 
 # Architecture
 
-OpenSesh is a native FreeBASIC application. The GUI coordinates independent
-model, persistence, playback, and platform modules. The application entry
-point owns the widgets and shuts down input, samples, audio workers, and the
-display before exit.
+OpenSesh is a single MIDI editor with a shared document model, score and mixer
+interface, playback engine, and file workflows. The desktop build compiles
+separate modules. Android packages the same editor sources through a unity
+translation unit and selects the Touch profile on first launch.
 
-```mermaid
+~~~mermaid
 flowchart TD
-    UI[Editor and omaGUI widgets] --> Model[MIDI model and note selection]
-    UI --> History[Document history and transactions]
-    History --> Model
-    History --> Audio[Audio tracks and sample slots]
-    UI --> Playback[Playback timing and mixer state]
-    Playback --> Synth[Built-in and SoundFont synthesizers]
-    Playback --> MIDI[Windows or ALSA MIDI backend]
-    Model --> Files[MIDI, project, MOD and WAV persistence]
-    Audio --> Files
-```
+    User[User input] --> UI[Editor UI and omaGUI]
+    UI --> App[Application commands and session state]
+    App --> MIDI[MIDI document model]
+    App --> Audio[Audio clip model]
+    App --> History[Chronological edit history]
+    History --> MIDI
+    History --> Audio
+    App --> Timing[Playback timing and transport]
+    MIDI --> Timing
+    Audio --> Mix[Playback routing]
+    Timing --> Mix
+    Mix --> Synth[Built-in or SoundFont synth]
+    Synth --> Runtime[sfxlib audio runtime]
+    Mix --> Runtime
+    Runtime --> Output[Host audio output]
+    Timing --> NativeMIDI[Platform MIDI output]
+    MIDI --> Save[MIDI save and export]
+    Audio --> Project[OpenSesh project files]
+    MIDI --> Project
+~~~
 
-## Source boundaries
+## Components
 
-| Area | Main modules | Responsibility |
+| Component | Main source | Responsibility |
 | --- | --- | --- |
-| Application | `src/opensesh.bas` | Widget ownership, commands, presentation, startup and shutdown |
-| MIDI data | `midi_model`, `note_selection`, `score_tools` | Bounded parsing, document editing and score operations |
-| History | `document_history`, `history_timeline`, `project_transaction` | Chronological undo and transactional persistence |
-| Audio data | `audio_tracks`, `audio_sample_slots` | Clip metadata, decoded audio ownership and sample-slot reconciliation |
-| Playback | `playback_state`, `playback_timing`, `playback_mix`, `selected_note_playback` | Transport, automation timing and selected-note playback |
-| Synthesis | `software_synth`, `soundfont_bank`, `soundfont_synth`, `sfx_runtime` | Voices, SF2 decoding, audio-worker lifetime and shared runtime shutdown |
-| Platform MIDI | `midi_input_win`, `midi_output_sfx`, `midi_alsa`, `midi_null` | Native endpoints and explicit unavailable-endpoint behavior |
-| Presentation | `ui_style`, `ui_icons`, `ui_interaction`, `touch_gesture`, `ui_frame_pacing` | Themes, control states, interaction modes and frame scheduling |
-| Export | `music_export`, `wav_export_sfx` | MOD and PCM WAV output with bounded serialization |
+| Application and UI | <code>src/opensesh.bas</code>, <code>src/omagui_runtime.bas</code>, <code>vendor/omaGui/</code> | Build the windows and controls, route user commands, manage the editor session and shut down owned resources. |
+| MIDI document | <code>src/midi_model.bas</code>, <code>src/note_selection.bas</code>, <code>src/score_tools.bas</code> | Read and write Standard MIDI Files, expose editable tracks, notes and events, and apply score operations. |
+| Score and mixer | <code>src/score_layout.bas</code>, <code>src/score_controls.bas</code>, <code>src/mixer_controls.bas</code>, <code>src/mixer_state.bas</code> | Map document state to score and mixer views and convert pointer input into edits. |
+| History and projects | <code>src/document_history.bas</code>, <code>src/history_timeline.bas</code>, <code>src/project_transaction.bas</code> | Keep MIDI and clip edits in one undo/redo order and save project data consistently. |
+| Audio clips | <code>src/audio_tracks.bas</code>, <code>src/audio_sample_slots.bas</code> | Track external WAV clips, load samples for playback, and retain clip edits. |
+| Playback and synthesis | <code>src/playback_state.bas</code>, <code>src/playback_timing.bas</code>, <code>src/playback_mix.bas</code>, <code>src/software_synth.bas</code>, <code>src/soundfont_synth.bas</code> | Schedule notes, apply channel state, render voices, and send the final software mix to sfxlib. |
+| MIDI devices | <code>src/midi_input_win.bas</code>, <code>src/midi_alsa.bas</code>, <code>src/midi_output_sfx.bas</code>, <code>src/midi_null.bas</code> | Keep operating-system endpoint handling separate from the document and interface. |
+| Export | <code>src/music_export.bas</code>, <code>src/wav_export_sfx.bas</code> | Write ProTracker MOD files and capture a PCM WAV mix. |
 
-Names without an extension refer to matching `.bas` and `.bi` files under
-`src`. Public declarations belong in `.bi` files; implementations belong in
-`.bas` files. Internal headers expose only the helpers their including module
-needs. The unity entry point is used by targets whose packaging tool requires
-a single source input; desktop builds compile separate modules.
+Names without extensions refer to a matching <code>.bas</code> implementation
+and <code>.bi</code> interface where the pair exists.
 
-## Ownership and failure boundaries
+## Data flow and ownership
 
-The MIDI model owns its input buffer, editable-note storage, and non-note
-event sidecar. Callers edit through the model API. Parsing validates chunk
-lengths and event bounds before reading or allocating. A failed operation must
-preserve the current document or return a documented empty result.
+The UI sends commands to application modules. The MIDI model owns the editable
+song state; audio clips are represented separately and refer to WAV files on
+disk. The shared history records MIDI and clip changes in the order the user
+made them.
 
-Persistence modules use the shared atomic-file helper to stage a replacement
-before committing it. Project transactions coordinate related MIDI and audio
-files. Tests cover malformed inputs, occupied temporary paths, rollback, and
-shorter replacements over longer files.
+Playback reads the document timeline and mixer state, then routes sound through
+the software synth and audio runtime. MIDI device input is validated at the
+platform boundary before it can become a document edit. Device output is a
+separate path from the software mix.
 
-SoundFont rendering has an audio worker. Every linked module therefore uses
-FreeBASIC's thread-safe runtime with `-mt`. Shutdown releases loaded sample
-slots before stopping the shared audio runtime. UI callbacks must use the
-existing synchronization boundaries when they change worker-visible state.
+A Standard MIDI File contains the song's MIDI data. An OpenSesh project keeps a
+MIDI file with references to external WAV clips and project-specific data.
+Project saves stage the related files before replacing them, so a failed write
+does not leave a partially updated project.
 
-## Dependencies and platforms
+The application owns its top-level widgets and coordinates shutdown. Audio
+rendering has a worker thread; the UI thread owns document edits. Platform
+callbacks and polling code pass bounded MIDI events back to the application
+before changing the song.
 
-`vendor/omaGui/SNAPSHOT.sha256` defines the exact redistributable GUI payload.
-Local development copies can contain additional historical material, but
-source archives and Git commits include only the release subset. Dependency
-bytes retain their original line endings so a checkout reproduces the hashes.
+## Platform boundaries
 
-Windows uses WinMM input and sfxlib output; Linux uses ALSA Sequencer. The
-null MIDI backend reports unavailable external endpoints on other targets.
-Building Android is separate from qualifying physical Android MIDI devices.
-SoundFonts remain user supplied and are not bundled.
+| Target | MIDI input | MIDI output | Shared editor features |
+| --- | --- | --- | --- |
+| Windows | WinMM | sfxlib | Score, mixer, playback, SoundFonts and file export |
+| Linux | ALSA Sequencer | ALSA Sequencer | Score, mixer, playback, SoundFonts and file export |
+| FreeBSD, NetBSD, OpenBSD, Haiku | Unavailable | Unavailable | Score, mixer, built-in sound and file export |
+| Android | Unavailable | Unavailable | Shared editor, Touch profile and built-in sound |
 
 <!-- end of docs/ARCHITECTURE.md -->

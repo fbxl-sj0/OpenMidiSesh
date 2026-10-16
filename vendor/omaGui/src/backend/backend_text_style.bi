@@ -25,7 +25,7 @@ Sub backend_PrintStyled( _
     ByVal font_id As Integer _
 )
     ' Drawable tests own a real framebuffer; only screenless mode omits text.
-    ' fblint: disable-next-line FBL310 -- state is declared by the including backend module.
+    ' state is declared by the including backend module.
     If backend_HeadlessActive = BACKEND_HEADLESS Then Exit Sub
     If (text_style And Not BACKEND_TEXT_STYLE_ALL) <> 0 Then Exit Sub
     If text_style = BACKEND_TEXT_STYLE_NORMAL Then

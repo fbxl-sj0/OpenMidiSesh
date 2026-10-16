@@ -92,7 +92,7 @@ Public Sub session_FinishAudioCapture()
         If session_AudioList->data <> 0 Then
             Dim As ListBoxData Ptr listData = Cast( _
                 ListBoxData Ptr, session_AudioList->data)
-            listData->selected_index = clipIndex
+            If listData <> 0 Then listData->selected_index = clipIndex
         End If
         Dim As OseAudioClip capturedClip
         If audio_GetClip(clipIndex, capturedClip) <> 0 Then _
@@ -455,7 +455,7 @@ Public Sub session_OnAutomation(ByVal source As Widget Ptr)
     defaultPoint.tick = 0
     defaultPoint.trackIndex = session_SelectedTrack
     defaultPoint.channel = CUByte(session_SelectedTrack Mod 16)
-    defaultPoint.messageType = &HB0
+    defaultPoint.messageType = OSE_MIDI_STATUS_CONTROL_CHANGE
     defaultPoint.data1 = 7
     defaultPoint.data2 = 100
     session_SetAutomationFields defaultPoint
@@ -472,14 +472,17 @@ Public Sub session_OnAddAutomation(ByVal source As Widget Ptr)
     Dim As ULongInt typeValue
     If session_AutomationTypeBox = 0 OrElse _
         numericText_ParseUnsigned( _
-            textbox_GetText(session_AutomationTypeBox), typeValue, 255) = 0 Then
+            textbox_GetText(session_AutomationTypeBox), typeValue, _
+            OSE_MIDI_BYTE_MAX) = 0 Then
         session_SetStatus "MIDI event fields are outside their supported ranges."
         Exit Sub
     End If
     Dim As Integer newSource = -1
     Dim As Integer addedSystemEvent = 0
-    If typeValue = &HF1 OrElse typeValue = &HF2 OrElse _
-        typeValue = &HF3 OrElse typeValue = &HF6 Then
+    If typeValue = OSE_MIDI_STATUS_TIME_CODE_QUARTER_FRAME OrElse _
+        typeValue = OSE_MIDI_STATUS_SONG_POSITION OrElse _
+        typeValue = OSE_MIDI_STATUS_SONG_SELECT OrElse _
+        typeValue = OSE_MIDI_STATUS_TUNE_REQUEST Then
         Dim As MidiSystemEventPoint systemEvent
         If session_ReadSystemAutomationFields(systemEvent) = 0 Then
             session_SetStatus "System-common event fields are outside their supported ranges."
@@ -841,8 +844,10 @@ Public Sub session_OnApplyNoteProperties(ByVal source As Widget Ptr)
     If session_TrackList <> 0 AndAlso session_TrackList->data <> 0 Then
         Dim As ListBoxData Ptr trackData = Cast( _
             ListBoxData Ptr, session_TrackList->data)
-        If editableNote.trackIndex < trackData->item_count Then
-            trackData->selected_index = editableNote.trackIndex
+        If trackData <> 0 Then
+            If editableNote.trackIndex < trackData->item_count Then
+                trackData->selected_index = editableNote.trackIndex
+            End If
         End If
     End If
     session_Dirty = -1
@@ -2134,7 +2139,7 @@ Private Function session_TestEnvironmentInteger( _
     If minimumValue < 0 OrElse maximumValue < minimumValue Then _
         Return fallbackValue
 
-    Dim As String valueText = Environ(variableName) ' fblint: disable-line FBL750 REASON: This optional test/profile override treats an absent value as the documented normal default.
+    Dim As String valueText = Environ(variableName) ' This optional test/profile override treats an absent value as the documented normal default.
     If valueText = "" OrElse valueText <> Trim(valueText) Then _
         Return fallbackValue
 
@@ -2158,7 +2163,7 @@ Private Function session_UseVisualDeviceFixtures() As Integer
     ' Device inventories are machine-specific. Framebuffer regression runs
     ' opt into stable representative rows while normal and semantic tests keep
     ' exercising the real platform enumeration paths.
-    If Trim(Environ("OSE_TEST_SNAPSHOT")) = "" Then ' fblint: disable-line FBL750 REASON: This optional test/profile override treats an absent value as the documented normal default.
+    If Trim(Environ("OSE_TEST_SNAPSHOT")) = "" Then ' This optional test/profile override treats an absent value as the documented normal default.
         Return 0
     End If
     Return session_TestEnvironmentFlag("OSE_TEST_VISUAL_DEVICES")
@@ -2777,7 +2782,7 @@ Public Sub session_OnApplyTempo(ByVal source As Widget Ptr)
     Dim As ULongInt parsedTempo
     If numericText_ParseUnsigned( _
         textbox_GetText(session_TempoBox), parsedTempo, 400ULL) = 0 OrElse _
-        parsedTempo < 20ULL Then
+        parsedTempo < CULngInt(SESSION_TEMPO_MIN_BPM) Then
         session_SetStatus "Tempo must be an integer from 20 to 400 BPM."
         Exit Sub
     End If
@@ -2978,8 +2983,10 @@ Private Sub session_CompleteFileSelection( _
         If session_AudioList <> 0 AndAlso session_AudioList->data <> 0 Then
             Dim As ListBoxData Ptr audioData = Cast( _
                 ListBoxData Ptr, session_AudioList->data)
-            If addedClip < audioData->item_count Then _
-                audioData->selected_index = addedClip
+            If audioData <> 0 Then
+                If addedClip < audioData->item_count Then _
+                    audioData->selected_index = addedClip
+            End If
         End If
         If audio_GetClip(addedClip, addedAudioClip) <> 0 Then _
             session_SetAudioFields addedAudioClip

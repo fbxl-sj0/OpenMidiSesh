@@ -90,7 +90,7 @@ If mixerMeter_Trigger(meterState, -1, 1.0, 1.0) <> 0 OrElse _
 mixerMeter_Initialize meterState
 mixerMeter_SetChannelMix meterState, 0, 1.0, 0.0, -1
 mixerMeter_SetChannelMix meterState, 1, 1.0, 0.0, -1
-' fblint: disable-next-line FBL407,FBL-NUM-013 REASON: integer return values are tested; Real arguments are not compared.
+' integer return values are tested; Real arguments are not compared.
 If mixerMeter_Trigger(meterState, 0, 1.0, 2.0) = 0 OrElse _
     mixerMeter_Trigger(meterState, 1, 0.8, 2.0) = 0 Then _
     test_Fail "per-channel stop fixture could not be triggered"

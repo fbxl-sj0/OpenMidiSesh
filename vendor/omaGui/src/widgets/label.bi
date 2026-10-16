@@ -40,6 +40,7 @@ Const LABEL_MAXIMUM_ALIGNED_TEXT_BYTES As Integer = 1048576
 Const LABEL_BORDER_NONE As Integer = 0
 Const LABEL_BORDER_SINGLE As Integer = 1
 Const LABEL_BORDER_DOUBLE As Integer = 2
+Const LABEL_COLOR_DEFAULT As ULong = &H00000000
 
 Type LabelData
     As String text
@@ -70,7 +71,7 @@ Const LABEL_COLOR_THEME_TEXT As ULong = &HFFFFFFFF
 Declare Function label_Create( _
     ByVal nm As String, ByVal txt As String, _
     ByVal x As Integer, ByVal y As Integer, _
-    ByVal clr As ULong = RGB(0, 0, 0), _
+    ByVal clr As ULong = LABEL_COLOR_DEFAULT, _
     ByVal fontId As Integer = BACKEND_FONT_DEFAULT _
 ) As Widget Ptr
 Declare Function label_CreateWithColor( _

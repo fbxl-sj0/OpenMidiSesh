@@ -57,7 +57,7 @@ Const OSE_MIXER_CONTROL_PAGE_NEXT As Integer = 12
 Const OSE_MIXER_PAGE_BUTTON_WIDTH As Integer = 20
 Const OSE_MIXER_PAGE_BUTTON_HEIGHT As Integer = 16
 
-' fblint: disable-next-line FBL911,FBL014 REASON: This is an in-memory record; its fields are not a raw on-disk UDT layout.
+' This is an in-memory record; its fields are not a raw on-disk UDT layout.
 Type OseMixerControlLayout
     As Integer mixerTop
     As Integer mixerLeft
@@ -81,7 +81,7 @@ Type OseMixerControlLayout
     As Integer pageButtonHeight
 End Type
 
-' fblint: disable-next-line FBL911,FBL014 REASON: This is an in-memory record; its fields are not a raw on-disk UDT layout.
+' This is an in-memory record; its fields are not a raw on-disk UDT layout.
 Type OseMixerControlHit
     As Integer kind
     As Integer channelIndex

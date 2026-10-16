@@ -52,8 +52,8 @@ Declare Function midiOutput_IsOpen() As Integer
 
 Declare Function midiOutput_Send( _
     ByVal statusByte As Integer, _
-    ByVal data1 As Integer, _
-    ByVal data2 As Integer _
+    ByVal firstDataByte As Integer, _
+    ByVal secondDataByte As Integer _
 ) As Integer
 
 Declare Sub midiOutput_AllNotesOff()

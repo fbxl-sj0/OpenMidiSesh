@@ -10,7 +10,8 @@
 
     Responsibilities:
 
-        - generate a modal window with up to two fields and two checkboxes
+        - generate a modal window with up to two fields and three checkboxes
+        - optionally distinguish a second accept action from ordinary accept
         - retain user values while the caller inspects the completed result
         - report accept and cancel without applying application policy
         - release dialog metadata through the normal widget lifecycle
@@ -51,8 +52,10 @@ Const INPUTDIALOG_TEXT_HEIGHT As Integer = 30
 
 Type InputDialogData
     As Widget Ptr window_widget
+    As Widget Ptr prompts(0 To 1)
     As Widget Ptr fields(0 To INPUTDIALOG_FIELD_COUNT - 1)
     As Widget Ptr options(0 To INPUTDIALOG_OPTION_COUNT - 1)
+    As Widget Ptr accept_button, alternate_button, cancel_button
     As Integer finished
 End Type
 
@@ -80,6 +83,15 @@ Private Sub inputdialog_OnAccept(ByVal button_widget As Widget Ptr)
     root_widget = inputdialog_GetRoot(button_widget)
     If root_widget = 0 OrElse root_widget->data = 0 Then Exit Sub
     Cast(InputDialogData Ptr, root_widget->data)->finished = 1
+End Sub
+
+
+Private Sub inputdialog_OnAlternate(ByVal button_widget As Widget Ptr)
+    Dim As Widget Ptr root_widget
+
+    root_widget = inputdialog_GetRoot(button_widget)
+    If root_widget = 0 OrElse root_widget->data = 0 Then Exit Sub
+    Cast(InputDialogData Ptr, root_widget->data)->finished = 2
 End Sub
 
 
@@ -115,14 +127,15 @@ Function inputdialog_Create( _
     ByVal second_option_checked As Integer, _
     ByVal left_position As Integer, _
     ByVal top_position As Integer, _
-    ByVal accept_text As String _
+    ByVal accept_text As String, _
+    ByVal third_option As String, _
+    ByVal third_option_checked As Integer, _
+    ByVal alternate_text As String _
 ) As Widget Ptr
     Dim As InputDialogData Ptr dialog_data
-    Dim As Widget Ptr accept_button
-    Dim As Widget Ptr cancel_button
-    Dim As Widget Ptr prompt_label
     Dim As Widget Ptr root_widget
     Dim As Integer option_top
+    Dim As Integer third_option_top
 
     first_prompt = Trim(first_prompt)
     If Len(first_prompt) = 0 Then Return 0
@@ -155,7 +168,7 @@ Function inputdialog_Create( _
     gui_AddGeneratedWidget dialog_data->window_widget
     gui_SetParent dialog_data->window_widget, root_widget
 
-    prompt_label = label_Create( _
+    dialog_data->prompts(0) = label_Create( _
         widget_name & "_prompt_0", first_prompt, 20, 42, RGB(0, 0, 0), _
         BACKEND_FONT_ARIAL_10_REGULAR _
     )
@@ -164,14 +177,14 @@ Function inputdialog_Create( _
         INPUTDIALOG_TEXT_WIDTH, INPUTDIALOG_TEXT_HEIGHT, _
         0, 0, TEXTBOX_SCROLLBAR_NONE _
     )
-    gui_AddGeneratedWidget prompt_label
+    gui_AddGeneratedWidget dialog_data->prompts(0)
     gui_AddGeneratedWidget dialog_data->fields(0)
-    gui_SetParent prompt_label, dialog_data->window_widget
+    gui_SetParent dialog_data->prompts(0), dialog_data->window_widget
     gui_SetParent dialog_data->fields(0), dialog_data->window_widget
 
     second_prompt = Trim(second_prompt)
     If Len(second_prompt) > 0 Then
-        prompt_label = label_Create( _
+        dialog_data->prompts(1) = label_Create( _
             widget_name & "_prompt_1", second_prompt, 20, 104, _
             RGB(0, 0, 0), BACKEND_FONT_ARIAL_10_REGULAR _
         )
@@ -180,14 +193,15 @@ Function inputdialog_Create( _
             INPUTDIALOG_TEXT_WIDTH, INPUTDIALOG_TEXT_HEIGHT, _
             0, 0, TEXTBOX_SCROLLBAR_NONE _
         )
-        gui_AddGeneratedWidget prompt_label
+        gui_AddGeneratedWidget dialog_data->prompts(1)
         gui_AddGeneratedWidget dialog_data->fields(1)
-        gui_SetParent prompt_label, dialog_data->window_widget
+        gui_SetParent dialog_data->prompts(1), dialog_data->window_widget
         gui_SetParent dialog_data->fields(1), dialog_data->window_widget
         option_top = 172
     Else
         option_top = 112
     End If
+    third_option_top = option_top + 28
 
     first_option = Trim(first_option)
     If Len(first_option) > 0 Then
@@ -207,21 +221,41 @@ Function inputdialog_Create( _
         gui_AddGeneratedWidget dialog_data->options(1)
         gui_SetParent dialog_data->options(1), dialog_data->window_widget
     End If
+    third_option = Trim(third_option)
+    If Len(third_option) > 0 Then
+        dialog_data->options(2) = checkbox_Create( _
+            widget_name & "_option_2", third_option, 20, third_option_top, _
+            IIf(third_option_checked <> 0, -1, 0) _
+        )
+        gui_AddGeneratedWidget dialog_data->options(2)
+        gui_SetParent dialog_data->options(2), dialog_data->window_widget
+    End If
 
-    accept_button = button_Create( _
+    dialog_data->accept_button = button_Create( _
         widget_name & "_accept", accept_text, 260, 238, 84, 30, _
         @inputdialog_OnAccept _
     )
-    cancel_button = button_Create( _
+    dialog_data->cancel_button = button_Create( _
         widget_name & "_cancel", "Cancel", 354, 238, 84, 30, _
         @inputdialog_OnCancel _
     )
-    gui_AddGeneratedWidget accept_button
-    gui_AddGeneratedWidget cancel_button
-    gui_SetParent accept_button, dialog_data->window_widget
-    gui_SetParent cancel_button, dialog_data->window_widget
+    alternate_text = Trim(alternate_text)
+    If Len(alternate_text) > 0 Then
+        dialog_data->alternate_button = button_Create( _
+            widget_name & "_alternate", alternate_text, 166, 238, 84, 30, _
+            @inputdialog_OnAlternate _
+        )
+    End If
+    gui_AddGeneratedWidget dialog_data->accept_button
+    gui_AddGeneratedWidget dialog_data->cancel_button
+    If dialog_data->alternate_button <> 0 Then _
+        gui_AddGeneratedWidget dialog_data->alternate_button
+    gui_SetParent dialog_data->accept_button, dialog_data->window_widget
+    gui_SetParent dialog_data->cancel_button, dialog_data->window_widget
+    If dialog_data->alternate_button <> 0 Then _
+        gui_SetParent dialog_data->alternate_button, dialog_data->window_widget
     ' Escape is resolved by the GUI manager within this modal tree.
-    gui_SetCancelAction cancel_button, -1
+    gui_SetCancelAction dialog_data->cancel_button, -1
     ' The modal stack accepts only registered roots.
     gui_AddWidget root_widget
     If gui_TrySetModalRoot(root_widget) = 0 Then
@@ -277,6 +311,62 @@ Function inputdialog_GetOption( _
        dialog_data->options(option_index)->data = 0 Then Return 0
     checkbox_data = Cast(CheckBoxData Ptr, dialog_data->options(option_index)->data)
     Return IIf(checkbox_data->checked <> 0, -1, 0)
+End Function
+
+
+Function inputdialog_SetColors( _
+    ByVal dialog_widget As Widget Ptr, _
+    ByVal foreground_color As ULong, _
+    ByVal background_color As ULong _
+) As Integer
+    If dialog_widget = 0 OrElse dialog_widget->data = 0 Then Return 0
+    Dim As InputDialogData Ptr dialog_data = _
+        Cast(InputDialogData Ptr, dialog_widget->data)
+    If dialog_data->window_widget = 0 OrElse _
+       subwindow_SetClientColor( _
+           dialog_data->window_widget, background_color _
+       ) = 0 OrElse _
+       subwindow_SetTitleColors( _
+           dialog_data->window_widget, background_color, foreground_color _
+       ) = 0 Then Return 0
+
+    For index As Integer = 0 To 1
+        If dialog_data->prompts(index) <> 0 Then
+            If label_SetTextColorLiteral( _
+                dialog_data->prompts(index), foreground_color _
+            ) = 0 OrElse label_SetBackgroundColor( _
+                dialog_data->prompts(index), background_color _
+            ) = 0 Then Return 0
+        End If
+        If dialog_data->fields(index) <> 0 Then
+            If textbox_SetForegroundColor( _
+                dialog_data->fields(index), foreground_color _
+            ) = 0 OrElse textbox_SetBackgroundColor( _
+                dialog_data->fields(index), background_color _
+            ) = 0 Then Return 0
+        End If
+    Next index
+
+    For index As Integer = 0 To INPUTDIALOG_OPTION_COUNT - 1
+        If dialog_data->options(index) <> 0 Then
+            If checkbox_SetForegroundColor( _
+                dialog_data->options(index), foreground_color _
+            ) = 0 OrElse checkbox_SetBackgroundColor( _
+                dialog_data->options(index), background_color _
+            ) = 0 Then Return 0
+        End If
+    Next index
+
+    If dialog_data->accept_button <> 0 AndAlso button_SetBackgroundColor( _
+        dialog_data->accept_button, background_color _
+    ) = 0 Then Return 0
+    If dialog_data->alternate_button <> 0 AndAlso button_SetBackgroundColor( _
+        dialog_data->alternate_button, background_color _
+    ) = 0 Then Return 0
+    If dialog_data->cancel_button <> 0 AndAlso button_SetBackgroundColor( _
+        dialog_data->cancel_button, background_color _
+    ) = 0 Then Return 0
+    Return -1
 End Function
 
 /' end of inputdialog.bas '/

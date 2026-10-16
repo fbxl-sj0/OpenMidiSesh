@@ -42,13 +42,17 @@ Type ConfirmDialogOptions
     As Integer maximum_height = 600
     As Integer icon_kind = CONFIRM_ICON_NONE
     As Integer default_choice = 0
+    ' Optional bounded ASCII artwork shown in a bordered side panel.
+    As String illustration_text = ""
 End Type
 
 /'
     Extended dialogs wrap the complete message and grow vertically up to the
     supplied limit. Invalid options or text which cannot fit return zero,
     without installing a modal root. Width: 320..4096; height: 150..4096;
-    message: at most 16384 bytes. Choice indices are zero-based.
+    message: at most 16384 bytes. Optional illustration text is bounded to
+    2048 printable ASCII bytes and 32 lines, and cannot be combined with an
+    icon. Choice indices are zero-based.
 
     As with the existing factories, call on the GUI thread outside an update
     traversal, then register the returned root with gui_AddWidget. Its generated
@@ -74,6 +78,7 @@ Declare Function confirmdialog_GetActionButton( _
 ' The pointer remains valid only while the dialog root is registered.
 Declare Function confirmdialog_GetWindow(ByVal w As Widget Ptr) As Widget Ptr
 Declare Function confirmdialog_GetMessageLabel(ByVal w As Widget Ptr) As Widget Ptr
+Declare Function confirmdialog_GetIllustrationLabel(ByVal w As Widget Ptr) As Widget Ptr
 
 Declare Function confirmdialog_Create( _
     ByVal nm As String, _

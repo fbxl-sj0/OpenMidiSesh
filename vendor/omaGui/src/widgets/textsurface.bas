@@ -49,7 +49,7 @@ Function textsurface_Resize(ByRef surface As GuiTextSurface, ByVal columns As In
         For row As Integer = 0 To kept_rows - 1
             For column As Integer = 0 To kept_columns - 1
                 ' Both indices lie in the checked old/new grid intersection.
-                ' fblint: disable-next-line FBL525
+
                 new_cells[row * columns + column] = surface.cells[row * surface.columns + column]
             Next column
         Next row

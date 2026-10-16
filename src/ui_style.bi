@@ -45,7 +45,7 @@ Const OSE_UI_MIXER_BUTTON_MUTE As Integer = 0
 Const OSE_UI_MIXER_BUTTON_SOLO As Integer = 1
 Const OSE_UI_MIXER_BUTTON_RECORD As Integer = 2
 
-' fblint: disable-next-line FBL911,FBL014 REASON: This is an in-memory record; its fields are not a raw on-disk UDT layout.
+' This is an in-memory record; its fields are not a raw on-disk UDT layout.
 Type OseUiControlStyle
     As ULong fillColor
     As ULong borderColor
@@ -53,7 +53,7 @@ Type OseUiControlStyle
     As Integer cornerRadius
 End Type
 
-' fblint: disable-next-line FBL911,FBL014 REASON: This is an in-memory record; its fields are not a raw on-disk UDT layout.
+' This is an in-memory record; its fields are not a raw on-disk UDT layout.
 Type OseUiThemePalette
     ' Public omaGUI theme bridge.
     As ULong faceColor

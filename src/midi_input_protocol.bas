@@ -121,7 +121,7 @@ End Function
 Private Sub protocol_AtomicWrite(ByRef target As Long, ByVal value As Long)
 #if defined(__FB_WIN32__)
     ' Only the exchange side effect is required at this publication point.
-    ' fblint: disable-next-line FBL310 REASON: Win32 supplies this atomic intrinsic through windows.bi.
+    ' Win32 supplies this atomic intrinsic through windows.bi.
     _InterlockedExchange @target, value
 #else
     target = value
@@ -132,7 +132,7 @@ End Sub
 Private Sub protocol_AtomicIncrement(ByRef target As Long)
 #if defined(__FB_WIN32__)
     ' Only the increment side effect is required by the saturating counter.
-    ' fblint: disable-next-line FBL310 REASON: Win32 supplies this atomic intrinsic through windows.bi.
+    ' Win32 supplies this atomic intrinsic through windows.bi.
     _InterlockedIncrement @target
 #else
     target += 1

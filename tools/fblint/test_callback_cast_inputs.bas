@@ -4,7 +4,8 @@
 ' Responsibilities: Accept owned void calls and reject a mismatched signature.
 ' Targets: FreeBASIC fb dialect, native schema-27 reader.
 ' Module API: Command-line model path and expected validation outcome.
-' This file intentionally does NOT infer callback types from source text.
+' This file intentionally does NOT contain:
+'     callback type inference from source text.
 #Lang "fb"
 #Include Once "test_fixture_symbol_classes.bi"
 Const FBLINT_MAX_SEMANTIC_SYMBOL_TYPES As LongInt = 250000

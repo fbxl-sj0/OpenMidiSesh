@@ -17,6 +17,7 @@
         - define widget lifecycle callbacks
         - expose anchor constraints for reactive window layouts
         - expose the widget which owned the latest pointer update
+        - provide safe GUI-thread queries for registered widget trees
         - expose portable access-key caption parsing
         - render access-key underlines with the active classic palette
         - route noninteractive access keys to safe focus targets
@@ -40,7 +41,7 @@ Const GUI_MODAL_ROOT_MAXIMUM_DEPTH As Integer = 64
 ' Type Definitions
 ' -------------------------------------------------------------------------
 
-Type Widget_Struct_ ' fblint: disable-line FBL910 REASON: This record is process-local state, never a raw serialized or external ABI layout.
+Type Widget_Struct_ ' This record is process-local state, never a raw serialized or external ABI layout.
     As String name
 #ifdef OMAGUI_NAVIGATION_EXTENSIONS
     ' Borrowed neighbors are validated by registry identity before use.
@@ -221,6 +222,13 @@ Declare Function gui_GetEffectiveWidgetTheme( _
 ) As Integer
 Declare Sub gui_BringToFront(ByVal w As Widget Ptr)
 Declare Function gui_IsWidgetRegistered(ByVal w As Widget Ptr) As Integer
+' Both arguments are borrowed. A stale or unregistered pointer is rejected
+' before its parent chain is inspected.
+Declare Function gui_IsWidgetWithinTree( _
+    ByVal candidate As Widget Ptr, ByVal root As Widget Ptr _
+) As Integer
+' Counts registered widgets in the exact root tree, including root itself.
+Declare Function gui_CountWidgetsInTree(ByVal root As Widget Ptr) As Integer
 Declare Sub gui_SetTextTransformHandler(ByVal handler As Any Ptr)
 Declare Function gui_TransformText(ByVal text As String) As String
 Declare Sub gui_SetFocus(ByVal w As Widget Ptr)

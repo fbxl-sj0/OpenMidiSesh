@@ -3,7 +3,12 @@
     File: navigation.bi
     Purpose: Declare opt-in scope and directional navigation.
     Responsibilities: Preserve controller-friendly focus and explicit neighbor APIs.
-    This file does not contain application commands or a second event queue.
+    Targets: FreeBASIC fb dialect; opt-in OMAGUI_NAVIGATION_EXTENSIONS profile.
+    Module API boundary: declares scope, focus and navigation procedures for widget code.
+
+    This file intentionally does NOT contain:
+        - application commands
+        - a second event queue
 
     The navigation profile is opt-in through OMAGUI_NAVIGATION_EXTENSIONS.
     All state belongs to the GUI thread, like the core registry and input frame.

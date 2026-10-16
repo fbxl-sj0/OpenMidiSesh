@@ -49,27 +49,27 @@ Private Sub session_SendMidiOutputSetup()
     End If
 
     For channelIndex As Integer = 0 To SESSION_CHANNEL_COUNT - 1
-        midiOutput_Send &HC0 Or channelIndex, _
+        midiOutput_Send OSE_MIDI_STATUS_PROGRAM_CHANGE Or channelIndex, _
             session_Summary.channelProgram(channelIndex), 0
-        midiOutput_Send &HB0 Or channelIndex, 7, _
+        midiOutput_Send OSE_MIDI_STATUS_CONTROL_CHANGE Or channelIndex, 7, _
             session_Summary.channelVolume(channelIndex)
-        midiOutput_Send &HB0 Or channelIndex, 10, _
+        midiOutput_Send OSE_MIDI_STATUS_CONTROL_CHANGE Or channelIndex, 10, _
             session_Summary.channelPan(channelIndex)
-        midiOutput_Send &HB0 Or channelIndex, 11, _
+        midiOutput_Send OSE_MIDI_STATUS_CONTROL_CHANGE Or channelIndex, 11, _
             session_Summary.channelExpression(channelIndex)
-        midiOutput_Send &HB0 Or channelIndex, 91, _
+        midiOutput_Send OSE_MIDI_STATUS_CONTROL_CHANGE Or channelIndex, 91, _
             session_Summary.channelReverb(channelIndex)
-        midiOutput_Send &HB0 Or channelIndex, 93, _
+        midiOutput_Send OSE_MIDI_STATUS_CONTROL_CHANGE Or channelIndex, 93, _
             session_Summary.channelChorus(channelIndex)
 
         Dim As Integer pitchBend = session_Summary.channelPitchBend(channelIndex)
         If pitchBend < 0 Then
             pitchBend = 0
         End If
-        If pitchBend > 16383 Then
-            pitchBend = 16383
+        If pitchBend > OSE_MIDI_PITCH_BEND_MAX Then
+            pitchBend = OSE_MIDI_PITCH_BEND_MAX
         End If
-        midiOutput_Send &HE0 Or channelIndex, _
+        midiOutput_Send OSE_MIDI_STATUS_PITCH_BEND Or channelIndex, _
             pitchBend And &H7F, (pitchBend Shr 7) And &H7F
     Next
 End Sub
@@ -128,7 +128,7 @@ Private Sub session_SendMidiOutputRange( _
             If noteEndTick < editableNote.startTick Then _
                 noteEndTick = OSE_MAX_MIDI_TICK
             If noteEndTick > previousTick AndAlso noteEndTick <= currentTick Then
-                midiOutput_Send &H80 Or editableNote.channel, _
+                midiOutput_Send OSE_MIDI_STATUS_NOTE_OFF Or editableNote.channel, _
                     editableNote.keyNumber, 0
             End If
         Next
@@ -155,8 +155,8 @@ Private Sub session_SendMidiOutputRange( _
         End If
 
         Dim As Integer data2 = channelEvent.data2
-        If channelEvent.messageType = &HC0 OrElse _
-            channelEvent.messageType = &HD0 Then data2 = 0
+        If channelEvent.messageType = OSE_MIDI_STATUS_PROGRAM_CHANGE OrElse _
+            channelEvent.messageType = OSE_MIDI_STATUS_CHANNEL_PRESSURE Then data2 = 0
         midiOutput_Send CInt(channelEvent.messageType) Or _
             CInt(channelEvent.channel), channelEvent.data1, data2
     Next
@@ -187,7 +187,7 @@ Private Sub session_SendMidiOutputRange( _
             inRange = -1
         End If
         If inRange <> 0 Then
-            midiOutput_Send &H90 Or editableNote.channel, _
+            midiOutput_Send OSE_MIDI_STATUS_NOTE_ON Or editableNote.channel, _
                 editableNote.keyNumber, editableNote.velocity
         End If
     Next
@@ -219,10 +219,12 @@ Private Sub session_PlayAudioClips(ByVal currentTick As ULongInt)
         playbackMix_Calculate playbackValues, _
             session_PlaybackState.controllerVolume(SESSION_AUDIO_CHANNEL), _
             session_PlaybackState.controllerExpression(SESSION_AUDIO_CHANNEL), _
-            session_PlaybackState.controllerPan(SESSION_AUDIO_CHANNEL), 127, _
+            session_PlaybackState.controllerPan(SESSION_AUDIO_CHANNEL), _
+            OSE_MIDI_DATA_BYTE_MAX, _
             session_MasterVolume, _
             session_ChannelIsAudible(SESSION_AUDIO_CHANNEL)
-        Dim As Single clipGain = CSng(clip.gainPermille) / 1000.0
+        Dim As Single clipGain = _
+            CSng(CSng(clip.gainPermille) / 1000.0)
         volume SESSION_AUDIO_CHANNEL, playbackValues.channelGain * clipGain
         pan SESSION_AUDIO_CHANNEL, 0.0
         If audioSampleSlots_Play(SESSION_AUDIO_CHANNEL, clipIndex, 1.0) <> 0 Then

@@ -243,7 +243,7 @@ Private Sub test_ApplyMidiEdit( _
                     30 + CInt(randomValue Mod 451), _
                     24 + CInt(randomValue Mod 84), _
                     CInt(randomValue And 15), _
-                    32 + CInt(randomValue Mod 96)) >= 0, -1, 0) ' fblint: disable-line FBL406 REASON: randomValue is unsigned.
+                    32 + CInt(randomValue Mod 96)) >= 0, -1, 0) ' randomValue is unsigned.
             Else
                 editMode = 1
             End If

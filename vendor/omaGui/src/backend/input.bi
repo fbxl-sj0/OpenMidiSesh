@@ -26,6 +26,7 @@
         - window focus policy
 '/
 
+#pragma once
 #ifndef __INPUT_BI__
 #define __INPUT_BI__
 

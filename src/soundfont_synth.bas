@@ -42,7 +42,7 @@
 
 #lang "fb"
 
-#inclib "sfx" ' fblint: disable-line FBL930 REASON: The supported FreeBASIC toolchain supplies sfx on Windows and Linux.
+#inclib "sfx" ' The supported FreeBASIC toolchain supplies sfx on Windows and Linux.
 #include once "sfxlib_raw.bi"
 #include once "soundfont_synth.bi"
 #include once "soundfont_bank.bi"
@@ -79,7 +79,7 @@ Declare Function fb_sfxMixBufferRead CDecl Alias "fb_sfxMixBufferRead" ( _
 ) As Integer
 Declare Function fb_sfxBufferFrames CDecl Alias "fb_sfxBufferFrames" () As Integer
 
-' fblint: disable-next-line FBL911,FBL014 REASON: This is an in-memory record; its fields are not a raw on-disk UDT layout.
+' This is an in-memory record; its fields are not a raw on-disk UDT layout.
 Type SoundFontSynthVoice
     As Integer active
     As Integer channelIndex
@@ -101,31 +101,31 @@ Type SoundFontSynthVoice
     As ULongInt serialNumber
 End Type
 
-' fblint: disable-next-line FBL301 REASON: the synth mutex protects all following realtime state.
+' the synth mutex protects all following realtime state.
 Dim Shared soundfontSynth_Mutex As Any Ptr
-' fblint: disable-next-line FBL301 REASON: the worker handle is owned by this module's output lifecycle.
+' the worker handle is owned by this module's output lifecycle.
 Dim Shared soundfontSynth_Thread As Any Ptr
-' fblint: disable-next-line FBL301 REASON: the worker state is read only while holding the synth mutex.
+' the worker state is read only while holding the synth mutex.
 Dim Shared soundfontSynth_WorkerState As Integer
-' fblint: disable-next-line FBL301 REASON: the stop flag is read only while holding the synth mutex.
+' the stop flag is read only while holding the synth mutex.
 Dim Shared soundfontSynth_StopRequested As Integer
-' fblint: disable-next-line FBL301 REASON: the pause flag belongs to the process-wide SoundFont engine.
+' the pause flag belongs to the process-wide SoundFont engine.
 Dim Shared soundfontSynth_Paused As Integer
-' fblint: disable-next-line FBL301 REASON: the negotiated sample rate belongs to the current raw stream.
+' the negotiated sample rate belongs to the current raw stream.
 Dim Shared soundfontSynth_SampleRate As Integer
-' fblint: disable-next-line FBL301 REASON: this bounded array is the module-owned realtime voice pool.
+' this bounded array is the module-owned realtime voice pool.
 Dim Shared soundfontSynth_Voices( _
     0 To SOUNDFONT_SYNTH_VOICE_COUNT - 1 _
 ) As SoundFontSynthVoice
-' fblint: disable-next-line FBL301 REASON: channel automation is shared with active voices under the mutex.
+' channel automation is shared with active voices under the mutex.
 Dim Shared soundfontSynth_ChannelGain( _
     0 To SOUNDFONT_SYNTH_CHANNEL_COUNT - 1 _
 ) As Single
-' fblint: disable-next-line FBL301 REASON: channel pan follows the same protected automation state.
+' channel pan follows the same protected automation state.
 Dim Shared soundfontSynth_ChannelPan( _
     0 To SOUNDFONT_SYNTH_CHANNEL_COUNT - 1 _
 ) As Single
-' fblint: disable-next-line FBL301 REASON: serials provide deterministic oldest-voice stealing.
+' serials provide deterministic oldest-voice stealing.
 Dim Shared soundfontSynth_NextSerial As ULongInt = 1
 
 ' Thread synchronization: the synth mutex locks every shared field above.
@@ -483,7 +483,7 @@ Private Sub soundfontSynth_OutputWorker(ByVal unusedParameter As Any Ptr)
                 @outputSamples(writtenFrames * 2), _
                 currentBlockFrames - writtenFrames, 2)
             If writeResult < 0 Then
-                ' fblint: disable-next-line FBL310 REASON: sfxlib_raw.bi declares the SfxLib namespace used by this call.
+                ' sfxlib_raw.bi declares the SfxLib namespace used by this call.
                 sfxlib.RawClose()
                 soundfontSynth_SetWorkerState -1
                 Exit Sub
@@ -574,13 +574,13 @@ Public Sub soundfontSynth_SuspendOutput()
         finishes before the queue is reset. A worker which already passed its
         stop check can still start one final RawWrite and reopen the queue.
     '/
-    ' fblint: disable-next-line FBL310 REASON: RawClose is declared by the public sfxlib_raw.bi namespace.
+    ' RawClose is declared by the public sfxlib_raw.bi namespace.
     sfxlib.RawClose()
     ThreadWait soundfontSynth_Thread
     soundfontSynth_Thread = 0
     ' The worker has exited, so this final close also covers a write which
     ' raced the first close. Ordinary mixer output can now resume reliably.
-    ' fblint: disable-next-line FBL310 REASON: sfxlib_raw.bi declares the SfxLib namespace used by this call.
+    ' sfxlib_raw.bi declares the SfxLib namespace used by this call.
     sfxlib.RawClose()
     MutexLock soundfontSynth_Mutex
     soundfontSynth_StopRequested = 0

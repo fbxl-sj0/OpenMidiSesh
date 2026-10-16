@@ -19,6 +19,7 @@
         - expose an optional save mode with a caller-supplied default name
         - provide portable case-insensitive wildcard filters
         - allow a bounded application-supplied window title
+        - allow portable foreground/background overrides for legacy dialogs
 
     This file intentionally does NOT contain:
 
@@ -37,6 +38,10 @@ Const FILEDIALOG_MODE_SAVE As Integer = 1
 Const FILEDIALOG_MODE_FOLDER As Integer = 2
 Const FILEDIALOG_MAX_FILTER_BYTES As Integer = 160
 Const FILEDIALOG_MAX_FILTER_PATTERNS As Integer = 16
+Const FILEDIALOG_SORT_NAME As Integer = 0
+Const FILEDIALOG_SORT_TYPE As Integer = 1
+Const FILEDIALOG_SORT_SIZE As Integer = 2
+Const FILEDIALOG_SORT_MODIFIED As Integer = 3
 
 Declare Function filedialog_Create(ByVal nm As String, ByVal x As Integer, ByVal y As Integer) As Widget Ptr
 Declare Function filedialog_CreateAtPath( _
@@ -60,6 +65,11 @@ Declare Sub filedialog_SetDialogStyle(ByVal w As Widget Ptr)
 ' Borrow the generated subwindow for application-specific dialog styling.
 ' The pointer remains valid only while the dialog root is registered.
 Declare Function filedialog_GetWindow(ByVal w As Widget Ptr) As Widget Ptr
+Declare Function filedialog_SetColors( _
+    ByVal w As Widget Ptr, _
+    ByVal foreground_color As ULong, _
+    ByVal background_color As ULong _
+) As Integer
 Declare Function filedialog_GetSelectedFile(ByVal w As Widget Ptr) As String
 Declare Function filedialog_GetResultState(ByVal w As Widget Ptr) As Integer
 Declare Function filedialog_SetFilter( _
@@ -70,6 +80,15 @@ Declare Function filedialog_GetFilter(ByVal w As Widget Ptr) As String
 Declare Function filedialog_SetTitle( _
     ByVal w As Widget Ptr, ByVal title_text As String _
 ) As Integer
+
+' These operations use the dialog's cached listing and do not change CurDir.
+Declare Function filedialog_SetSort(ByVal w As Widget Ptr, ByVal column_index As Integer, ByVal descending As Integer = 0) As Integer
+Declare Function filedialog_AddPlace(ByVal w As Widget Ptr, ByVal caption As String, ByVal pathValue As String) As Integer
+' An optional extension is appended only when a save name has no dot.
+Declare Function filedialog_SetDefaultExtension(ByVal w As Widget Ptr, ByVal extension_text As String) As Integer
+' Enabled by default. Disable only when the application confirms replacement.
+' Confirmation returns a pathname; the dialog never writes or replaces a file.
+Declare Sub filedialog_SetConfirmOverwrite(ByVal w As Widget Ptr, ByVal enabled_state As Integer)
 
 #endif
 

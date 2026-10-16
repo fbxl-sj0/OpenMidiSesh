@@ -16,6 +16,7 @@
         - create an OMAGUI-owned palette dialog
         - expose accept, cancel, and selected-index state
         - provide the canonical classic palette index to RGB mapping
+        - apply caller-selected portable foreground and background colors
 
     This file intentionally does NOT contain:
 
@@ -47,6 +48,11 @@ Declare Function colordialog_GetSelectedIndex( _
 Declare Function colordialog_GetClassicColor( _
     ByVal color_index As Integer _
 ) As ULong
+Declare Function colordialog_SetColors( _
+    ByVal dialog_widget As Widget Ptr, _
+    ByVal foreground_color As ULong, _
+    ByVal background_color As ULong _
+) As Integer
 
 #endif
 

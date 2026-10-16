@@ -278,7 +278,7 @@ Dim As Integer replacementValues(0 To 3) = {0, &H7F, &H80, &HFF}
 For bytePosition As Integer = 1 To Len(test_SeedData)
     For replacementIndex As Integer = 0 To 3
         Dim As String candidateData = test_SeedData
-        ' The copied seed has the exact indexed length. FB-LINTER: DISABLE-NEXT-LINE FBL514 REASON: The copied seed has the exact indexed length.
+        ' The copied seed has the exact indexed length.
         Mid(candidateData, bytePosition, 1) = _
             Chr(replacementValues(replacementIndex))
         test_RunCandidate candidateData
@@ -324,7 +324,7 @@ For randomCase As Integer = 1 To TEST_RANDOM_CASES
             Dim As Integer maximumBlock = Len(candidateData) - blockStart + 1
             Dim As Integer blockLength = 1 + _
                 test_RandomBelow(randomState, maximumBlock)
-            ' The replacement is exactly blockLength bytes. FB-LINTER: DISABLE-NEXT-LINE FBL514 REASON: The replacement is exactly blockLength bytes.
+            ' The replacement is exactly blockLength bytes.
             Mid(candidateData, blockStart, blockLength) = _
                 test_RandomBytes(randomState, blockLength)
 

@@ -62,6 +62,72 @@ Const OSE_MAX_TEXT_EVENT_BYTES As Integer = 1024
 Const OSE_MAX_SYSEX_EVENT_BYTES As Integer = 4096
 Const OSE_MAX_MIDI_TICK As ULongInt = 268435455
 Const OSE_MAX_VLQ_BYTES As Integer = 4
+Const OSE_MIDI_NOTE_NUMBER_MAX As Integer = 127
+Const OSE_MIDI_DATA_BYTE_MAX As Integer = 127
+Const OSE_MIDI_BYTE_MAX As Integer = 255
+Const OSE_MIDI_BYTE_MODULUS As Integer = OSE_MIDI_BYTE_MAX + 1
+Const OSE_MIDI_PITCH_BEND_MAX As Integer = 16383
+Const OSE_MIDI_CHANNEL_DRUMS As Integer = 9
+Const OSE_MIDI_DRUM_BANK_NUMBER As Integer = 128
+Const OSE_MAX_MIDI_TICKS_PER_QUARTER_NOTE As Integer = 32767
+Const OSE_MIDI_CONTROLLER_SUSTAIN_PEDAL As Integer = 64
+Const OSE_MIDI_VELOCITY_THRESHOLD As Integer = 64
+Const OSE_MIDI_PAN_CENTER_VALUE As Integer = 64
+Const OSE_MIDI_PAN_SIDE_RANGE As Integer = 63
+' MIDI 1.0 controller numbers for the channel state shown in the UI.
+Const OSE_MIDI_CONTROLLER_VOLUME As Integer = 7
+Const OSE_MIDI_CONTROLLER_PAN As Integer = 10
+Const OSE_MIDI_CONTROLLER_EXPRESSION As Integer = 11
+Const OSE_MIDI_CONTROLLER_REVERB As Integer = 91
+Const OSE_MIDI_CONTROLLER_CHORUS As Integer = 93
+Const OSE_MIDI_STATUS_CHANNEL_MIN As UByte = &H80
+Const OSE_MIDI_STATUS_CHANNEL_MAX As UByte = &HEF
+Const OSE_MIDI_STATUS_TYPE_MASK As UByte = &HF0
+Const OSE_MIDI_STATUS_CHANNEL_MASK As UByte = &H0F
+Const OSE_MIDI_STATUS_NOTE_OFF As UByte = &H80
+Const OSE_MIDI_STATUS_NOTE_ON As UByte = &H90
+Const OSE_MIDI_STATUS_POLY_PRESSURE As UByte = &HA0
+Const OSE_MIDI_STATUS_CONTROL_CHANGE As UByte = &HB0
+Const OSE_MIDI_STATUS_PROGRAM_CHANGE As UByte = &HC0
+Const OSE_MIDI_STATUS_CHANNEL_PRESSURE As UByte = &HD0
+Const OSE_MIDI_STATUS_PITCH_BEND As UByte = &HE0
+Const OSE_MIDI_STATUS_SYSEX_START As UByte = &HF0
+Const OSE_MIDI_STATUS_TIME_CODE_QUARTER_FRAME As UByte = &HF1
+Const OSE_MIDI_STATUS_SONG_POSITION As UByte = &HF2
+Const OSE_MIDI_STATUS_SONG_SELECT As UByte = &HF3
+Const OSE_MIDI_STATUS_TUNE_REQUEST As UByte = &HF6
+Const OSE_MIDI_STATUS_SYSEX_END As UByte = &HF7
+' Parser/editor input limits and initial buffer sizes.
+Const OSE_MIDI_MIN_FILE_BYTES As Integer = 14
+Const OSE_MIDI_HEADER_MIN_BYTES As Integer = 6
+' The MTrk tag and its four-byte data length.
+Const OSE_MIDI_TRACK_CHUNK_HEADER_BYTES As Integer = 8
+Const OSE_MIDI_EDITABLE_NOTE_INITIAL_CAPACITY As Integer = 512
+Const OSE_MIDI_STORED_EVENT_INITIAL_CAPACITY As Integer = 1024
+Const OSE_MIDI_SAVE_EVENT_INITIAL_CAPACITY As Integer = 512
+Const OSE_MIDI_SAVE_EVENT_GROWTH_THRESHOLD As Integer = 256
+Const OSE_MIDI_CHANNEL_INDEX_MAX As Integer = 15
+Const OSE_MIDI_TEMPO_MIN_BPM As Integer = 20
+Const OSE_MIDI_TEMPO_MAX_BPM As Integer = 400
+Const OSE_MIDI_TEMPO_VALUE_MAX As ULong = &HFFFFFF
+Const OSE_MIDI_TIME_SIGNATURE_NUMERATOR_MAX As Integer = 255
+Const OSE_MIDI_TIME_SIGNATURE_DENOMINATOR_POWER_MAX As Integer = 7
+Const OSE_MIDI_KEY_SIGNATURE_MIN As Integer = -7
+Const OSE_MIDI_KEY_SIGNATURE_MAX As Integer = 7
+Const OSE_MIDI_ASCII_PRINTABLE_MIN As Integer = 32
+Const OSE_MIDI_ASCII_PRINTABLE_MAX As Integer = 126
+Const OSE_MIDI_ASCII_TAB As Integer = 9
+Const OSE_MIDI_VLQ_DATA_MASK As UByte = &H7F
+' Channel status bytes and Standard MIDI File meta-event identifiers.
+Const OSE_MIDI_STATUS_META_EVENT As UByte = &HFF
+Const OSE_MIDI_META_TYPE_MIN As UByte = &H01
+Const OSE_MIDI_META_TYPE_MAX As UByte = &H07
+Const OSE_MIDI_META_TYPE_END_OF_TRACK As UByte = &H2F
+Const OSE_MIDI_META_TYPE_LYRIC As UByte = &H05
+Const OSE_MIDI_META_TYPE_MARKER As UByte = &H06
+Const OSE_MIDI_META_TYPE_SET_TEMPO As UByte = &H51
+Const OSE_MIDI_META_TYPE_TIME_SIGNATURE As UByte = &H58
+Const OSE_MIDI_META_TYPE_KEY_SIGNATURE As UByte = &H59
 Const OSE_BE32_SHIFT_24 As Integer = 24
 Const OSE_BE32_SHIFT_16 As Integer = 16
 Const OSE_BE32_SHIFT_8 As Integer = 8
@@ -421,8 +487,8 @@ Declare Function midi_AddChannelEvent( _
     ByVal tick As ULongInt, _
     ByVal channelIndex As Integer, _
     ByVal messageType As Integer, _
-    ByVal data1 As Integer, _
-    ByVal data2 As Integer _
+    ByVal firstDataByte As Integer, _
+    ByVal secondDataByte As Integer _
 ) As Integer
 
 Declare Function midi_AddSystemExclusiveEvent( _
@@ -458,8 +524,8 @@ Declare Function midi_AddSystemEvent( _
     ByVal trackIndex As Integer, _
     ByVal tick As ULongInt, _
     ByVal statusByte As Integer, _
-    ByVal data1 As Integer, _
-    ByVal data2 As Integer _
+    ByVal firstDataByte As Integer, _
+    ByVal secondDataByte As Integer _
 ) As Integer
 
 Declare Function midi_RemoveSystemEvent( _

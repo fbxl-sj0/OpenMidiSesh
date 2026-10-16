@@ -239,7 +239,8 @@ Private Function session_StartLiveDrumNote( _
     ByVal pitch As Integer, _
     ByVal currentTick As ULongInt _
 ) As Integer
-    If session_LiveRecording = 0 OrElse pitch < 0 OrElse pitch > 127 OrElse _
+    If session_LiveRecording = 0 OrElse pitch < 0 OrElse _
+        pitch > SESSION_MIDI_MAX_KEY OrElse _
         session_LiveNoteIndex(pitch) >= 0 OrElse _
         currentTick >= OSE_MAX_MIDI_TICK Then Return 0
     If session_SelectedTrack < 0 OrElse _

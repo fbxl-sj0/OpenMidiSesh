@@ -91,11 +91,11 @@ If capturePaths_ParentDirectory(firstCandidate) <> fixtureDirectory OrElse _
     test_Fail "cleanup target escaped the isolated fixture directory"
 ' The exact file and directory were created above inside the runner-owned
 ' fixture path. They are validated again before this bounded cleanup.
-' fblint: disable-next-line FBL761,FBL-IO-014 REASON: These exact runner-owned fixture paths were created and validated immediately above.
+' These exact runner-owned fixture paths were created and validated immediately above.
 Kill firstCandidate
-' fblint: disable-next-line FBL761 REASON: These exact runner-owned fixture paths were created and validated immediately above.
+' These exact runner-owned fixture paths were created and validated immediately above.
 RmDir secondCandidate
-' fblint: disable-next-line FBL761 REASON: These exact runner-owned fixture paths were created and validated immediately above.
+' These exact runner-owned fixture paths were created and validated immediately above.
 RmDir fixtureDirectory
 If Dir(firstCandidate) <> "" OrElse Dir(secondCandidate, fbDirectory) <> "" OrElse _
     Dir(fixtureDirectory, fbDirectory) <> "" Then _

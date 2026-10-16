@@ -2978,7 +2978,7 @@ Private Sub htmlview_InitializeParseContext( _
 End Sub
 
 
-' fblint: disable-next-line FBL110,FBL111 -- This bounded step advances markup and style-stack state together.
+' This bounded step advances markup and style-stack state together.
 Private Function htmlview_ParseContextStep( _
     ByRef parseContext As HtmlViewParseContext, _
     ByVal timeBudgetMilliseconds As Integer _

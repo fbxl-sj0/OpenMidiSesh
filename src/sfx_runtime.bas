@@ -32,7 +32,7 @@
 
 #lang "fb"
 
-#inclib "sfx" ' fblint: disable-line FBL930 REASON: The supported FreeBASIC toolchain supplies sfx on Windows and Linux.
+#inclib "sfx" ' The supported FreeBASIC toolchain supplies sfx on Windows and Linux.
 #include once "sfx_runtime.bi"
 
 /'
@@ -46,7 +46,7 @@
 Declare Function fb_sfxInit CDecl Alias "fb_sfxInit" () As Long
 Declare Sub fb_sfxExit CDecl Alias "fb_sfxExit" ()
 
-' fblint: disable-next-line FBL301 REASON: this module owns the process-wide runtime generation.
+' this module owns the process-wide runtime generation.
 Dim Shared sfxRuntime_Generation As Integer = 1
 
 

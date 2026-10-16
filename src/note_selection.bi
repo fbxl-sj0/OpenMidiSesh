@@ -10,6 +10,7 @@
     Targets: FreeBASIC fb dialect; shared Windows/Linux x64 and Android editor builds.
 
     Module API: noteSelection_* and noteClipboard_* operations with selection and clipboard records.
+    This is a PRIVATE IMPLEMENTATION INCLUDE, not a public application API.
 
     Purpose:
 

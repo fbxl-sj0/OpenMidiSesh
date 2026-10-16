@@ -2346,7 +2346,7 @@ Private Sub textbox_UpdateScrollMetrics( _
     Dim As Integer horizontalMaximum
     Dim As Integer horizontalMode
     Dim As ScrollBarData Ptr horizontalData
-    ' fblint: disable-next-line FBL311 REASON: Counted passes bound scrollbar convergence; the ordinal is not layout data.
+    ' Counted passes bound scrollbar convergence; the ordinal is not layout data.
     Dim As Integer iteration
     Dim As Integer maximumLineWidth
     Dim As Integer maximumScroll
@@ -3513,7 +3513,7 @@ Private Sub textbox_RenderCallbackLine( _
 End Sub
 
 
-' fblint: disable-next-line FBL111 -- One line pass owns UTF-8 decoding, style and clipped glyph drawing.
+' One line pass owns UTF-8 decoding, style and clipped glyph drawing.
 Private Sub textbox_RenderLine( _
     ByVal w As Widget Ptr, _
     ByVal textData As TextBoxData Ptr, _
@@ -5158,7 +5158,7 @@ Function textbox_RenderObservationMatches(ByVal w As Widget Ptr, _
     Dim As TextBoxData Ptr d = w->data
     Dim As Textbox_RenderFields fields
     Const suffixBytes As Integer = 65
-    ' fblint: disable-next-line FBL310 -- this private type is declared above and compiled here.
+    ' this private type is declared above and compiled here.
     Const fixedHeaderBytes As Integer = SizeOf(Textbox_RenderFields) + 8
     Dim As Integer available = Len(previousKey) - observationOffset
     If available < fixedHeaderBytes + suffixBytes Then Return 0
@@ -5284,7 +5284,7 @@ End Sub
 
 
 
-' fblint: disable-next-line FBL111 -- Visible rows, caret and scrollbars share one frame layout state.
+' Visible rows, caret and scrollbars share one frame layout state.
 Sub textbox_Render(ByVal w As Widget Ptr)
 
     Dim textData As TextBoxData Ptr
@@ -5568,7 +5568,7 @@ Sub textbox_Render(ByVal w As Widget Ptr)
 End Sub
 
 
-' fblint: disable-next-line FBL111 -- Focus, pointer and key transitions apply in editor event order.
+' Focus, pointer and key transitions apply in editor event order.
 Sub textbox_Update(ByVal w As Widget Ptr)
 
     Dim controlInputHandled As Integer

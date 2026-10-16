@@ -32,7 +32,7 @@
 #ifndef __OSE_MASTER_EFFECT_BI__
 #define __OSE_MASTER_EFFECT_BI__
 
-' fblint: disable-next-line FBL911,FBL014 REASON: This is an in-memory record; its fields are not a raw on-disk UDT layout.
+' This is an in-memory record; its fields are not a raw on-disk UDT layout.
 Type OseMasterEffectSettings
     As Integer enabled
     As Single wet

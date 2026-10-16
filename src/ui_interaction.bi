@@ -38,7 +38,7 @@ Const OSE_UI_INTERACTION_COUNT As Integer = 2
 Const OSE_UI_FILE_BUTTON_COUNT As Integer = 3
 Const OSE_UI_TRANSPORT_BUTTON_COUNT As Integer = 7
 
-' fblint: disable-next-line FBL911,FBL014 REASON: This is an in-memory record; its fields are not a raw on-disk UDT layout.
+' This is an in-memory record; its fields are not a raw on-disk UDT layout.
 Type OseUiInteractionMetrics
     As Integer menuHeight
     As Integer menuItemHeight

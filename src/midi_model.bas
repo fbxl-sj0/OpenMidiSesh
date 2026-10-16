@@ -57,7 +57,7 @@
 #include once "midi_model.bi"
 #include once "atomic_file_internal.bi"
 
-' fblint: disable-next-line FBL301 REASON: parser storage is owned by this module and is never exposed.
+' parser storage is owned by this module and is never exposed.
 Dim Shared midi_Data() As UByte
 Dim Shared midi_DataSize As Integer
 Dim Shared midi_EditableNotes() As MidiEditableNote
@@ -158,8 +158,8 @@ Private Function midi_ReserveEditableNotes(ByVal requiredCount As Integer) As In
     End If
 
     Dim As Integer newCapacity = midi_EditableNoteCapacity
-    If newCapacity < 512 Then
-        newCapacity = 512
+    If newCapacity < OSE_MIDI_EDITABLE_NOTE_INITIAL_CAPACITY Then
+        newCapacity = OSE_MIDI_EDITABLE_NOTE_INITIAL_CAPACITY
     End If
     While newCapacity < requiredCount
         If newCapacity > OSE_MAX_EDITABLE_NOTES \ 2 Then
@@ -184,8 +184,8 @@ Private Function midi_ReserveStoredEvents(ByVal requiredCount As Integer) As Int
     End If
 
     Dim As Integer newCapacity = midi_StoredEventCapacity
-    If newCapacity < 1024 Then
-        newCapacity = 1024
+    If newCapacity < OSE_MIDI_STORED_EVENT_INITIAL_CAPACITY Then
+        newCapacity = OSE_MIDI_STORED_EVENT_INITIAL_CAPACITY
     End If
     While newCapacity < requiredCount
         If newCapacity > OSE_MAX_STORED_EVENTS \ 2 Then
@@ -338,7 +338,7 @@ Private Function midi_HistoryStackNewestIndex( _
 ) As Integer
     If stackStart < 0 OrElse stackStart >= OSE_MIDI_HISTORY_STORAGE OrElse _
         stackCount <= 0 OrElse stackCount > OSE_MIDI_HISTORY_DEPTH Then Return -1
-    Return (stackStart + stackCount - 1) Mod OSE_MIDI_HISTORY_STORAGE ' fblint: disable-line FBL406 REASON: Range checks keep the dividend nonnegative and the modulus positive before this calculation.
+    Return (stackStart + stackCount - 1) Mod OSE_MIDI_HISTORY_STORAGE ' Range checks keep the dividend nonnegative and the modulus positive before this calculation.
 End Function
 
 
@@ -571,8 +571,8 @@ Private Function midi_AppendStoredEvent( _
     ByVal eventTick As ULongInt, _
     ByVal eventKind As UByte, _
     ByVal statusByte As UByte, _
-    ByVal data1 As UByte, _
-    ByVal data2 As UByte, _
+    ByVal firstDataByte As UByte, _
+    ByVal secondDataByte As UByte, _
     ByVal eventOrder As Integer, _
     ByRef payload As String _
 ) As Integer
@@ -585,8 +585,8 @@ Private Function midi_AppendStoredEvent( _
         .trackIndex = trackIndex
         .eventKind = eventKind
         .statusByte = statusByte
-        .data1 = data1
-        .data2 = data2
+        .data1 = firstDataByte
+        .data2 = secondDataByte
         .order = eventOrder
         .payload = payload
     End With
@@ -669,10 +669,11 @@ End Function
 
 
 Private Function midi_ReadBe32(ByVal offset As Integer) As ULong
-    Return (CULng(midi_Data(offset)) Shl OSE_BE32_SHIFT_24) Or _
-           (CULng(midi_Data(offset + 1)) Shl OSE_BE32_SHIFT_16) Or _
-           (CULng(midi_Data(offset + 2)) Shl OSE_BE32_SHIFT_8) Or _
-           CULng(midi_Data(offset + 3))
+    Return CULng( _
+        (CULng(midi_Data(offset)) Shl OSE_BE32_SHIFT_24) Or _
+        (CULng(midi_Data(offset + 1)) Shl OSE_BE32_SHIFT_16) Or _
+        (CULng(midi_Data(offset + 2)) Shl OSE_BE32_SHIFT_8) Or _
+        CULng(midi_Data(offset + 3)))
 End Function
 
 
@@ -683,7 +684,7 @@ Private Function midi_ReadVariableLength( _
 ) As Integer
     Dim As ULongInt result = 0
 
-    For byteIndex As Integer = 0 To OSE_MAX_VLQ_BYTES - 1 ' fblint: disable-line FBL311 REASON: SMF variable-length quantities contain at most four bytes.
+    For byteIndex As Integer = 0 To OSE_MAX_VLQ_BYTES - 1 ' SMF variable-length quantities contain at most four bytes.
         If midi_HasBytes(offset, 1, limit) = 0 Then
             Return 0
         End If
@@ -722,9 +723,9 @@ Private Function midi_ReadText( _
 
     For index As Integer = 0 To safeLength - 1
         Dim As UByte characterCode = midi_Data(offset + index)
-        If characterCode >= 32 AndAlso characterCode <= 126 Then
+        If characterCode >= OSE_MIDI_ASCII_PRINTABLE_MIN AndAlso characterCode <= OSE_MIDI_ASCII_PRINTABLE_MAX Then
             Mid(result, index + 1, 1) = Chr(characterCode)
-        ElseIf characterCode = 9 Then
+        ElseIf characterCode = OSE_MIDI_ASCII_TAB Then
             Mid(result, index + 1, 1) = " "
         End If
     Next
@@ -772,10 +773,10 @@ Private Function midi_SanitizeTextValue(ByRef sourceValue As String) As String
 
     Dim As String result = Space(safeLength)
     For index As Integer = 1 To safeLength
-        Dim As Integer characterCode = Asc(Mid(sourceValue, index, 1))
-        If characterCode >= 32 AndAlso characterCode <= 126 Then
+        Dim As Integer characterCode = CUByte(Asc(Mid(sourceValue, index, 1)))
+        If characterCode >= OSE_MIDI_ASCII_PRINTABLE_MIN AndAlso characterCode <= OSE_MIDI_ASCII_PRINTABLE_MAX Then
             Mid(result, index, 1) = Chr(characterCode)
-        ElseIf characterCode = 9 Then
+        ElseIf characterCode = OSE_MIDI_ASCII_TAB Then
             Mid(result, index, 1) = " "
         Else
             Mid(result, index, 1) = " "
@@ -939,15 +940,16 @@ Private Function midi_RebuildTimingMaps( _
     summary.timeSignatureCount = 0
     summary.keySignatureCount = 0
     summary.tempoMicrosecondsPerQuarter = 0
-    Dim As Integer timingIndices(0 To OSE_MAX_TEMPO_EVENTS + _
+    Dim As Integer timingIndices()
+    Redim timingIndices(0 To OSE_MAX_TEMPO_EVENTS + _
         OSE_MAX_TIME_SIGNATURE_EVENTS + OSE_MAX_KEY_SIGNATURE_EVENTS - 1)
     Dim As Integer timingCount = 0
     For storedIndex As Integer = 0 To midi_StoredEventCount - 1
         With midi_StoredEvents(storedIndex)
             If .trackIndex = excludedTrackIndex OrElse _
-                .eventKind <> OSE_EVENT_META OrElse .statusByte <> &HFF Then _
+                .eventKind <> OSE_EVENT_META OrElse .statusByte <> OSE_MIDI_STATUS_META_EVENT Then _
                 Continue For
-            If .data1 <> &H51 AndAlso .data1 <> &H58 AndAlso .data1 <> &H59 Then _
+            If .data1 <> OSE_MIDI_META_TYPE_SET_TEMPO AndAlso .data1 <> OSE_MIDI_META_TYPE_TIME_SIGNATURE AndAlso .data1 <> OSE_MIDI_META_TYPE_KEY_SIGNATURE Then _
                 Continue For
         End With
         If timingCount > UBound(timingIndices) Then
@@ -972,10 +974,10 @@ Private Function midi_RebuildTimingMaps( _
             Case &H51
                 If Len(.payload) <> 3 OrElse _
                     summary.tempoCount >= OSE_MAX_TEMPO_EVENTS Then Return 0
-                Dim As ULong tempoValue = _
-                    (CULng(Asc(Mid(.payload, 1, 1))) Shl 16) Or _
-                    (CULng(Asc(Mid(.payload, 2, 1))) Shl 8) Or _
-                    CULng(Asc(Mid(.payload, 3, 1)))
+                Dim As ULong tempoValue = CULng( _
+                    (Asc(Mid(.payload, 1, 1)) Shl 16) Or _
+                    (Asc(Mid(.payload, 2, 1)) Shl 8) Or _
+                    Asc(Mid(.payload, 3, 1)))
                 summary.tempoMap(summary.tempoCount).tick = .tick
                 summary.tempoMap(summary.tempoCount).microsecondsPerQuarter = _
                     tempoValue
@@ -997,9 +999,9 @@ Private Function midi_RebuildTimingMaps( _
                 If Len(.payload) <> 2 OrElse _
                     summary.keySignatureCount >= OSE_MAX_KEY_SIGNATURE_EVENTS Then _
                     Return 0
-                Dim As Integer sharpsFlats = Asc(Mid(.payload, 1, 1))
-                If sharpsFlats > 127 Then
-                    sharpsFlats -= 256
+                Dim As Integer sharpsFlats = CUByte(Asc(Mid(.payload, 1, 1)))
+                If sharpsFlats > OSE_MIDI_DATA_BYTE_MAX Then
+                    sharpsFlats -= OSE_MIDI_BYTE_MODULUS
                 End If
                 summary.keySignatureMap(summary.keySignatureCount).tick = .tick
                 summary.keySignatureMap(summary.keySignatureCount).sharpsFlats = _
@@ -1057,17 +1059,17 @@ Private Function midi_ParseMetaEvent( _
         causes the following bytes to be interpreted inconsistently
         by stricter sequencers when the document is saved again.
     '/
-    If metaType = &H2F AndAlso metaLength <> 0 Then
+    If metaType = OSE_MIDI_META_TYPE_END_OF_TRACK AndAlso metaLength <> 0 Then
         midi_SetError summary, "MIDI end-of-track event length is invalid"
         Return 0
-    ElseIf metaType = &H51 AndAlso metaLength <> 3 Then
+    ElseIf metaType = OSE_MIDI_META_TYPE_SET_TEMPO AndAlso metaLength <> 3 Then
         midi_SetError summary, "MIDI tempo event length is invalid"
         Return 0
-    ElseIf metaType = &H58 AndAlso metaLength <> 4 Then
+    ElseIf metaType = OSE_MIDI_META_TYPE_TIME_SIGNATURE AndAlso metaLength <> 4 Then
         midi_SetError summary, _
             "MIDI time-signature event length is invalid"
         Return 0
-    ElseIf metaType = &H59 AndAlso metaLength <> 2 Then
+    ElseIf metaType = OSE_MIDI_META_TYPE_KEY_SIGNATURE AndAlso metaLength <> 2 Then
         midi_SetError summary, _
             "MIDI key-signature event length is invalid"
         Return 0
@@ -1075,7 +1077,7 @@ Private Function midi_ParseMetaEvent( _
 
     track.eventCount += 1
     summary.eventCount += 1
-    If metaType <> &H2F Then
+    If metaType <> OSE_MIDI_META_TYPE_END_OF_TRACK Then
         Dim As String metaPayload = midi_ReadBinaryString( _
             offset, CInt(metaLength), trackEnd)
         If midi_AppendStoredEvent(trackIndex, absoluteTick, _
@@ -1093,17 +1095,17 @@ Private Function midi_ParseMetaEvent( _
     ElseIf metaType = &H02 AndAlso summary.copyrightText = "" Then
         summary.copyrightText = midi_ReadText(offset, CInt(metaLength), _
             trackEnd)
-    ElseIf metaType = &H05 AndAlso summary.lyricText = "" Then
+    ElseIf metaType = OSE_MIDI_META_TYPE_LYRIC AndAlso summary.lyricText = "" Then
         summary.lyricText = midi_ReadText(offset, CInt(metaLength), _
             trackEnd)
-    ElseIf metaType = &H06 AndAlso summary.markerText = "" Then
+    ElseIf metaType = OSE_MIDI_META_TYPE_MARKER AndAlso summary.markerText = "" Then
         summary.markerText = midi_ReadText(offset, CInt(metaLength), _
             trackEnd)
-    ElseIf metaType = &H51 AndAlso metaLength = 3 Then
-        Dim As ULong tempoValue = _
+    ElseIf metaType = OSE_MIDI_META_TYPE_SET_TEMPO AndAlso metaLength = 3 Then
+        Dim As ULong tempoValue = CULng( _
             (CULng(midi_Data(offset)) Shl 16) Or _
             (CULng(midi_Data(offset + 1)) Shl 8) Or _
-            CULng(midi_Data(offset + 2))
+            CULng(midi_Data(offset + 2)))
         If tempoValue = 0 Then
             midi_SetError summary, "MIDI tempo event has a zero value"
             Return 0
@@ -1120,8 +1122,8 @@ Private Function midi_ParseMetaEvent( _
         If summary.tempoMicrosecondsPerQuarter = 0 Then
             summary.tempoMicrosecondsPerQuarter = tempoValue
         End If
-    ElseIf metaType = &H58 AndAlso metaLength = 4 Then
-        If midi_Data(offset) = 0 OrElse midi_Data(offset + 1) > 7 Then
+    ElseIf metaType = OSE_MIDI_META_TYPE_TIME_SIGNATURE AndAlso metaLength = 4 Then
+        If midi_Data(offset) = 0 OrElse midi_Data(offset + 1) > OSE_MIDI_TIME_SIGNATURE_DENOMINATOR_POWER_MAX Then
             midi_SetError summary, "MIDI time-signature event is invalid"
             Return 0
         End If
@@ -1138,12 +1140,12 @@ Private Function midi_ParseMetaEvent( _
             .thirtySecondNotesPerQuarter = midi_Data(offset + 3)
         End With
         summary.timeSignatureCount += 1
-    ElseIf metaType = &H59 AndAlso metaLength = 2 Then
+    ElseIf metaType = OSE_MIDI_META_TYPE_KEY_SIGNATURE AndAlso metaLength = 2 Then
         Dim As Integer sharpsFlats = CInt(midi_Data(offset))
-        If sharpsFlats > 127 Then
-            sharpsFlats -= 256
+        If sharpsFlats > OSE_MIDI_DATA_BYTE_MAX Then
+            sharpsFlats -= OSE_MIDI_BYTE_MODULUS
         End If
-        If sharpsFlats < -7 OrElse sharpsFlats > 7 OrElse _
+        If sharpsFlats < OSE_MIDI_KEY_SIGNATURE_MIN OrElse sharpsFlats > OSE_MIDI_KEY_SIGNATURE_MAX OrElse _
             midi_Data(offset + 1) > 1 Then
             midi_SetError summary, "MIDI key-signature event is invalid"
             Return 0
@@ -1162,7 +1164,7 @@ Private Function midi_ParseMetaEvent( _
     End If
 
     offset += CInt(metaLength)
-    If metaType = &H2F Then
+    If metaType = OSE_MIDI_META_TYPE_END_OF_TRACK Then
         offset = trackEnd
         Return OSE_META_PARSE_END_TRACK
     End If
@@ -1170,7 +1172,228 @@ Private Function midi_ParseMetaEvent( _
 End Function
 
 
-' fblint: disable-next-line FBL111 REASON: one dispatcher must cover all Standard MIDI event families.
+' Read the data-byte count from the channel status before consuming the event.
+Private Function midi_ReadChannelEventData( _
+    ByRef summary As MidiSummary, _
+    ByRef offset As Integer, _
+    ByVal trackEnd As Integer, _
+    ByVal eventType As UByte, _
+    ByVal hasFirstData As Integer, _
+    ByVal runningDataByte As UByte, _
+    ByRef firstDataByte As UByte, _
+    ByRef secondDataByte As UByte _
+) As Integer
+    Dim As Integer dataCount = 2
+    If eventType = OSE_MIDI_STATUS_PROGRAM_CHANGE OrElse _
+        eventType = OSE_MIDI_STATUS_CHANNEL_PRESSURE Then
+        dataCount = 1
+    End If
+
+    firstDataByte = runningDataByte
+    secondDataByte = 0
+    If hasFirstData = 0 Then
+        If midi_HasBytes(offset, 1, trackEnd) = 0 Then
+            midi_SetError summary, "truncated MIDI event data"
+            Return 0
+        End If
+        firstDataByte = midi_Data(offset)
+        offset += 1
+    End If
+    If dataCount = 2 Then
+        If midi_HasBytes(offset, 1, trackEnd) = 0 Then
+            midi_SetError summary, "truncated MIDI event data"
+            Return 0
+        End If
+        secondDataByte = midi_Data(offset)
+        offset += 1
+    End If
+
+    If firstDataByte > OSE_MIDI_DATA_BYTE_MAX OrElse _
+        secondDataByte > OSE_MIDI_DATA_BYTE_MAX Then
+        midi_SetError summary, "MIDI channel data contains a status byte"
+        Return 0
+    End If
+    Return -1
+End Function
+
+
+Private Function midi_RecordParsedNoteStart( _
+    ByRef summary As MidiSummary, _
+    ByRef track As MidiTrackSummary, _
+    ByVal trackIndex As Integer, _
+    ByVal absoluteTick As ULongInt, _
+    ByVal currentEventOrder As Integer, _
+    ByVal keyNumber As UByte, _
+    ByVal midiChannel As UByte, _
+    ByVal noteVelocity As UByte, _
+    activeNoteHead(Any, Any) As Integer, _
+    activeNoteTail(Any, Any) As Integer, _
+    activeNoteNext() As Integer _
+) As Integer
+    Dim As ULongInt previewDuration = 1
+    If summary.division > 0 Then
+        previewDuration = CULngInt(summary.division) \ 4
+        If previewDuration = 0 Then previewDuration = 1
+    End If
+
+    Dim As Integer editableNoteIndex = midi_AppendEditableNote( _
+        trackIndex, absoluteTick, previewDuration, keyNumber, _
+        midiChannel, noteVelocity)
+    If editableNoteIndex < 0 Then
+        midi_SetError summary, "MIDI note limit exceeded"
+        Return 0
+    End If
+    midi_EditableNotes(editableNoteIndex).startEventOrder = _
+        currentEventOrder + 1
+
+    /'
+        Note-off events identify only channel and key. Keep active notes in
+        FIFO order so overlapping same-key notes close deterministically.
+    '/
+    activeNoteNext(editableNoteIndex) = -1
+    Dim As Integer previousTail = activeNoteTail(midiChannel, keyNumber)
+    If previousTail >= 0 Then
+        activeNoteNext(previousTail) = editableNoteIndex
+    Else
+        activeNoteHead(midiChannel, keyNumber) = editableNoteIndex
+    End If
+    activeNoteTail(midiChannel, keyNumber) = editableNoteIndex
+
+    track.noteCount += 1
+    summary.noteCount += 1
+    If summary.previewCount < OSE_MAX_PREVIEW_NOTES Then
+        With summary.preview(summary.previewCount)
+            .tick = absoluteTick
+            .durationTicks = previewDuration
+            .keyNumber = keyNumber
+            .channel = midiChannel
+            .trackIndex = trackIndex
+        End With
+        summary.previewCount += 1
+    End If
+    Return -1
+End Function
+
+
+Private Sub midi_CloseParsedNote( _
+    ByVal midiChannel As UByte, _
+    ByVal keyNumber As UByte, _
+    ByVal absoluteTick As ULongInt, _
+    ByVal currentEventOrder As Integer, _
+    activeNoteHead(Any, Any) As Integer, _
+    activeNoteTail(Any, Any) As Integer, _
+    activeNoteNext() As Integer _
+)
+    Dim As Integer editableNoteIndex = _
+        activeNoteHead(midiChannel, keyNumber)
+    If editableNoteIndex < 0 Then Exit Sub
+
+    Dim As ULongInt noteDuration = absoluteTick - _
+        midi_EditableNotes(editableNoteIndex).startTick
+    If noteDuration = 0 Then noteDuration = 1
+    midi_EditableNotes(editableNoteIndex).durationTicks = noteDuration
+    midi_EditableNotes(editableNoteIndex).endEventOrder = _
+        currentEventOrder + 1
+
+    activeNoteHead(midiChannel, keyNumber) = _
+        activeNoteNext(editableNoteIndex)
+    activeNoteNext(editableNoteIndex) = -1
+    If activeNoteHead(midiChannel, keyNumber) < 0 Then
+        activeNoteTail(midiChannel, keyNumber) = -1
+    End If
+End Sub
+
+
+Private Sub midi_UpdateParsedChannelState( _
+    ByRef summary As MidiSummary, _
+    ByVal eventType As UByte, _
+    ByVal midiChannel As UByte, _
+    ByVal firstDataByte As UByte, _
+    ByVal secondDataByte As UByte _
+)
+    Select Case eventType
+    Case OSE_MIDI_STATUS_CONTROL_CHANGE
+        Select Case firstDataByte
+        Case OSE_MIDI_CONTROLLER_VOLUME
+            summary.channelVolume(midiChannel) = secondDataByte
+        Case OSE_MIDI_CONTROLLER_PAN
+            summary.channelPan(midiChannel) = secondDataByte
+        Case OSE_MIDI_CONTROLLER_EXPRESSION
+            summary.channelExpression(midiChannel) = secondDataByte
+        Case OSE_MIDI_CONTROLLER_REVERB
+            summary.channelReverb(midiChannel) = secondDataByte
+        Case OSE_MIDI_CONTROLLER_CHORUS
+            summary.channelChorus(midiChannel) = secondDataByte
+        End Select
+    Case OSE_MIDI_STATUS_PROGRAM_CHANGE
+        summary.channelProgram(midiChannel) = firstDataByte
+    Case OSE_MIDI_STATUS_PITCH_BEND
+        summary.channelPitchBend(midiChannel) = _
+            CInt(firstDataByte) Or (CInt(secondDataByte) Shl 7)
+    End Select
+End Sub
+
+
+Private Function midi_ParseChannelEvent( _
+    ByRef summary As MidiSummary, _
+    ByRef track As MidiTrackSummary, _
+    ByVal trackIndex As Integer, _
+    ByRef offset As Integer, _
+    ByVal trackEnd As Integer, _
+    ByVal absoluteTick As ULongInt, _
+    ByVal currentEventOrder As Integer, _
+    ByVal statusByte As UByte, _
+    ByVal hasFirstData As Integer, _
+    ByVal firstDataByte As UByte, _
+    activeNoteHead(Any, Any) As Integer, _
+    activeNoteTail(Any, Any) As Integer, _
+    activeNoteNext() As Integer _
+) As Integer
+    Dim As UByte eventType = CUByte(statusByte And OSE_MIDI_STATUS_TYPE_MASK)
+    Dim As UByte midiChannel = _
+        CUByte(statusByte And OSE_MIDI_STATUS_CHANNEL_MASK)
+    Dim As UByte data1
+    Dim As UByte data2
+    If midi_ReadChannelEventData(summary, offset, trackEnd, eventType, _
+        hasFirstData, firstDataByte, data1, data2) = 0 Then Return 0
+
+    track.eventCount += 1
+    summary.eventCount += 1
+    If eventType <> OSE_MIDI_STATUS_NOTE_OFF AndAlso _
+        eventType <> OSE_MIDI_STATUS_NOTE_ON Then
+        Dim As String emptyPayload = ""
+        If midi_AppendStoredEvent(trackIndex, absoluteTick, _
+            OSE_EVENT_CHANNEL, statusByte, data1, data2, _
+            currentEventOrder, emptyPayload) = 0 Then
+            midi_SetError summary, "MIDI stored-event limit exceeded"
+            Return 0
+        End If
+    End If
+
+    If eventType = OSE_MIDI_STATUS_NOTE_ON Then
+        If data2 <> 0 Then
+            If midi_RecordParsedNoteStart(summary, track, trackIndex, _
+                absoluteTick, currentEventOrder, data1, midiChannel, data2, _
+                activeNoteHead(), activeNoteTail(), activeNoteNext()) = 0 Then _
+                Return 0
+        Else
+            midi_CloseParsedNote(midiChannel, data1, absoluteTick, _
+                currentEventOrder, activeNoteHead(), activeNoteTail(), _
+                activeNoteNext())
+        End If
+    ElseIf eventType = OSE_MIDI_STATUS_NOTE_OFF Then
+        midi_CloseParsedNote(midiChannel, data1, absoluteTick, _
+            currentEventOrder, activeNoteHead(), activeNoteTail(), _
+            activeNoteNext())
+    Else
+        midi_UpdateParsedChannelState(summary, eventType, midiChannel, _
+            data1, data2)
+    End If
+    Return -1
+End Function
+
+
+' one dispatcher must cover all Standard MIDI event families.
 Private Function midi_ParseTrack( _
     ByRef summary As MidiSummary, _
     ByRef track As MidiTrackSummary, _
@@ -1183,8 +1406,6 @@ Private Function midi_ParseTrack( _
     Dim As ULongInt absoluteTick = 0
     Dim As UByte runningStatus = 0
     Dim As Integer eventOrder = 0
-    ' Standard MIDI note-off events identify only channel and key. A FIFO
-    ' queue gives overlapping same-key notes deterministic ownership.
     Dim As Integer activeNoteHead(0 To 15, 0 To 127)
     Dim As Integer activeNoteTail(0 To 15, 0 To 127)
     Dim As Integer activeNoteNext()
@@ -1223,7 +1444,7 @@ Private Function midi_ParseTrack( _
         Dim As UByte firstDataByte = 0
         Dim As Integer hasFirstData = 0
 
-        If statusByte < &H80 Then
+        If statusByte < OSE_MIDI_STATUS_CHANNEL_MIN Then
             If runningStatus = 0 Then
                 midi_SetError summary, "MIDI data byte without running status"
                 Return 0
@@ -1236,138 +1457,20 @@ Private Function midi_ParseTrack( _
             offset += 1
         Else
             offset += 1
-            If statusByte >= &H80 AndAlso statusByte <= &HEF Then
+            If statusByte >= OSE_MIDI_STATUS_CHANNEL_MIN AndAlso statusByte <= OSE_MIDI_STATUS_CHANNEL_MAX Then
                 runningStatus = statusByte
             End If
         End If
 
-        If statusByte >= &H80 AndAlso statusByte <= &HEF Then
-            Dim As UByte eventType = statusByte And &HF0
-            Dim As UByte midiChannel = statusByte And &H0F
-            Dim As Integer dataCount = 2
-            If eventType = &HC0 OrElse eventType = &HD0 Then
-                dataCount = 1
-            End If
-
-            Dim As UByte data1 = firstDataByte
-            Dim As UByte data2 = 0
-            If hasFirstData = 0 Then
-                If midi_HasBytes(offset, 1, trackEnd) = 0 Then
-                    midi_SetError summary, "truncated MIDI event data"
-                    Return 0
-                End If
-                data1 = midi_Data(offset)
-                offset += 1
-            End If
-            If dataCount = 2 Then
-                If midi_HasBytes(offset, 1, trackEnd) = 0 Then
-                    midi_SetError summary, "truncated MIDI event data"
-                    Return 0
-                End If
-                data2 = midi_Data(offset)
-                offset += 1
-            End If
-
-            If data1 > 127 OrElse data2 > 127 Then
-                midi_SetError summary, "MIDI channel data contains a status byte"
-                Return 0
-            End If
-
-            track.eventCount += 1
-            summary.eventCount += 1
-
-            If eventType <> &H80 AndAlso eventType <> &H90 Then
-                Dim As String emptyPayload = ""
-                If midi_AppendStoredEvent(trackIndex, absoluteTick, _
-                    OSE_EVENT_CHANNEL, statusByte, data1, data2, _
-                    currentEventOrder, emptyPayload) = 0 Then
-                    midi_SetError summary, "MIDI stored-event limit exceeded"
-                    Return 0
-                End If
-            End If
-
-            If eventType = &H90 AndAlso data2 <> 0 Then
-                Dim As ULongInt previewDuration = 1
-                If summary.division > 0 Then
-                    previewDuration = CULngInt(summary.division) \ 4
-                    If previewDuration = 0 Then
-                        previewDuration = 1
-                    End If
-                End If
-
-                Dim As Integer editableNoteIndex = midi_AppendEditableNote( _
-                    trackIndex, absoluteTick, previewDuration, data1, _
-                    midiChannel, data2)
-                If editableNoteIndex < 0 Then
-                    midi_SetError summary, "MIDI note limit exceeded"
-                    Return 0
-                End If
-                midi_EditableNotes(editableNoteIndex).startEventOrder = _
-                    currentEventOrder + 1
-                activeNoteNext(editableNoteIndex) = -1
-                Dim As Integer previousTail = activeNoteTail(midiChannel, data1)
-                If previousTail >= 0 Then
-                    activeNoteNext(previousTail) = editableNoteIndex
-                Else
-                    activeNoteHead(midiChannel, data1) = editableNoteIndex
-                End If
-                activeNoteTail(midiChannel, data1) = editableNoteIndex
-
-                track.noteCount += 1
-                summary.noteCount += 1
-                If summary.previewCount < OSE_MAX_PREVIEW_NOTES Then
-                    With summary.preview(summary.previewCount)
-                        .tick = absoluteTick
-                        .durationTicks = previewDuration
-                        .keyNumber = data1
-                        .channel = midiChannel
-                        .trackIndex = trackIndex
-                    End With
-                    summary.previewCount += 1
-                End If
-            ElseIf eventType = &HB0 Then
-                Select Case data1
-                Case 7
-                    summary.channelVolume(midiChannel) = data2
-                Case 10
-                    summary.channelPan(midiChannel) = data2
-                Case 11
-                    summary.channelExpression(midiChannel) = data2
-                Case 91
-                    summary.channelReverb(midiChannel) = data2
-                Case 93
-                    summary.channelChorus(midiChannel) = data2
-                End Select
-            ElseIf eventType = &HC0 Then
-                summary.channelProgram(midiChannel) = data1
-            ElseIf eventType = &HE0 Then
-                summary.channelPitchBend(midiChannel) = _
-                    CInt(data1) Or (CInt(data2) Shl 7)
-            ElseIf eventType = &H80 OrElse _
-                (eventType = &H90 AndAlso data2 = 0) Then
-                Dim As Integer editableNoteIndex = _
-                    activeNoteHead(midiChannel, data1)
-                If editableNoteIndex >= 0 Then
-                    Dim As ULongInt noteDuration = absoluteTick - _
-                        midi_EditableNotes(editableNoteIndex).startTick
-                    If noteDuration = 0 Then
-                        noteDuration = 1
-                    End If
-                    midi_EditableNotes(editableNoteIndex).durationTicks = noteDuration
-                    midi_EditableNotes(editableNoteIndex).endEventOrder = _
-                        currentEventOrder + 1
-                    activeNoteHead(midiChannel, data1) = _
-                        activeNoteNext(editableNoteIndex)
-                    activeNoteNext(editableNoteIndex) = -1
-                    If activeNoteHead(midiChannel, data1) < 0 Then
-                        activeNoteTail(midiChannel, data1) = -1
-                    End If
-                End If
-            End If
+        If statusByte >= OSE_MIDI_STATUS_CHANNEL_MIN AndAlso statusByte <= OSE_MIDI_STATUS_CHANNEL_MAX Then
+            If midi_ParseChannelEvent(summary, track, trackIndex, offset, _
+                trackEnd, absoluteTick, currentEventOrder, statusByte, _
+                hasFirstData, firstDataByte, activeNoteHead(), _
+                activeNoteTail(), activeNoteNext()) = 0 Then Return 0
             Continue While
         End If
 
-        If statusByte = &HFF Then
+        If statusByte = OSE_MIDI_STATUS_META_EVENT Then
             Dim As MidiMetaParseResult metaResult = midi_ParseMetaEvent( _
                 summary, track, trackIndex, offset, trackEnd, _
                 absoluteTick, currentEventOrder)
@@ -1377,7 +1480,7 @@ Private Function midi_ParseTrack( _
             Continue While
         End If
 
-        If statusByte = &HF0 OrElse statusByte = &HF7 Then
+        If statusByte = OSE_MIDI_STATUS_SYSEX_START OrElse statusByte = OSE_MIDI_STATUS_SYSEX_END Then
             Dim As ULong sysexLength
             If midi_ReadVariableLength(offset, trackEnd, sysexLength) = 0 Then
                 midi_SetError summary, "truncated MIDI system-exclusive length"
@@ -1514,7 +1617,7 @@ Private Function midi_LoadSummaryIntoCurrent( _
     End If
 
     fileSize = LOF(fileNumber)
-    If fileSize < 14 OrElse fileSize > OSE_MAX_MIDI_FILE_BYTES Then
+    If fileSize < OSE_MIDI_MIN_FILE_BYTES OrElse fileSize > OSE_MAX_MIDI_FILE_BYTES Then
         Close #fileNumber
         midi_SetError summary, "MIDI file size is outside the supported range"
         Return 0
@@ -1536,7 +1639,7 @@ Private Function midi_LoadSummaryIntoCurrent( _
     End If
 
     Dim As ULong headerLength = midi_ReadBe32(4)
-    If headerLength < 6 OrElse headerLength > CULng(midi_DataSize - 8) Then
+    If headerLength < OSE_MIDI_HEADER_MIN_BYTES OrElse headerLength > CULng(midi_DataSize - 8) Then
         midi_SetError summary, "invalid MIDI header length"
         Return 0
     End If
@@ -1673,7 +1776,7 @@ Function midi_SetTrackName( _
     While storedIndex < midi_StoredEventCount
         With midi_StoredEvents(storedIndex)
             If .trackIndex = trackIndex AndAlso _
-                .eventKind = OSE_EVENT_META AndAlso .statusByte = &HFF AndAlso _
+                .eventKind = OSE_EVENT_META AndAlso .statusByte = OSE_MIDI_STATUS_META_EVENT AndAlso _
                 .data1 = &H03 Then
                 If trackName = "" Then
                     For shiftIndex As Integer = storedIndex To _
@@ -1716,7 +1819,7 @@ End Function
 
 
 Function midi_KeyDisplayName(ByVal keyNumber As Integer) As String
-    If keyNumber < 0 OrElse keyNumber > 127 Then
+    If keyNumber < 0 OrElse keyNumber > OSE_MIDI_NOTE_NUMBER_MAX Then
         Return "?"
     End If
     Dim As String noteNames(0 To 11) = _
@@ -2062,7 +2165,7 @@ Private Sub midi_RebuildChannelState(ByRef summary As MidiSummary)
             Continue For
         End If
         Dim As Integer channelIndex = storedEvent.statusByte And &H0F
-        If channelIndex < 0 OrElse channelIndex > 15 Then
+        If channelIndex < 0 OrElse channelIndex > OSE_MIDI_CHANNEL_INDEX_MAX Then
             Continue For
         End If
 
@@ -2124,7 +2227,7 @@ Private Function midi_FindInitialTempoEvent() As Integer
     For storedIndex As Integer = 0 To midi_StoredEventCount - 1
         With midi_StoredEvents(storedIndex)
             If .trackIndex = 0 AndAlso .eventKind = OSE_EVENT_META AndAlso _
-                .statusByte = &HFF AndAlso .data1 = &H51 AndAlso _
+                .statusByte = OSE_MIDI_STATUS_META_EVENT AndAlso .data1 = OSE_MIDI_META_TYPE_SET_TEMPO AndAlso _
                 .tick = 0 AndAlso Len(.payload) = 3 Then
                 Return storedIndex
             End If
@@ -2141,7 +2244,7 @@ Private Function midi_FindInitialControllerEvent( _
     For storedIndex As Integer = 0 To midi_StoredEventCount - 1
         With midi_StoredEvents(storedIndex)
             If .trackIndex = 0 AndAlso .eventKind = OSE_EVENT_CHANNEL AndAlso _
-                (.statusByte And &HF0) = &HB0 AndAlso _
+                (.statusByte And &HF0) = OSE_MIDI_STATUS_CONTROL_CHANGE AndAlso _
                 (.statusByte And &H0F) = channelIndex AndAlso _
                 .data1 = controllerNumber AndAlso .tick = 0 Then
                 Return storedIndex
@@ -2173,7 +2276,7 @@ Private Function midi_UpsertInitialController( _
     For storedIndex As Integer = 0 To midi_StoredEventCount - 1
         With midi_StoredEvents(storedIndex)
             If .trackIndex = 0 AndAlso .eventKind = OSE_EVENT_CHANNEL AndAlso _
-                (.statusByte And &HF0) = &HB0 AndAlso _
+                (.statusByte And &HF0) = OSE_MIDI_STATUS_CONTROL_CHANGE AndAlso _
                 (.statusByte And &H0F) = channelIndex AndAlso _
                 .data1 = controllerNumber AndAlso .tick = 0 Then
                 If firstEventIndex < 0 Then
@@ -2205,12 +2308,12 @@ Function midi_SetInitialTempoBpm( _
 ) As Integer
     If summary.trackCount <= 0 OrElse _
         summary.trackCount > OSE_MAX_MIDI_TRACKS Then Return 0
-    If beatsPerMinute < 20 OrElse beatsPerMinute > 400 Then
+    If beatsPerMinute < OSE_MIDI_TEMPO_MIN_BPM OrElse beatsPerMinute > OSE_MIDI_TEMPO_MAX_BPM Then
         Return 0
     End If
 
     Dim As ULong tempoValue = CULng(60000000 \ beatsPerMinute)
-    If tempoValue = 0 OrElse tempoValue > &HFFFFFF Then
+    If tempoValue = 0 OrElse tempoValue > OSE_MIDI_TEMPO_VALUE_MAX Then
         Return 0
     End If
 
@@ -2226,14 +2329,14 @@ Function midi_SetInitialTempoBpm( _
     If midi_StoredEventCount >= OSE_MAX_STORED_EVENTS AndAlso _
         midi_FindInitialTempoEvent() < 0 Then Return 0
 
-    Dim As String tempoPayload = Chr(CInt((tempoValue Shr 16) And &HFF)) + _
-        Chr(CInt((tempoValue Shr 8) And &HFF)) + _
-        Chr(CInt(tempoValue And &HFF))
+    Dim As String tempoPayload = Chr((tempoValue Shr 16) And &HFF) + _
+        Chr((tempoValue Shr 8) And &HFF) + _
+        Chr(tempoValue And &HFF)
     Dim As Integer tempoEventIndex = -1
     For storedIndex As Integer = 0 To midi_StoredEventCount - 1
         With midi_StoredEvents(storedIndex)
             If .trackIndex = 0 AndAlso .eventKind = OSE_EVENT_META AndAlso _
-                .statusByte = &HFF AndAlso .data1 = &H51 AndAlso _
+                .statusByte = OSE_MIDI_STATUS_META_EVENT AndAlso .data1 = OSE_MIDI_META_TYPE_SET_TEMPO AndAlso _
                 .tick = 0 AndAlso Len(.payload) = 3 Then
                 If tempoEventIndex < 0 Then
                     tempoEventIndex = storedIndex
@@ -2288,11 +2391,11 @@ Function midi_SetChannelMix( _
 ) As Integer
     If summary.trackCount <= 0 OrElse _
         summary.trackCount > OSE_MAX_MIDI_TRACKS Then Return 0
-    If channelIndex < 0 OrElse channelIndex > 15 Then
+    If channelIndex < 0 OrElse channelIndex > OSE_MIDI_CHANNEL_INDEX_MAX Then
         Return 0
     End If
-    If volumeValue < 0 OrElse volumeValue > 127 OrElse _
-        panValue < 0 OrElse panValue > 127 Then Return 0
+    If volumeValue < 0 OrElse volumeValue > OSE_MIDI_DATA_BYTE_MAX OrElse _
+        panValue < 0 OrElse panValue > OSE_MIDI_DATA_BYTE_MAX Then Return 0
 
     Dim As Integer missingEvents = 0
     If midi_FindInitialControllerEvent(channelIndex, 7) < 0 Then _
@@ -2323,11 +2426,11 @@ Function midi_SetChannelEffects( _
 ) As Integer
     If summary.trackCount <= 0 OrElse _
         summary.trackCount > OSE_MAX_MIDI_TRACKS Then Return 0
-    If channelIndex < 0 OrElse channelIndex > 15 Then
+    If channelIndex < 0 OrElse channelIndex > OSE_MIDI_CHANNEL_INDEX_MAX Then
         Return 0
     End If
-    If chorusValue < 0 OrElse chorusValue > 127 OrElse _
-        reverbValue < 0 OrElse reverbValue > 127 Then Return 0
+    If chorusValue < 0 OrElse chorusValue > OSE_MIDI_DATA_BYTE_MAX OrElse _
+        reverbValue < 0 OrElse reverbValue > OSE_MIDI_DATA_BYTE_MAX Then Return 0
 
     Dim As Integer missingEvents = 0
     If midi_FindInitialControllerEvent(channelIndex, 93) < 0 Then _
@@ -2360,24 +2463,24 @@ Function midi_SetTempoPointBpm( _
     If tempoIndex < 0 OrElse tempoIndex >= summary.tempoCount Then
         Return 0
     End If
-    If beatsPerMinute < 20 OrElse beatsPerMinute > 400 Then
+    If beatsPerMinute < OSE_MIDI_TEMPO_MIN_BPM OrElse beatsPerMinute > OSE_MIDI_TEMPO_MAX_BPM Then
         Return 0
     End If
 
     Dim As ULong tempoValue = CULng(60000000 \ beatsPerMinute)
-    If tempoValue = 0 OrElse tempoValue > &HFFFFFF Then
+    If tempoValue = 0 OrElse tempoValue > OSE_MIDI_TEMPO_VALUE_MAX Then
         Return 0
     End If
 
     Dim As ULongInt targetTick = summary.tempoMap(tempoIndex).tick
-    Dim As String tempoPayload = Chr(CInt((tempoValue Shr 16) And &HFF)) + _
-        Chr(CInt((tempoValue Shr 8) And &HFF)) + _
-        Chr(CInt(tempoValue And &HFF))
+    Dim As String tempoPayload = Chr((tempoValue Shr 16) And &HFF) + _
+        Chr((tempoValue Shr 8) And &HFF) + _
+        Chr(tempoValue And &HFF)
     Dim As Integer foundTempoEvent = 0
     For storedIndex As Integer = 0 To midi_StoredEventCount - 1
         With midi_StoredEvents(storedIndex)
-            If .eventKind = OSE_EVENT_META AndAlso .statusByte = &HFF AndAlso _
-                .data1 = &H51 AndAlso .tick = targetTick AndAlso _
+            If .eventKind = OSE_EVENT_META AndAlso .statusByte = OSE_MIDI_STATUS_META_EVENT AndAlso _
+                .data1 = OSE_MIDI_META_TYPE_SET_TEMPO AndAlso .tick = targetTick AndAlso _
                 Len(.payload) = 3 Then
                 .payload = tempoPayload
                 foundTempoEvent = -1
@@ -2423,7 +2526,7 @@ Function midi_AddTempoPointBpm( _
     If tick > OSE_MAX_MIDI_TICK Then
         Return -1
     End If
-    If beatsPerMinute < 20 OrElse beatsPerMinute > 400 Then
+    If beatsPerMinute < OSE_MIDI_TEMPO_MIN_BPM OrElse beatsPerMinute > OSE_MIDI_TEMPO_MAX_BPM Then
         Return -1
     End If
 
@@ -2437,12 +2540,12 @@ Function midi_AddTempoPointBpm( _
         midi_StoredEventCount >= OSE_MAX_STORED_EVENTS Then Return -1
 
     Dim As ULong tempoValue = CULng(60000000 \ beatsPerMinute)
-    If tempoValue = 0 OrElse tempoValue > &HFFFFFF Then
+    If tempoValue = 0 OrElse tempoValue > OSE_MIDI_TEMPO_VALUE_MAX Then
         Return -1
     End If
-    Dim As String tempoPayload = Chr(CInt((tempoValue Shr 16) And &HFF)) + _
-        Chr(CInt((tempoValue Shr 8) And &HFF)) + _
-        Chr(CInt(tempoValue And &HFF))
+    Dim As String tempoPayload = Chr((tempoValue Shr 16) And &HFF) + _
+        Chr((tempoValue Shr 8) And &HFF) + _
+        Chr(tempoValue And &HFF)
     If midi_AppendStoredEvent( _
         trackIndex, tick, OSE_EVENT_META, &HFF, &H51, 0, _
         midi_NextTrackEventOrder(trackIndex), tempoPayload) = 0 Then
@@ -2485,7 +2588,7 @@ Function midi_RemoveTempoPoint( _
     For storedReadIndex As Integer = 0 To midi_StoredEventCount - 1
         With midi_StoredEvents(storedReadIndex)
             If .eventKind = OSE_EVENT_META AndAlso _
-                .statusByte = &HFF AndAlso .data1 = &H51 AndAlso _
+                .statusByte = OSE_MIDI_STATUS_META_EVENT AndAlso .data1 = OSE_MIDI_META_TYPE_SET_TEMPO AndAlso _
                 .tick = targetTick AndAlso Len(.payload) = 3 Then
                 Continue For
             End If
@@ -2518,16 +2621,16 @@ Function midi_SetTimeSignaturePoint( _
         summary.trackCount > OSE_MAX_MIDI_TRACKS Then Return 0
     If signatureIndex < 0 OrElse _
         signatureIndex >= summary.timeSignatureCount Then Return 0
-    If numerator < 1 OrElse numerator > 255 OrElse _
-        denominatorPower < 0 OrElse denominatorPower > 7 Then Return 0
+    If numerator < 1 OrElse numerator > OSE_MIDI_TIME_SIGNATURE_NUMERATOR_MAX OrElse _
+        denominatorPower < 0 OrElse denominatorPower > OSE_MIDI_TIME_SIGNATURE_DENOMINATOR_POWER_MAX Then Return 0
 
     Dim As ULongInt targetTick = _
         summary.timeSignatureMap(signatureIndex).tick
     Dim As Integer foundSignatureEvent = 0
     For storedIndex As Integer = 0 To midi_StoredEventCount - 1
         With midi_StoredEvents(storedIndex)
-            If .eventKind = OSE_EVENT_META AndAlso .statusByte = &HFF AndAlso _
-                .data1 = &H58 AndAlso .tick = targetTick AndAlso _
+            If .eventKind = OSE_EVENT_META AndAlso .statusByte = OSE_MIDI_STATUS_META_EVENT AndAlso _
+                .data1 = OSE_MIDI_META_TYPE_TIME_SIGNATURE AndAlso .tick = targetTick AndAlso _
                 Len(.payload) = 4 Then
                 Mid(.payload, 1, 1) = Chr(numerator)
                 Mid(.payload, 2, 1) = Chr(denominatorPower)
@@ -2577,8 +2680,8 @@ Function midi_AddTimeSignaturePoint( _
     If tick > OSE_MAX_MIDI_TICK Then
         Return -1
     End If
-    If numerator < 1 OrElse numerator > 255 OrElse _
-        denominatorPower < 0 OrElse denominatorPower > 7 Then Return -1
+    If numerator < 1 OrElse numerator > OSE_MIDI_TIME_SIGNATURE_NUMERATOR_MAX OrElse _
+        denominatorPower < 0 OrElse denominatorPower > OSE_MIDI_TIME_SIGNATURE_DENOMINATOR_POWER_MAX Then Return -1
 
     For pointIndex As Integer = 0 To summary.timeSignatureCount - 1
         If summary.timeSignatureMap(pointIndex).tick = tick Then
@@ -2634,7 +2737,7 @@ Function midi_RemoveTimeSignaturePoint( _
     For storedReadIndex As Integer = 0 To midi_StoredEventCount - 1
         With midi_StoredEvents(storedReadIndex)
             If .eventKind = OSE_EVENT_META AndAlso _
-                .statusByte = &HFF AndAlso .data1 = &H58 AndAlso _
+                .statusByte = OSE_MIDI_STATUS_META_EVENT AndAlso .data1 = OSE_MIDI_META_TYPE_TIME_SIGNATURE AndAlso _
                 .tick = targetTick AndAlso Len(.payload) = 4 Then
                 Continue For
             End If
@@ -2667,7 +2770,7 @@ Function midi_SetKeySignaturePoint( _
         summary.trackCount > OSE_MAX_MIDI_TRACKS Then Return 0
     If signatureIndex < 0 OrElse _
         signatureIndex >= summary.keySignatureCount Then Return 0
-    If sharpsFlats < -7 OrElse sharpsFlats > 7 OrElse _
+    If sharpsFlats < OSE_MIDI_KEY_SIGNATURE_MIN OrElse sharpsFlats > OSE_MIDI_KEY_SIGNATURE_MAX OrElse _
         (minor <> 0 AndAlso minor <> 1) Then Return 0
 
     Dim As ULongInt targetTick = _
@@ -2675,10 +2778,10 @@ Function midi_SetKeySignaturePoint( _
     Dim As Integer foundKeySignatureEvent = 0
     For storedIndex As Integer = 0 To midi_StoredEventCount - 1
         With midi_StoredEvents(storedIndex)
-            If .eventKind = OSE_EVENT_META AndAlso .statusByte = &HFF AndAlso _
-                .data1 = &H59 AndAlso .tick = targetTick AndAlso _
+            If .eventKind = OSE_EVENT_META AndAlso .statusByte = OSE_MIDI_STATUS_META_EVENT AndAlso _
+                .data1 = OSE_MIDI_META_TYPE_KEY_SIGNATURE AndAlso .tick = targetTick AndAlso _
                 Len(.payload) = 2 Then
-                Mid(.payload, 1, 1) = Chr(CInt(sharpsFlats And &HFF))
+                Mid(.payload, 1, 1) = Chr(sharpsFlats And &HFF)
                 Mid(.payload, 2, 1) = Chr(minor)
                 foundKeySignatureEvent = -1
             End If
@@ -2690,7 +2793,7 @@ Function midi_SetKeySignaturePoint( _
             Return 0
         End If
         Dim As String keySignaturePayload = _
-            Chr(CInt(sharpsFlats And &HFF)) + Chr(minor)
+            Chr(sharpsFlats And &HFF) + Chr(minor)
         If midi_AppendStoredEvent( _
             0, targetTick, OSE_EVENT_META, &HFF, &H59, 0, _
             midi_NextTrackEventOrder(0), keySignaturePayload) = 0 Then
@@ -2726,7 +2829,7 @@ Function midi_AddKeySignaturePoint( _
     If tick > OSE_MAX_MIDI_TICK Then
         Return -1
     End If
-    If sharpsFlats < -7 OrElse sharpsFlats > 7 OrElse _
+    If sharpsFlats < OSE_MIDI_KEY_SIGNATURE_MIN OrElse sharpsFlats > OSE_MIDI_KEY_SIGNATURE_MAX OrElse _
         (minor <> 0 AndAlso minor <> 1) Then Return -1
 
     For pointIndex As Integer = 0 To summary.keySignatureCount - 1
@@ -2738,7 +2841,7 @@ Function midi_AddKeySignaturePoint( _
         midi_StoredEventCount >= OSE_MAX_STORED_EVENTS Then Return -1
 
     Dim As String keySignaturePayload = _
-        Chr(CInt(sharpsFlats And &HFF)) + Chr(minor)
+        Chr(sharpsFlats And &HFF) + Chr(minor)
     If midi_AppendStoredEvent( _
         trackIndex, tick, OSE_EVENT_META, &HFF, &H59, 0, _
         midi_NextTrackEventOrder(trackIndex), keySignaturePayload) = 0 Then
@@ -2779,8 +2882,8 @@ Function midi_RemoveKeySignaturePoint( _
     Dim As Integer storedWriteIndex = 0
     For storedReadIndex As Integer = 0 To midi_StoredEventCount - 1
         With midi_StoredEvents(storedReadIndex)
-            If .eventKind = OSE_EVENT_META AndAlso .statusByte = &HFF AndAlso _
-                .data1 = &H59 AndAlso .tick = targetTick AndAlso _
+            If .eventKind = OSE_EVENT_META AndAlso .statusByte = OSE_MIDI_STATUS_META_EVENT AndAlso _
+                .data1 = OSE_MIDI_META_TYPE_KEY_SIGNATURE AndAlso .tick = targetTick AndAlso _
                 Len(.payload) = 2 Then
                 Continue For
             End If
@@ -2810,7 +2913,7 @@ Private Sub midi_RebuildTrackNames(ByRef summary As MidiSummary)
 
     For storedIndex As Integer = 0 To midi_StoredEventCount - 1
         With midi_StoredEvents(storedIndex)
-            If .eventKind <> OSE_EVENT_META OrElse .statusByte <> &HFF OrElse _
+            If .eventKind <> OSE_EVENT_META OrElse .statusByte <> OSE_MIDI_STATUS_META_EVENT OrElse _
                 .data1 <> &H03 Then Continue For
             If .trackIndex < 0 OrElse .trackIndex >= summary.trackCount Then _
                 Continue For
@@ -2831,7 +2934,7 @@ Private Sub midi_RebuildDocumentText(ByRef summary As MidiSummary)
 
     For storedIndex As Integer = 0 To midi_StoredEventCount - 1
         With midi_StoredEvents(storedIndex)
-            If .eventKind <> OSE_EVENT_META OrElse .statusByte <> &HFF OrElse _
+            If .eventKind <> OSE_EVENT_META OrElse .statusByte <> OSE_MIDI_STATUS_META_EVENT OrElse _
                 midi_IsTextMetaType(.data1) = 0 Then Continue For
             Dim As String textValue = midi_SanitizeTextValue(.payload)
             Select Case .data1
@@ -2865,7 +2968,7 @@ Function midi_GetTextEventCount() As Integer
     Dim As Integer textEventCount = 0
     For storedIndex As Integer = 0 To midi_StoredEventCount - 1
         With midi_StoredEvents(storedIndex)
-            If .eventKind = OSE_EVENT_META AndAlso .statusByte = &HFF AndAlso _
+            If .eventKind = OSE_EVENT_META AndAlso .statusByte = OSE_MIDI_STATUS_META_EVENT AndAlso _
                 midi_IsTextMetaType(.data1) <> 0 Then
                 textEventCount += 1
             End If
@@ -2886,7 +2989,7 @@ Function midi_GetTextEvent( _
     Dim As Integer visibleIndex = 0
     For storedIndex As Integer = 0 To midi_StoredEventCount - 1
         With midi_StoredEvents(storedIndex)
-            If .eventKind <> OSE_EVENT_META OrElse .statusByte <> &HFF OrElse _
+            If .eventKind <> OSE_EVENT_META OrElse .statusByte <> OSE_MIDI_STATUS_META_EVENT OrElse _
                 midi_IsTextMetaType(.data1) = 0 Then Continue For
             If visibleIndex = eventIndex Then
                 textEvent.tick = .tick
@@ -2933,7 +3036,7 @@ Function midi_SetTextEvent( _
     Next
 
     With midi_StoredEvents(sourceIndex)
-        If .eventKind <> OSE_EVENT_META OrElse .statusByte <> &HFF OrElse _
+        If .eventKind <> OSE_EVENT_META OrElse .statusByte <> OSE_MIDI_STATUS_META_EVENT OrElse _
             midi_IsTextMetaType(.data1) = 0 Then Return 0
         If .trackIndex <> textEvent.trackIndex Then
             .order = midi_NextTrackEventOrder(textEvent.trackIndex)
@@ -2968,7 +3071,7 @@ Function midi_AddTextEvent( _
     If tick > OSE_MAX_MIDI_TICK Then
         Return -1
     End If
-    If metaType < &H01 OrElse metaType > &H07 Then
+    If metaType < &H01 OrElse metaType > OSE_MIDI_META_TYPE_MAX Then
         Return -1
     End If
     If metaType = &H03 AndAlso Len(textValue) > OSE_MAX_TRACK_NAME Then
@@ -3008,7 +3111,7 @@ Function midi_RemoveTextEvent( _
         Return 0
     End If
     With midi_StoredEvents(sourceIndex)
-        If .eventKind <> OSE_EVENT_META OrElse .statusByte <> &HFF OrElse _
+        If .eventKind <> OSE_EVENT_META OrElse .statusByte <> OSE_MIDI_STATUS_META_EVENT OrElse _
             midi_IsTextMetaType(.data1) = 0 Then Return 0
     End With
 
@@ -3028,7 +3131,7 @@ Function midi_GetControllerPointCount() As Integer
     Dim As Integer pointCount = 0
     For storedIndex As Integer = 0 To midi_StoredEventCount - 1
         If midi_StoredEvents(storedIndex).eventKind = OSE_EVENT_CHANNEL AndAlso _
-            (midi_StoredEvents(storedIndex).statusByte And &HF0) = &HB0 Then
+            (midi_StoredEvents(storedIndex).statusByte And &HF0) = OSE_MIDI_STATUS_CONTROL_CHANGE Then
             pointCount += 1
         End If
     Next
@@ -3048,10 +3151,10 @@ Function midi_GetControllerPoint( _
     For storedIndex As Integer = 0 To midi_StoredEventCount - 1
         With midi_StoredEvents(storedIndex)
             If .eventKind = OSE_EVENT_CHANNEL AndAlso _
-                (.statusByte And &HF0) = &HB0 Then
+                (.statusByte And &HF0) = OSE_MIDI_STATUS_CONTROL_CHANGE Then
                 If visibleIndex = pointIndex Then
                     controllerPoint.tick = .tick
-                    controllerPoint.channel = .statusByte And &H0F
+                    controllerPoint.channel = CUByte(.statusByte And OSE_MIDI_STATUS_CHANNEL_MASK)
                     controllerPoint.controllerNumber = .data1
                     controllerPoint.controllerValue = .data2
                     controllerPoint.trackIndex = .trackIndex
@@ -3081,13 +3184,13 @@ Function midi_SetControllerPoint( _
     If controllerPoint.tick > OSE_MAX_MIDI_TICK Then
         Return 0
     End If
-    If controllerPoint.channel > 15 OrElse _
-        controllerPoint.controllerNumber > 127 OrElse _
-        controllerPoint.controllerValue > 127 Then Return 0
+    If controllerPoint.channel > OSE_MIDI_CHANNEL_INDEX_MAX OrElse _
+        controllerPoint.controllerNumber > OSE_MIDI_DATA_BYTE_MAX OrElse _
+        controllerPoint.controllerValue > OSE_MIDI_DATA_BYTE_MAX Then Return 0
 
     With midi_StoredEvents(sourceIndex)
         If .eventKind <> OSE_EVENT_CHANNEL OrElse _
-            (.statusByte And &HF0) <> &HB0 Then Return 0
+            (.statusByte And &HF0) <> OSE_MIDI_STATUS_CONTROL_CHANGE Then Return 0
         If .trackIndex <> controllerPoint.trackIndex Then
             .order = midi_NextTrackEventOrder(controllerPoint.trackIndex)
         End If
@@ -3122,11 +3225,11 @@ Function midi_AddControllerPoint( _
     If tick > OSE_MAX_MIDI_TICK Then
         Return -1
     End If
-    If channelIndex < 0 OrElse channelIndex > 15 Then
+    If channelIndex < 0 OrElse channelIndex > OSE_MIDI_CHANNEL_INDEX_MAX Then
         Return -1
     End If
-    If controllerNumber < 0 OrElse controllerNumber > 127 OrElse _
-        controllerValue < 0 OrElse controllerValue > 127 Then Return -1
+    If controllerNumber < 0 OrElse controllerNumber > OSE_MIDI_DATA_BYTE_MAX OrElse _
+        controllerValue < 0 OrElse controllerValue > OSE_MIDI_DATA_BYTE_MAX Then Return -1
     If midi_StoredEventCount >= OSE_MAX_STORED_EVENTS Then
         Return -1
     End If
@@ -3155,7 +3258,7 @@ Function midi_RemoveControllerPoint( _
         Return 0
     End If
     If midi_StoredEvents(sourceIndex).eventKind <> OSE_EVENT_CHANNEL OrElse _
-        (midi_StoredEvents(sourceIndex).statusByte And &HF0) <> &HB0 Then Return 0
+        (midi_StoredEvents(sourceIndex).statusByte And &HF0) <> OSE_MIDI_STATUS_CONTROL_CHANGE Then Return 0
 
     For storedIndex As Integer = sourceIndex To midi_StoredEventCount - 2
         midi_StoredEvents(storedIndex) = midi_StoredEvents(storedIndex + 1)
@@ -3207,8 +3310,8 @@ Function midi_GetChannelEvent( _
             End If
             If visibleIndex = eventIndex Then
                 channelEvent.tick = .tick
-                channelEvent.channel = .statusByte And &H0F
-                channelEvent.messageType = .statusByte And &HF0
+                channelEvent.channel = CUByte(.statusByte And OSE_MIDI_STATUS_CHANNEL_MASK)
+                channelEvent.messageType = CUByte(.statusByte And OSE_MIDI_STATUS_TYPE_MASK)
                 channelEvent.data1 = .data1
                 channelEvent.data2 = .data2
                 channelEvent.trackIndex = .trackIndex
@@ -3237,10 +3340,10 @@ Function midi_SetChannelEvent( _
     If channelEvent.tick > OSE_MAX_MIDI_TICK Then
         Return 0
     End If
-    If channelEvent.channel > 15 OrElse _
+    If channelEvent.channel > OSE_MIDI_CHANNEL_INDEX_MAX OrElse _
         midi_ChannelMessageTypeIsEditable(channelEvent.messageType) = 0 Then _
         Return 0
-    If channelEvent.data1 > 127 OrElse channelEvent.data2 > 127 Then
+    If channelEvent.data1 > OSE_MIDI_DATA_BYTE_MAX OrElse channelEvent.data2 > OSE_MIDI_DATA_BYTE_MAX Then
         Return 0
     End If
 
@@ -3255,8 +3358,8 @@ Function midi_SetChannelEvent( _
         .trackIndex = channelEvent.trackIndex
         .statusByte = CUByte(channelEvent.messageType Or channelEvent.channel)
         .data1 = channelEvent.data1
-        If channelEvent.messageType = &HC0 OrElse _
-            channelEvent.messageType = &HD0 Then
+        If channelEvent.messageType = OSE_MIDI_STATUS_PROGRAM_CHANGE OrElse _
+            channelEvent.messageType = OSE_MIDI_STATUS_CHANNEL_PRESSURE Then
             .data2 = 0
         Else
             .data2 = channelEvent.data2
@@ -3278,8 +3381,8 @@ Function midi_AddChannelEvent( _
     ByVal tick As ULongInt, _
     ByVal channelIndex As Integer, _
     ByVal messageType As Integer, _
-    ByVal data1 As Integer, _
-    ByVal data2 As Integer _
+    ByVal firstDataByte As Integer, _
+    ByVal secondDataByte As Integer _
 ) As Integer
     If summary.trackCount <= 0 OrElse _
         summary.trackCount > OSE_MAX_MIDI_TRACKS Then Return -1
@@ -3289,20 +3392,21 @@ Function midi_AddChannelEvent( _
     If tick > OSE_MAX_MIDI_TICK Then
         Return -1
     End If
-    If channelIndex < 0 OrElse channelIndex > 15 Then
+    If channelIndex < 0 OrElse channelIndex > OSE_MIDI_CHANNEL_INDEX_MAX Then
         Return -1
     End If
     If midi_ChannelMessageTypeIsEditable(messageType) = 0 Then
         Return -1
     End If
-    If data1 < 0 OrElse data1 > 127 OrElse data2 < 0 OrElse data2 > 127 Then _
+    If firstDataByte < 0 OrElse firstDataByte > OSE_MIDI_DATA_BYTE_MAX OrElse _
+        secondDataByte < 0 OrElse secondDataByte > OSE_MIDI_DATA_BYTE_MAX Then _
         Return -1
     If midi_StoredEventCount >= OSE_MAX_STORED_EVENTS Then
         Return -1
     End If
 
-    Dim As UByte storedData2 = CUByte(data2)
-    If messageType = &HC0 OrElse messageType = &HD0 Then
+    Dim As UByte storedData2 = CUByte(secondDataByte)
+    If messageType = OSE_MIDI_STATUS_PROGRAM_CHANGE OrElse messageType = OSE_MIDI_STATUS_CHANNEL_PRESSURE Then
         storedData2 = 0
     End If
 
@@ -3310,7 +3414,7 @@ Function midi_AddChannelEvent( _
     Dim As Integer sourceIndex = midi_StoredEventCount
     If midi_AppendStoredEvent( _
         trackIndex, tick, OSE_EVENT_CHANNEL, _
-        CUByte(messageType Or channelIndex), CUByte(data1), storedData2, _
+        CUByte(messageType Or channelIndex), CUByte(firstDataByte), storedData2, _
         midi_NextTrackEventOrder(trackIndex), emptyPayload) = 0 Then
         Return -1
     End If
@@ -3337,7 +3441,7 @@ Function midi_AddSystemExclusiveEvent( _
     If tick > OSE_MAX_MIDI_TICK Then
         Return -1
     End If
-    If statusByte <> &HF0 AndAlso statusByte <> &HF7 Then
+    If statusByte <> OSE_MIDI_STATUS_SYSEX_START AndAlso statusByte <> OSE_MIDI_STATUS_SYSEX_END Then
         Return -1
     End If
     If Len(payload) > OSE_MAX_SYSEX_EVENT_BYTES Then
@@ -3453,9 +3557,9 @@ Function midi_GetSystemEvent( _
                 systemEvent.data1 = 0
                 systemEvent.data2 = 0
                 If systemEvent.dataLength >= 1 Then _
-                    systemEvent.data1 = CByte(Asc(Mid(.payload, 1, 1)))
+                    systemEvent.data1 = CUByte(Asc(Mid(.payload, 1, 1)))
                 If systemEvent.dataLength >= 2 Then _
-                    systemEvent.data2 = CByte(Asc(Mid(.payload, 2, 1)))
+                    systemEvent.data2 = CUByte(Asc(Mid(.payload, 2, 1)))
                 systemEvent.sourceIndex = storedIndex
                 Return -1
             End If
@@ -3481,7 +3585,7 @@ Function midi_SetSystemEvent( _
     If systemEvent.tick > OSE_MAX_MIDI_TICK Then
         Return 0
     End If
-    If systemEvent.data1 > 127 OrElse systemEvent.data2 > 127 Then
+    If systemEvent.data1 > OSE_MIDI_DATA_BYTE_MAX OrElse systemEvent.data2 > OSE_MIDI_DATA_BYTE_MAX Then
         Return 0
     End If
 
@@ -3520,8 +3624,8 @@ Function midi_AddSystemEvent( _
     ByVal trackIndex As Integer, _
     ByVal tick As ULongInt, _
     ByVal statusByte As Integer, _
-    ByVal data1 As Integer, _
-    ByVal data2 As Integer _
+    ByVal firstDataByte As Integer, _
+    ByVal secondDataByte As Integer _
 ) As Integer
     If summary.trackCount <= 0 OrElse _
         summary.trackCount > OSE_MAX_MIDI_TRACKS Then Return -1
@@ -3531,8 +3635,8 @@ Function midi_AddSystemEvent( _
     If tick > OSE_MAX_MIDI_TICK Then
         Return -1
     End If
-    If data1 < 0 OrElse data1 > 127 OrElse _
-        data2 < 0 OrElse data2 > 127 Then Return -1
+    If firstDataByte < 0 OrElse firstDataByte > OSE_MIDI_DATA_BYTE_MAX OrElse _
+        secondDataByte < 0 OrElse secondDataByte > OSE_MIDI_DATA_BYTE_MAX Then Return -1
 
     Dim As Integer dataLength
     If midi_IsEditableSystemStatus(statusByte, dataLength) = 0 Then
@@ -3545,16 +3649,17 @@ Function midi_AddSystemEvent( _
     Dim As String systemPayload = ""
     If dataLength > 0 Then
         systemPayload = Space(dataLength)
-        Mid(systemPayload, 1, 1) = Chr(data1)
+        Mid(systemPayload, 1, 1) = Chr(firstDataByte)
         If dataLength > 1 Then
-            Mid(systemPayload, 2, 1) = Chr(data2)
+            Mid(systemPayload, 2, 1) = Chr(secondDataByte)
         End If
     End If
 
     Dim As Integer sourceIndex = midi_StoredEventCount
     If midi_AppendStoredEvent( _
         trackIndex, tick, OSE_EVENT_SYSTEM, CUByte(statusByte), _
-        CUByte(data1), CUByte(data2), midi_NextTrackEventOrder(trackIndex), _
+        CUByte(firstDataByte), CUByte(secondDataByte), _
+        midi_NextTrackEventOrder(trackIndex), _
         systemPayload) = 0 Then
         Return -1
     End If
@@ -3697,7 +3802,7 @@ Private Function midi_EditableNoteIsValid( _
 ) As Integer
     If editableNote.trackIndex < 0 OrElse _
         editableNote.trackIndex >= summary.trackCount Then Return 0
-    If editableNote.keyNumber > 127 OrElse editableNote.channel > 15 OrElse _
+    If editableNote.keyNumber > OSE_MIDI_NOTE_NUMBER_MAX OrElse editableNote.channel > OSE_MIDI_CHANNEL_INDEX_MAX OrElse _
         editableNote.velocity = 0 Then Return 0
     If editableNote.startTick > OSE_MAX_MIDI_TICK Then
         Return 0
@@ -3783,13 +3888,13 @@ Function midi_AddEditableNote( _
     If trackIndex < 0 OrElse trackIndex >= summary.trackCount Then
         Return -1
     End If
-    If keyNumber < 0 OrElse keyNumber > 127 Then
+    If keyNumber < 0 OrElse keyNumber > OSE_MIDI_NOTE_NUMBER_MAX Then
         Return -1
     End If
-    If midiChannel < 0 OrElse midiChannel > 15 Then
+    If midiChannel < 0 OrElse midiChannel > OSE_MIDI_CHANNEL_INDEX_MAX Then
         Return -1
     End If
-    If noteVelocity < 1 OrElse noteVelocity > 127 Then
+    If noteVelocity < 1 OrElse noteVelocity > OSE_MIDI_DATA_BYTE_MAX Then
         Return -1
     End If
     If startTick > OSE_MAX_MIDI_TICK Then
@@ -4001,7 +4106,7 @@ End Type
 
 
 Private Sub midi_AppendByte(ByRef buffer As String, ByVal byteValue As Integer)
-    ' fblint: disable-next-line FBL503 REASON: binary output is assembled in bounded track buffers.
+    ' binary output is assembled in bounded track buffers.
     buffer += Chr(byteValue And &HFF)
 End Sub
 
@@ -4040,7 +4145,7 @@ Private Sub midi_AppendVariableLength( _
     Dim As UByte encoded(0 To OSE_MAX_VLQ_BYTES - 1)
     Dim As Integer byteCount = 1
     encoded(0) = CUByte(value And &H7F)
-    While value > &H7F AndAlso byteCount < OSE_MAX_VLQ_BYTES
+    While value > OSE_MIDI_VLQ_DATA_MASK AndAlso byteCount < OSE_MAX_VLQ_BYTES
         value Shr= 7
         encoded(byteCount) = CUByte((value And &H7F) Or &H80)
         byteCount += 1
@@ -4058,14 +4163,14 @@ Private Sub midi_AppendSaveEvent( _
     ByRef eventCapacity As Integer, _
     ByVal tick As ULongInt, _
     ByVal statusByte As UByte, _
-    ByVal data1 As UByte, _
-    ByVal data2 As UByte, _
+    ByVal firstDataByte As UByte, _
+    ByVal secondDataByte As UByte, _
     ByVal order As Integer _
 )
-    Dim As Integer newCapacity = 512
+    Dim As Integer newCapacity = OSE_MIDI_SAVE_EVENT_INITIAL_CAPACITY
 
     If eventCount >= eventCapacity Then
-        If eventCapacity >= 256 Then
+        If eventCapacity >= OSE_MIDI_SAVE_EVENT_GROWTH_THRESHOLD Then
             newCapacity = eventCapacity * 2
         End If
         Redim Preserve events(0 To newCapacity - 1)
@@ -4076,8 +4181,8 @@ Private Sub midi_AppendSaveEvent( _
         .tick = tick
         .eventKind = OSE_EVENT_CHANNEL
         .statusByte = statusByte
-        .data1 = data1
-        .data2 = data2
+        .data1 = firstDataByte
+        .data2 = secondDataByte
         .order = order
         .insertionOrder = eventCount
         .payload = ""
@@ -4093,15 +4198,15 @@ Private Sub midi_AppendSpecialSaveEvent( _
     ByVal tick As ULongInt, _
     ByVal eventKind As UByte, _
     ByVal statusByte As UByte, _
-    ByVal data1 As UByte, _
-    ByVal data2 As UByte, _
+    ByVal firstDataByte As UByte, _
+    ByVal secondDataByte As UByte, _
     ByRef payload As String, _
     ByVal order As Integer _
 )
-    Dim As Integer newCapacity = 512
+    Dim As Integer newCapacity = OSE_MIDI_SAVE_EVENT_INITIAL_CAPACITY
 
     If eventCount >= eventCapacity Then
-        If eventCapacity >= 256 Then
+        If eventCapacity >= OSE_MIDI_SAVE_EVENT_GROWTH_THRESHOLD Then
             newCapacity = eventCapacity * 2
         End If
         Redim Preserve events(0 To newCapacity - 1)
@@ -4112,8 +4217,8 @@ Private Sub midi_AppendSpecialSaveEvent( _
         .tick = tick
         .eventKind = eventKind
         .statusByte = statusByte
-        .data1 = data1
-        .data2 = data2
+        .data1 = firstDataByte
+        .data2 = secondDataByte
         .order = order
         .insertionOrder = eventCount
         .payload = payload
@@ -4263,8 +4368,8 @@ Private Function midi_BuildTrackData( _
         Case OSE_EVENT_CHANNEL
             midi_AppendByte outputData, events(eventIndex).statusByte
             midi_AppendByte outputData, events(eventIndex).data1
-            If (events(eventIndex).statusByte And &HF0) <> &HC0 AndAlso _
-                (events(eventIndex).statusByte And &HF0) <> &HD0 Then
+            If (events(eventIndex).statusByte And &HF0) <> OSE_MIDI_STATUS_PROGRAM_CHANGE AndAlso _
+                (events(eventIndex).statusByte And &HF0) <> OSE_MIDI_STATUS_CHANNEL_PRESSURE Then
                 midi_AppendByte outputData, events(eventIndex).data2
             End If
         Case OSE_EVENT_META
@@ -4307,29 +4412,53 @@ Function midi_SerializeDocument( _
     If summary.trackCount <= 0 OrElse _
         summary.trackCount > OSE_MAX_MIDI_TRACKS Then Return 0
 
-    outputData = "MThd"
-    midi_AppendBe32 outputData, 6
-    midi_AppendBe16 outputData, summary.formatNumber
-    midi_AppendBe16 outputData, summary.trackCount
-    midi_AppendBe16 outputData, summary.division
+    Dim As String headerData = "MThd"
+    midi_AppendBe32 headerData, OSE_MIDI_HEADER_MIN_BYTES
+    midi_AppendBe16 headerData, summary.formatNumber
+    midi_AppendBe16 headerData, summary.trackCount
+    midi_AppendBe16 headerData, summary.division
+    If Len(headerData) <> OSE_MIDI_MIN_FILE_BYTES Then Return 0
 
+    Dim As LongInt outputLength = CLngInt(Len(headerData))
     For trackIndex As Integer = 0 To summary.trackCount - 1
         Dim As String trackData
         If midi_BuildTrackData(summary, trackIndex, trackData) = 0 Then
             Return 0
         End If
-        midi_AppendByte outputData, Asc("M")
-        midi_AppendByte outputData, Asc("T")
-        midi_AppendByte outputData, Asc("r")
-        midi_AppendByte outputData, Asc("k")
-        midi_AppendBe32 outputData, CULngInt(Len(trackData))
-        ' fblint: disable-next-line FBL503 REASON: one bounded track is appended to the output image.
-        outputData += trackData
+        Dim As LongInt trackChunkLength = _
+            CLngInt(OSE_MIDI_TRACK_CHUNK_HEADER_BYTES) + CLngInt(Len(trackData))
+        If trackChunkLength > OSE_MAX_MIDI_FILE_BYTES - outputLength Then Return 0
+        outputLength += trackChunkLength
     Next
 
-    If CLngInt(Len(outputData)) > OSE_MAX_MIDI_FILE_BYTES Then
-        Return 0
-    End If
+    If outputLength > OSE_MAX_MIDI_FILE_BYTES Then Return 0
+    Dim As Integer outputCapacity = CInt(outputLength)
+    outputData = Space(outputCapacity)
+    If Len(outputData) <> outputCapacity Then Return 0
+    Mid(outputData, 1, Len(headerData)) = headerData
+
+    Dim As Integer outputOffset = Len(headerData) + 1
+    For trackIndex As Integer = 0 To summary.trackCount - 1
+        Dim As String trackData
+        If midi_BuildTrackData(summary, trackIndex, trackData) = 0 Then Return 0
+
+        Dim As String trackHeader = "MTrk"
+        midi_AppendBe32 trackHeader, CULngInt(Len(trackData))
+        If Len(trackHeader) <> OSE_MIDI_TRACK_CHUNK_HEADER_BYTES Then Return 0
+        If outputOffset < 1 OrElse outputOffset > outputCapacity Then Return 0
+        If Len(trackHeader) > outputCapacity - outputOffset + 1 Then Return 0
+        Mid(outputData, outputOffset, Len(trackHeader)) = trackHeader
+        outputOffset += Len(trackHeader)
+
+        Dim As Integer trackDataLength = Len(trackData)
+        If trackDataLength > outputCapacity - outputOffset + 1 Then Return 0
+        If trackDataLength > 0 Then
+            Mid(outputData, outputOffset, trackDataLength) = trackData
+        End If
+        outputOffset += trackDataLength
+    Next
+
+    If outputOffset <> outputCapacity + 1 Then Return 0
 
     Return -1
 End Function

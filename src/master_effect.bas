@@ -32,7 +32,7 @@
 
 #lang "fb"
 
-#inclib "sfx" ' fblint: disable-line FBL930 REASON: The supported FreeBASIC toolchain supplies sfx on Windows and Linux.
+#inclib "sfx" ' The supported FreeBASIC toolchain supplies sfx on Windows and Linux.
 #include once "master_effect.bi"
 
 #Ifndef OSE_SFX_ECHO_AVAILABLE

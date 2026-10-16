@@ -137,21 +137,21 @@ End Function
 
 Function midiOutput_Send( _
     ByVal statusByte As Integer, _
-    ByVal data1 As Integer, _
-    ByVal data2 As Integer _
+    ByVal firstDataByte As Integer, _
+    ByVal secondDataByte As Integer _
 ) As Integer
     If midiOutput_Opened = 0 Then Return 0
     If statusByte < &H80 OrElse statusByte > &HEF Then Return 0
-    If data1 < 0 OrElse data1 > 127 Then Return 0
-    If data2 < 0 OrElse data2 > 127 Then Return 0
+    If firstDataByte < 0 OrElse firstDataByte > 127 Then Return 0
+    If secondDataByte < 0 OrElse secondDataByte > 127 Then Return 0
 
     ' MIDI SEND always accepts three data arguments. Program-change and
     ' channel-pressure messages ignore the third byte at the receiver.
 #If Defined(OSE_MIDI_OUTPUT_TESTING)
-    If midiOutput_TestBackendSend(CLng(statusByte), CLng(data1), _
-        CLng(data2)) <> 0 Then
+    If midiOutput_TestBackendSend(CLng(statusByte), CLng(firstDataByte), _
+        CLng(secondDataByte)) <> 0 Then
 #Else
-    If MIDI SEND(statusByte, data1, data2) <> 0 Then
+    If MIDI SEND(statusByte, firstDataByte, secondDataByte) <> 0 Then
 #EndIf
         midiOutput_Close()
         Return 0

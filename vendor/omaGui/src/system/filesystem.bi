@@ -47,6 +47,12 @@ Declare Function system_EnumerateDirectory( _
 
 Declare Function system_IsDirectory(ByRef directoryPath As Const String) As Integer
 
+' Attribute-only queries must not open streams, which can block on devices or
+' FIFOs. Size is -1 where the host bridge has no safe size query; dates are
+' FreeBASIC date serials, or zero when unavailable. GUI-thread use only.
+Declare Function system_PathExists(ByRef pathValue As Const String) As Integer
+Declare Sub system_GetFileDetails(ByRef pathValue As Const String, ByRef sizeValue As LongInt, ByRef modifiedValue As Double)
+
 #endif
 
 ' end of filesystem.bi

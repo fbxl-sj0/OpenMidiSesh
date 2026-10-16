@@ -23,6 +23,7 @@
 ' FreeBASIC's large file positions are signed 64-bit offsets.
 Const BINARY_FILE_MAX_POSITION As LongInt = &H7FFFFFFFFFFFFFFFLL
 
+' FBLINT: DISABLE-NEXT-LINE FBL-INC-008 REASON: Internal helper included only by project modules.
 Private Function binaryFile_ReadExact( _
     ByVal fileNumber As Integer, _
     ByVal filePosition As LongInt, _

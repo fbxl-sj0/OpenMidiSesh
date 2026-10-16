@@ -66,7 +66,7 @@
     bounded copy remains available when the selected host integration cannot
     be compiled or reached, and it keeps intra-application editing reliable.
 '/
-' This is boundary-owned process state. FB-LINTER: DISABLE-NEXT-LINE FBL301
+' This is boundary-owned process state.
 Dim Shared clipboard_FallbackText As String
 
 
@@ -92,7 +92,7 @@ Const CLIPBOARD_WINDOWS_RETRY_MILLISECONDS As Integer = 1
 
 Private Function clipboard_WindowsOpen() As Integer
 
-    ' fblint: disable-next-line FBL311 REASON: The loop counter bounds repeated work; the cursor or stream state supplies each value.
+    ' The loop counter bounds repeated work; the cursor or stream state supplies each value.
     For attemptIndex As Integer = 1 To CLIPBOARD_WINDOWS_OPEN_ATTEMPTS
         If omaGUI_NativeWindows.OpenClipboard(0) <> 0 Then Return 1
         Sleep CLIPBOARD_WINDOWS_RETRY_MILLISECONDS, 1
@@ -137,7 +137,7 @@ Private Function clipboard_WindowsGetText() As String
                 End If
             End If
 
-            ' Win32 import exists only inside this backend. FB-LINTER: DISABLE-NEXT-LINE FBL310
+            ' Win32 import exists only inside this backend.
             omaGUI_NativeWindows.GlobalUnlock clipboardHandle
         End If
     End If
@@ -164,7 +164,7 @@ Private Function clipboard_WindowsSetText( _
         Return 0
     End If
 
-    ' Movable ownership is required by omaGUI_NativeWindows.SetClipboardData. FB-LINTER: DISABLE-NEXT-LINE FBL310
+    ' Movable ownership is required by omaGUI_NativeWindows.SetClipboardData.
     allocationFlags = omaGUI_NativeWindows.MovableMemory Or omaGUI_NativeWindows.ZeroedMemory
     clipboardHandle = omaGUI_NativeWindows.GlobalAlloc(allocationFlags, Len(textValue) + 1)
 
@@ -176,17 +176,17 @@ Private Function clipboard_WindowsSetText( _
     clipboardMemory = omaGUI_NativeWindows.GlobalLock(clipboardHandle)
 
     If clipboardMemory = 0 Then
-        omaGUI_NativeWindows.GlobalFree clipboardHandle ' Conditional Win32 import. FB-LINTER: DISABLE-LINE FBL310
+        omaGUI_NativeWindows.GlobalFree clipboardHandle ' Conditional Win32 import.
         omaGUI_NativeWindows.CloseClipboard()
         Return 0
     End If
 
     *Cast(ZString Ptr, clipboardMemory) = textValue
-    omaGUI_NativeWindows.GlobalUnlock clipboardHandle ' Conditional Win32 import. FB-LINTER: DISABLE-LINE FBL310
+    omaGUI_NativeWindows.GlobalUnlock clipboardHandle ' Conditional Win32 import.
     clipboardResult = omaGUI_NativeWindows.SetClipboardData(omaGUI_NativeWindows.TextFormat, clipboardHandle)
 
     If clipboardResult = 0 Then _
-        omaGUI_NativeWindows.GlobalFree clipboardHandle ' Conditional Win32 import. FB-LINTER: DISABLE-LINE FBL310
+        omaGUI_NativeWindows.GlobalFree clipboardHandle ' Conditional Win32 import.
     omaGUI_NativeWindows.CloseClipboard()
 
     Return IIf(clipboardResult <> 0, 1, 0)

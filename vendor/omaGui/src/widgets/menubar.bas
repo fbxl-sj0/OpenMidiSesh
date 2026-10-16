@@ -14,6 +14,7 @@
     Responsibilities:
 
         - calculate stable heading and pop-up geometry
+        - remove a heading, release its owned popup, and compact later indexes
         - render mutable visible labels, check marks, shortcuts, and separators
         - route release-inside pointer activation exactly once
         - dispatch explicit portable accelerators and keyboard navigation
@@ -563,6 +564,94 @@ Function menubar_AddMenu( _
     bar_data->menu_count += 1
     menubar_RecalculateHeadings(bar_data)
     Return menu_index
+End Function
+
+
+Function menubar_RemoveMenu( _
+    ByVal bar_widget As Widget Ptr, ByVal menu_index As Integer _
+) As Integer
+    If bar_widget = 0 OrElse _
+       bar_widget->destroy <> @menubar_Destroy OrElse _
+       bar_widget->data = 0 Then Return 0
+
+    Dim As MenuBarData Ptr bar_data = bar_widget->data
+    Dim As Integer menu_count = bar_data->menu_count
+    If menu_count < 1 OrElse menu_count > MENUBAR_MAX_MENUS OrElse _
+       menu_index < 0 OrElse menu_index >= menu_count Then Return 0
+
+    Dim As Integer bar_registered = gui_IsWidgetRegistered(bar_widget)
+    Dim As ULongInt bar_identity = bar_widget->registry_id
+    If bar_data->menu_popups(menu_index) <> 0 AndAlso _
+       bar_registered = 0 Then Return 0
+
+    ' Close pointer and keyboard ownership before moving heading indexes.
+    menubar_CancelInput(bar_widget)
+    If bar_widget->data <> bar_data Then Return 0
+    If bar_data->menu_popups(menu_index) <> 0 Then
+        If menubar_ClearMenuPopup(bar_widget, menu_index) = 0 Then Return 0
+        If gui_IsWidgetRegistered(bar_widget) = 0 Then Return -1
+        If bar_widget->registry_id <> bar_identity OrElse _
+           bar_widget->data <> bar_data Then Return 0
+    End If
+
+    Dim As Integer last_menu = menu_count - 1
+    For target_index As Integer = menu_index To last_menu - 1
+        Dim As Integer source_index = target_index + 1
+        bar_data->menu_labels(target_index) = _
+            bar_data->menu_labels(source_index)
+        bar_data->menu_popups(target_index) = _
+            bar_data->menu_popups(source_index)
+        bar_data->menu_left(target_index) = _
+            bar_data->menu_left(source_index)
+        bar_data->menu_width(target_index) = _
+            bar_data->menu_width(source_index)
+        bar_data->popup_width(target_index) = _
+            bar_data->popup_width(source_index)
+        bar_data->item_count(target_index) = _
+            bar_data->item_count(source_index)
+        bar_data->menu_enabled(target_index) = _
+            bar_data->menu_enabled(source_index)
+        bar_data->menu_visible(target_index) = _
+            bar_data->menu_visible(source_index)
+        For item_index As Integer = 0 To MENUBAR_MAX_ITEMS - 1
+            bar_data->item_labels(target_index, item_index) = _
+                bar_data->item_labels(source_index, item_index)
+            bar_data->item_checked(target_index, item_index) = _
+                bar_data->item_checked(source_index, item_index)
+            bar_data->item_enabled(target_index, item_index) = _
+                bar_data->item_enabled(source_index, item_index)
+            bar_data->item_visible(target_index, item_index) = _
+                bar_data->item_visible(source_index, item_index)
+            bar_data->item_shortcuts(target_index, item_index) = _
+                bar_data->item_shortcuts(source_index, item_index)
+            bar_data->item_shortcut_scan_codes(target_index, item_index) = _
+                bar_data->item_shortcut_scan_codes(source_index, item_index)
+            bar_data->item_shortcut_modifiers(target_index, item_index) = _
+                bar_data->item_shortcut_modifiers(source_index, item_index)
+        Next item_index
+    Next target_index
+
+    bar_data->menu_labels(last_menu) = ""
+    bar_data->menu_popups(last_menu) = 0
+    bar_data->menu_left(last_menu) = 0
+    bar_data->menu_width(last_menu) = 0
+    bar_data->popup_width(last_menu) = MENUBAR_MINIMUM_POPUP_WIDTH
+    bar_data->item_count(last_menu) = 0
+    bar_data->menu_enabled(last_menu) = 0
+    bar_data->menu_visible(last_menu) = 0
+    For item_index As Integer = 0 To MENUBAR_MAX_ITEMS - 1
+        bar_data->item_labels(last_menu, item_index) = ""
+        bar_data->item_checked(last_menu, item_index) = 0
+        bar_data->item_enabled(last_menu, item_index) = 0
+        bar_data->item_visible(last_menu, item_index) = 0
+        bar_data->item_shortcuts(last_menu, item_index) = ""
+        bar_data->item_shortcut_scan_codes(last_menu, item_index) = 0
+        bar_data->item_shortcut_modifiers(last_menu, item_index) = 0
+    Next item_index
+
+    bar_data->menu_count -= 1
+    menubar_RecalculateHeadings(bar_data)
+    Return -1
 End Function
 
 

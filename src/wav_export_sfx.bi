@@ -40,7 +40,7 @@ Const OSE_WAV_EXPORT_MAX_SECONDS As Double = 600.0
 Const OSE_WAV_EXPORT_RESERVE_TAIL_SECONDS As Double = 0.10
 
 ' Logical fields only; this state is never written as a raw binary layout.
-' fblint: disable-next-line FBL911,FBL014 REASON: This is an in-memory record; its fields are not a raw on-disk UDT layout.
+' This is an in-memory record; its fields are not a raw on-disk UDT layout.
 Type OseWavExportState
     As Integer active
     As String filename

@@ -9,7 +9,8 @@
 
     Targets: FreeBASIC fb dialect; shared Windows/Linux x64 and Android editor builds.
 
-    Module API: Internal midiOutput_SendDefaultSetupSequence using the including backend callback.
+    Module API boundary: midiOutput_SendDefaultSetupSequence using the including backend callback.
+    This is a PRIVATE IMPLEMENTATION INCLUDE, not a public application API.
 
     Purpose:
 

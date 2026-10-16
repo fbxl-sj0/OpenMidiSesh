@@ -3,7 +3,13 @@
     File: navigation_viewport.bas
     Purpose: Maintain a logical canvas over a scaled physical gfxlib surface.
     Responsibilities: Fit the viewport, map pointer coordinates and accessibility.
-    This file does not contain widgets, event polling or application settings.
+    Targets: FreeBASIC fb dialect; gfxlib with OMAGUI_NAVIGATION_EXTENSIONS.
+    Module API boundary: implements logical display scaling and coordinate mapping.
+
+    This file intentionally does NOT contain:
+        - widget policy or rendering
+        - event polling
+        - persistent application settings
 
     VIEW SCREEN clips in physical pixels; WINDOW SCREEN supplies the logical
     transform. Reapplying a narrower clip must preserve that same transform,

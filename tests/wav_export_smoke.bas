@@ -94,7 +94,7 @@ If wavExport_Begin(exportState, outputFilename, _
     exportState.active <> 0 Then _
     test_Fail "oversized capture was accepted"
 
-' fblint: disable-next-line FBL407,FBL-NUM-013 REASON: the integer return value is tested; the Real duration is not compared.
+' the integer return value is tested; the Real duration is not compared.
 If wavExport_Begin(exportState, outputFilename, 0.05, errorText) = 0 Then _
     test_Fail "cancellation fixture could not start"
 wavExport_Cancel exportState
@@ -112,7 +112,7 @@ pan 0, 0.0
 
 ' The tested procedure returns Integer; the decimal argument confuses the
 ' linter's expression-only floating-equality heuristic.
-' fblint: disable-next-line FBL407,FBL-NUM-013 REASON: The integer success result is compared; the floating duration argument is not compared.
+' The integer success result is compared; the floating duration argument is not compared.
 If wavExport_Begin(exportState, outputFilename, 0.25, errorText) = 0 Then _
     test_Fail "WAV capture could not start: " + errorText
 fb_sfxForegroundFeedBegin()

@@ -7,9 +7,10 @@
     Copyright (C) 2026 OpenSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
-    Targets: FreeBASIC fb dialect; native desktop and Android sfxlib runtimes.
+    Targets: FreeBASIC fb dialect; desktop, Android, and DOS sfxlib runtimes.
 
-    Module API: Internal generatedVoiceStop_Channel plus verified sfxlib C stop/lock bindings.
+    Module API boundary: generatedVoiceStop_Channel plus verified sfxlib C stop/lock bindings.
+    This is a PRIVATE IMPLEMENTATION INCLUDE, not a public application API.
 
     Purpose:
 
@@ -44,7 +45,8 @@
 
 #If Not Defined(__FB_WIN32__) And Not Defined(__FB_LINUX__) And Not Defined(__FB_ANDROID__) And _
     Not Defined(__FB_FREEBSD__) And Not Defined(__FB_NETBSD__) And _
-    Not Defined(__FB_OPENBSD__) And Not Defined(__FB_HAIKU__)
+    Not Defined(__FB_OPENBSD__) And Not Defined(__FB_HAIKU__) And _
+    Not Defined(__FB_DOS__)
     #Error OpenSesh generated-voice stopping requires a supported native sfxlib runtime
 #EndIf
 
@@ -59,7 +61,8 @@ Declare Sub generatedVoiceStop_RuntimeLock CDecl Alias "fb_sfxRuntimeLock" ()
 Declare Sub generatedVoiceStop_RuntimeUnlock CDecl Alias "fb_sfxRuntimeUnlock" ()
 
 Private Sub generatedVoiceStop_Channel(ByVal channelIndex As Integer)
-    If channelIndex < 0 OrElse channelIndex > 15 Then Exit Sub
+    If channelIndex < 0 OrElse _
+        channelIndex >= OSE_SFX_MIXER_CHANNEL_COUNT Then Exit Sub
     generatedVoiceStop_RuntimeLock()
     fb_sfxSoundStopChannel CLng(channelIndex)
     fb_sfxNoiseStop CLng(channelIndex)

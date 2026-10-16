@@ -487,7 +487,7 @@ End Sub
 
 ' This routine deliberately presents the conversion as one transaction. Its
 ' branches validate independent format limits and all converge before I/O.
-' fblint: disable-next-line FBL111 REASON: Independent format-limit branches converge before the single output transaction.
+' Independent format-limit branches converge before the single output transaction.
 Function musicExport_SaveMod( _
     ByRef summary As MidiSummary, _
     ByVal filename As String, _
@@ -706,7 +706,7 @@ Function musicExport_SaveMod( _
             Dim As String sampleName = "Ch " + LTrim(Str(sampleIndex)) + _
                 " Program " + LTrim(Str(programNumber + 1))
             ' Thirty-one fixed headers are a bounded binary-image assembly.
-            ' fblint: disable-next-line FBL503 REASON: A fixed number of sample headers is appended to the bounded binary image.
+            ' A fixed number of sample headers is appended to the bounded binary image.
             outputData += mod_FixedAscii(sampleName, MOD_SAMPLE_NAME_BYTES)
             mod_AppendBe16 outputData, MOD_SAMPLE_WAVE_BYTES \ 2
             mod_AppendByte outputData, 0
@@ -723,7 +723,7 @@ Function musicExport_SaveMod( _
             mod_AppendBe16 outputData, MOD_SAMPLE_WAVE_BYTES \ 2
         Else
             ' The remaining fifteen empty headers are another fixed-size loop.
-            ' fblint: disable-next-line FBL503 REASON: A fixed number of sample headers is appended to the bounded binary image.
+            ' A fixed number of sample headers is appended to the bounded binary image.
             outputData += mod_FixedAscii("", MOD_SAMPLE_NAME_BYTES)
             mod_AppendBe16 outputData, 0
             mod_AppendByte outputData, 0

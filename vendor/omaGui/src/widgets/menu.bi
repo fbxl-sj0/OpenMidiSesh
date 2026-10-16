@@ -17,6 +17,7 @@
         - support item separators and per-item callbacks
         - own nested popup trees with mouse and keyboard navigation
         - support per-item visibility, checked state, and keyboard shortcuts
+        - remove one item while reclaiming its owned submenu tree
         - support configurable item height and one context-aware handler
         - retain shared insets for drawing, placement, and pointer rows
         - expose item reset for reusable generated popups
@@ -38,7 +39,7 @@ Const MENU_ITEM_KIND_NORMAL As Integer = 0
 Const MENU_ITEM_KIND_SEPARATOR As Integer = 1
 Const MENU_MAX_NESTING As Integer = 32
 
-Type MenuData ' fblint: disable-line FBL910 REASON: This record is process-local state, never a raw serialized or external ABI layout.
+Type MenuData ' This record is process-local state, never a raw serialized or external ABI layout.
     As String items(0 To MENU_MAX_ITEMS - 1)
     As Sub(ByVal As Integer) callbacks(0 To MENU_MAX_ITEMS - 1)
     As Integer item_kinds(0 To MENU_MAX_ITEMS - 1)
@@ -138,6 +139,11 @@ Declare Function menu_SetItemShortcut( _
 Declare Function menu_ActivateItem(ByVal m As Widget Ptr, ByVal itemIndex As Integer) As Integer
 Declare Function menu_ActivateShortcut(ByVal m As Widget Ptr) As Integer
 Declare Function menu_TakeKeyboardHandled(ByVal m As Widget Ptr) As Integer
+' Removes one row and its owned submenu, if any. Later item indexes compact left.
+' Mutable menu arrays use this to release and reuse entries safely.
+Declare Function menu_RemoveItem( _
+    ByVal m As Widget Ptr, ByVal itemIndex As Integer _
+) As Integer
 Declare Sub menu_ClearItems(ByVal m As Widget Ptr)
 Declare Sub menu_SetItemDetails( _
     ByVal m As Widget Ptr, ByVal itemIndex As Integer, _

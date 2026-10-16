@@ -38,7 +38,7 @@ Const OSE_PLAYBACK_VOICE_HEADROOM As Single = 0.45
 ' The synthesizer applies voiceGain in SOUND and channelGain through the
 ' channel VOLUME command. Keeping the two stages explicit prevents CC7 from
 ' being applied both places, which would incorrectly square channel volume.
-' fblint: disable-next-line FBL911,FBL014 REASON: This is an in-memory record; its fields are not a raw on-disk UDT layout.
+' This is an in-memory record; its fields are not a raw on-disk UDT layout.
 Type OsePlaybackMixValues
     As Single channelGain
     As Single meterGain

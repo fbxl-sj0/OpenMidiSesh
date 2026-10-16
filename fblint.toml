@@ -8,4 +8,6 @@ honor-suppressions = true
 fail-on-warning = true
 strict-headers = true
 strict-tabs = true
+# The compiler's Win32 SDK headers contain a guarded include cycle.
+ignored-include-files-rgx = "[/\\\\]inc[/\\\\]win[/\\\\]"
 # end of fblint.toml

@@ -74,7 +74,7 @@ Type ProjectTransactionJournal
 End Type
 
 #If Defined(OSE_PROJECT_TRANSACTION_TESTING)
-' fblint: disable-next-line FBL301 REASON: deterministic fault injection is private to this test build module.
+' deterministic fault injection is private to this test build module.
 Dim Shared projectTransaction_InjectedMode As Integer
 #EndIf
 

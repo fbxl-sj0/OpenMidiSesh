@@ -50,6 +50,7 @@ Private Sub session_SetMicState(ByVal message As String)
         Exit Sub
     Dim As LabelData Ptr labelData = Cast(LabelData Ptr, _
         session_MicStateLabel->data)
+    If labelData = 0 Then Exit Sub
     labelData->text = message
 End Sub
 
@@ -69,11 +70,14 @@ Private Function session_ReadMicSettings( _
     Dim As ULongInt parsedDenominator
     Dim As ULongInt parsedMinimum
     If numericText_ParseUnsigned(textbox_GetText(session_MicQuantizeBox), _
-        parsedDenominator, 32) = 0 OrElse _
+        parsedDenominator, SESSION_MIC_QUANTIZE_DENOMINATOR_MAXIMUM) = 0 OrElse _
         numericText_ParseUnsigned(textbox_GetText(session_MicMinimumNoteBox), _
         parsedMinimum, SESSION_MIC_MINIMUM_NOTE_MAX_MS) = 0 Then Return 0
-    If parsedDenominator <> 4 AndAlso parsedDenominator <> 8 AndAlso _
-        parsedDenominator <> 16 AndAlso parsedDenominator <> 32 Then Return 0
+    If parsedDenominator <> SESSION_MIC_QUANTIZE_DENOMINATOR_QUARTER AndAlso _
+        parsedDenominator <> SESSION_MIC_QUANTIZE_DENOMINATOR_EIGHTH AndAlso _
+        parsedDenominator <> SESSION_MIC_QUANTIZE_DENOMINATOR_SIXTEENTH AndAlso _
+        parsedDenominator <> SESSION_MIC_QUANTIZE_DENOMINATOR_THIRTY_SECOND Then _
+        Return 0
     If parsedMinimum < SESSION_MIC_MINIMUM_NOTE_MIN_MS Then
         Return 0
     End If

@@ -33,7 +33,7 @@
 
 #lang "fb"
 
-#inclib "sfx" ' fblint: disable-line FBL930 REASON: The supported FreeBASIC toolchain supplies sfx on Windows and Linux.
+#inclib "sfx" ' The supported FreeBASIC toolchain supplies sfx on Windows and Linux.
 #include once "audio_sample_slots.bi"
 
 ' FreeBASIC exposes SFX LOAD but has no matching source-level unload command.
@@ -43,15 +43,15 @@ Declare Sub fb_sfxSfxUnload CDecl Alias "fb_sfxSfxUnload" ( _
     ByVal sampleId As Integer _
 )
 
-' fblint: disable-next-line FBL301 REASON: private state owns the module's bounded sfxlib slot table.
+' private state owns the module's bounded sfxlib slot table.
 Dim Shared audioSampleSlots_LoadedCount As Integer
-' fblint: disable-next-line FBL301 REASON: the synchronized count belongs to the same private slot table.
+' the synchronized count belongs to the same private slot table.
 Dim Shared audioSampleSlots_SynchronizedClipCount As Integer
-' fblint: disable-next-line FBL301 REASON: availability flags own no resources outside this module.
+' availability flags own no resources outside this module.
 Dim Shared audioSampleSlots_Available( _
     0 To OSE_AUDIO_MAX_CLIPS - 1 _
 ) As Integer
-' fblint: disable-next-line FBL301 REASON: filenames reject stale mappings after unsynchronized edits.
+' filenames reject stale mappings after unsynchronized edits.
 Dim Shared audioSampleSlots_Filename( _
     0 To OSE_AUDIO_MAX_CLIPS - 1 _
 ) As String

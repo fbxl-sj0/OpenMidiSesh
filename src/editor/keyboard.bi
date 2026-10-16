@@ -217,7 +217,7 @@ Public Sub session_OnKeyboardOctaveDown(ByVal source As Widget Ptr)
         session_SetStatus "Stop recording before changing the keyboard range."
         Exit Sub
     End If
-    If session_KeyboardBasePitch <= 36 Then
+    If session_KeyboardBasePitch <= SESSION_KEYBOARD_BASE_PITCH_MINIMUM Then
         session_SetStatus "The performance keyboard is already at its lowest range."
         Exit Sub
     End If
@@ -233,7 +233,7 @@ Public Sub session_OnKeyboardOctaveUp(ByVal source As Widget Ptr)
         session_SetStatus "Stop recording before changing the keyboard range."
         Exit Sub
     End If
-    If session_KeyboardBasePitch >= 84 Then
+    If session_KeyboardBasePitch >= SESSION_KEYBOARD_BASE_PITCH_MAXIMUM Then
         session_SetStatus "The performance keyboard is already at its highest range."
         Exit Sub
     End If

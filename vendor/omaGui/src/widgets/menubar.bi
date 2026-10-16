@@ -14,6 +14,7 @@
     Responsibilities:
 
         - retain top-level headings and their child commands
+        - remove one heading and its owned popup while compacting later indexes
         - render one active drop-down without a platform-native menu API
         - optionally attach a bounded nested popup tree to each heading
         - support pointer, keyboard, separator, and callback behavior
@@ -115,6 +116,10 @@ Declare Function menubar_Create( _
 Declare Function menubar_AddMenu( _
     ByVal bar_widget As Widget Ptr, _
     ByVal menu_text As String _
+) As Integer
+' Removes one heading and its owned popup; later heading indexes shift left.
+Declare Function menubar_RemoveMenu( _
+    ByVal bar_widget As Widget Ptr, ByVal menu_index As Integer _
 ) As Integer
 /'
     Attaching transfers popup lifetime to the MenuBar widget tree. The root

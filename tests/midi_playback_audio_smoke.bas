@@ -147,11 +147,11 @@ Private Function test_ToneMagnitude( _
     If Open(filename For Binary Access Read As #fileNumber) <> 0 Then
         Return -1.0
     End If
-    ' fblint: disable-next-line FBL-NUM-002 REASON: Operands are widened to LongInt before the product.
+    ' Operands are widened to LongInt before the product.
     Dim As LongInt sampleCount = CLngInt(frameCount) * CLngInt(channelCount)
     Dim As Short samples()
     Redim samples(0 To CInt(sampleCount - 1))
-    ' fblint: disable-next-line FBL-NUM-002 REASON: Operands are widened to LongInt before the product.
+    ' Operands are widened to LongInt before the product.
     Dim As LongInt firstByte = 45 + firstFrame * _
         CLngInt(channelCount) * CLngInt(SizeOf(Short))
     If Get(#fileNumber, firstByte, samples()) <> 0 Then
@@ -320,7 +320,7 @@ If peakValue < 200 Then _
 ' PCM after nine seconds so a transport or synth duration clamp cannot hide
 ' behind the earlier, correctly rendered part of the file.
 ' Each factor is widened before multiplication.
-' fblint: disable-next-line FBL-NUM-002 REASON: Both operands are widened before the sample-position multiplication.
+' Both operands are widened before the sample-position multiplication.
 Dim As LongInt sustainedStartSample = CLngInt(waveInfo.sampleRate) * _
     CLngInt(waveInfo.channelCount) * 9
 If test_WavePeak(outputFilename, sustainedStartSample) < 200 Then _

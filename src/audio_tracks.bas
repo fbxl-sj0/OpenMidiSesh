@@ -406,7 +406,7 @@ Private Function audio_HistoryStackNewestIndex( _
 ) As Integer
     If stackStart < 0 OrElse stackStart >= OSE_AUDIO_HISTORY_STORAGE OrElse _
         stackCount <= 0 OrElse stackCount > OSE_AUDIO_HISTORY_DEPTH Then Return -1
-    Return (stackStart + stackCount - 1) Mod OSE_AUDIO_HISTORY_STORAGE ' fblint: disable-line FBL406 REASON: Range checks keep the dividend nonnegative and the modulus positive before this calculation.
+    Return (stackStart + stackCount - 1) Mod OSE_AUDIO_HISTORY_STORAGE ' Range checks keep the dividend nonnegative and the modulus positive before this calculation.
 End Function
 
 
@@ -637,7 +637,7 @@ Function audio_AddClip( _
 ) As Integer
     If audio_ClipCount >= OSE_AUDIO_MAX_CLIPS OrElse _
         startTick > OSE_AUDIO_TIMELINE_MAX_TICK OrElse gainPermille < 0 OrElse _
-        gainPermille > 1000 Then Return -1
+        gainPermille > OSE_AUDIO_GAIN_PERMILLE_MAX Then Return -1
     Dim As OseWaveInfo waveInfo
     If audio_InspectWave(filename, waveInfo) = 0 Then
         Return -1
@@ -666,7 +666,8 @@ Function audio_SetClip( _
         clip.startTick > OSE_AUDIO_TIMELINE_MAX_TICK OrElse _
         clip.durationMilliseconds = 0 OrElse _
         clip.durationMilliseconds > OSE_AUDIO_MAX_DURATION_MILLISECONDS OrElse _
-        clip.gainPermille < 0 OrElse clip.gainPermille > 1000 Then Return 0
+        clip.gainPermille < 0 OrElse _
+        clip.gainPermille > OSE_AUDIO_GAIN_PERMILLE_MAX Then Return 0
 
     Dim As OseWaveInfo waveInfo
     If audio_InspectWave(clip.filename, waveInfo) = 0 Then
@@ -719,7 +720,8 @@ Function audio_SerializeProject( _
                 .startTick > OSE_AUDIO_TIMELINE_MAX_TICK OrElse _
                 .durationMilliseconds = 0 OrElse _
                 .durationMilliseconds > OSE_AUDIO_MAX_DURATION_MILLISECONDS OrElse _
-                .gainPermille < 0 OrElse .gainPermille > 1000 Then Return 0
+                .gainPermille < 0 OrElse _
+                .gainPermille > OSE_AUDIO_GAIN_PERMILLE_MAX Then Return 0
             audio_AppendProjectLine projectData, "CLIP " + Str(.startTick) + " " + _
                 Str(.durationMilliseconds) + " " + Str(.gainPermille) + " " + _
                 Str(Len(.filename))
@@ -821,7 +823,8 @@ Function audio_LoadProject( _
             OSE_AUDIO_TIMELINE_MAX_TICK) = 0 OrElse _
             audio_NextUnsigned(lineText, cursor, durationMilliseconds, _
                 OSE_AUDIO_MAX_DURATION_MILLISECONDS) = 0 OrElse _
-            audio_NextUnsigned(lineText, cursor, gainPermille, 1000) = 0 OrElse _
+            audio_NextUnsigned(lineText, cursor, gainPermille, _
+                OSE_AUDIO_GAIN_PERMILLE_MAX) = 0 OrElse _
             audio_NextUnsigned(lineText, cursor, pathLength, _
                 CULngInt(OSE_AUDIO_MAX_PATH_BYTES)) = 0 OrElse _
             durationMilliseconds = 0 OrElse pathLength = 0 Then

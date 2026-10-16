@@ -99,7 +99,7 @@ End Sub
 Private Sub test_CheckStopExclusion()
     ' Keep counter storage outside the conditional loop. Generated-C builds
     ' must retain its initializer across the early Exit For paths as well.
-    Dim As Integer observation = 0 ' fblint: disable-line FBL311 REASON: This counter bounds repeated stop-exclusion observations.
+    Dim As Integer observation = 0 ' This counter bounds repeated stop-exclusion observations.
     test_StopMutex = MutexCreate()
     If test_StopMutex = 0 Then
         test_Fail "could not create stop-worker handshake"
@@ -132,7 +132,7 @@ Private Sub test_CheckStopExclusion()
     ' The rendering owner retains its lock while the other thread attempts
     ' the production helper. An unlocked helper silences this live fixture.
     If Len(failureText) = 0 Then
-        For observation = 1 To 100 ' fblint: disable-line FBL311 REASON: The counter bounds repeated stop-exclusion observations.
+        For observation = 1 To 100 ' The counter bounds repeated stop-exclusion observations.
             If test_RenderEnergy() <= 0.000001 Then
                 failureText = "concurrent Stop changed a renderer-owned voice"
                 Exit For

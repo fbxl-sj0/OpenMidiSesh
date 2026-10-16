@@ -19,6 +19,11 @@
         - draw state-aware toolbar buttons
         - exercise bounded Desktop and Touch control behavior
 
+    Resource ownership:
+
+        - shared editor state remains owned by state.bi
+        - audit report writers close their local file numbers before returning
+
     This file intentionally does NOT contain:
 
         - an independently linked public module
@@ -32,6 +37,30 @@
 #define __OSE_EDITOR_WIDGETS_AND_AUDITS_BI__
 
 #include once "crt/mem.bi"
+
+Const SESSION_AUDIT_ERROR_TEXT_MAX_BYTES As Integer = 2048
+Const SESSION_AUDIT_RETRIGGER_VELOCITY As Integer = 90
+Const SESSION_AUDIT_CHANNEL_DATA2_VALUE As Integer = 78
+Const SESSION_AUDIT_SYSTEM_DATA1_VALUE As Integer = 5
+Const SESSION_AUDIT_AUTOMATION_UNDO_ACTIONS As Integer = 6
+Const SESSION_AUDIT_AUDIO_GAIN_CHANGE_PERMILLE As Integer = 900
+Const SESSION_AUDIT_MELODY_KEY_NUMBER As Integer = 61
+Const SESSION_AUDIT_DRUM_KEY_NUMBER As Integer = 38
+Const SESSION_AUDIT_QUANTIZED_NOTE_DURATION_TICKS As Integer = 90
+Const SESSION_AUDIT_COMMON_TIME_NUMERATOR As Integer = 4
+Const SESSION_AUDIT_COMMON_TIME_DENOMINATOR As Integer = 4
+Const SESSION_AUDIT_HORIZONTAL_SCALE_PROBE_PIXELS As Integer = 10
+Const SESSION_AUDIT_VERTICAL_SCALE_PROBE_PIXELS As Integer = 14
+Const SESSION_AUDIT_SCORE_PALETTE_AUXILIARY_CONTROL_COUNT As Integer = 6
+Const SESSION_AUDIT_MIXER_STRIP_CONTROL_COUNT As Integer = 7
+Const SESSION_AUDIT_MIXER_FIXED_CONTROL_COUNT As Integer = 5
+' Fixed values stay independent from feature counts so the runtime audit can
+' report contract drift when a bounded UI feature changes.
+Const SESSION_AUDIT_EXPECTED_SCORE_TOOL_COUNT As Integer = 5
+Const SESSION_AUDIT_EXPECTED_CHANNEL_COUNT As Integer = 16
+Const SESSION_AUDIT_EXPECTED_KEYBOARD_NOTE_COUNT As Integer = 24
+Const SESSION_AUDIT_EXPECTED_DRUM_PAD_COUNT As Integer = 12
+Const SESSION_AUDIT_EXPECTED_MIXER_PAGE_NEXT_INDEX As Integer = 12
 
 
 ' -------------------------------------------------------------------------
@@ -58,11 +87,15 @@ End Function
 
 
 Private Sub session_RenderToolbarTextButton(ByVal w As Widget Ptr)
-    If w = 0 OrElse w->data = 0 Then
+    If w = 0 Then
+        Exit Sub
+    End If
+    If w->data = 0 Then
         Exit Sub
     End If
 
     Dim As ButtonData Ptr buttonState = Cast(ButtonData Ptr, w->data)
+    If buttonState = 0 Then Exit Sub
     Dim As OseUiControlStyle controlStyle
     uiStyle_Toolbar controlStyle, session_ThemePalette, _
         buttonState->state, 0, 0
@@ -97,11 +130,15 @@ End Function
 
 
 Private Sub session_RenderTransportButton(ByVal w As Widget Ptr)
-    If w = 0 OrElse w->data = 0 Then
+    If w = 0 Then
+        Exit Sub
+    End If
+    If w->data = 0 Then
         Exit Sub
     End If
 
     Dim As ButtonData Ptr buttonState = Cast(ButtonData Ptr, w->data)
+    If buttonState = 0 Then Exit Sub
     Dim As OseUiControlStyle controlStyle
     uiStyle_Toolbar controlStyle, session_ThemePalette, _
         buttonState->state, -1, _
@@ -109,7 +146,7 @@ Private Sub session_RenderTransportButton(ByVal w As Widget Ptr)
     session_DrawRoundedControl w->ax, w->ay, w->w, w->h, controlStyle
 
     Dim As Integer pressedOffset = 0
-    If buttonState <> 0 AndAlso buttonState->state = 2 Then
+    If buttonState->state = 2 Then
         pressedOffset = 1
     End If
 
@@ -168,15 +205,15 @@ Private Sub session_AppendControlAuditError( _
     ByRef errorText As String, _
     ByVal nextError As String _
 )
-    If Len(errorText) >= 2048 Then
+    If Len(errorText) >= SESSION_AUDIT_ERROR_TEXT_MAX_BYTES Then
         Exit Sub
     End If
     If errorText <> "" Then
         errorText += " | "
     End If
     errorText += nextError
-    If Len(errorText) > 2048 Then
-        errorText = Left(errorText, 2048)
+    If Len(errorText) > SESSION_AUDIT_ERROR_TEXT_MAX_BYTES Then
+        errorText = Left(errorText, SESSION_AUDIT_ERROR_TEXT_MAX_BYTES)
     End If
 End Sub
 
@@ -195,6 +232,11 @@ Private Sub session_AuditActionButton( _
     End If
 
     Dim As ButtonData Ptr buttonData = Cast(ButtonData Ptr, buttonWidget->data)
+    If buttonData = 0 Then
+        session_AppendControlAuditError errorText, _
+            "button data is unavailable " + buttonName
+        Exit Sub
+    End If
     If buttonData->clickHandler = 0 Then
         session_AppendControlAuditError errorText, _
             "button has no action " + buttonName
@@ -208,6 +250,15 @@ Private Sub session_AuditActionButton( _
         actionCount += 1
     End If
 End Sub
+
+
+Private Function session_AuditDoubleExactlyEqual( _
+    ByVal actual As Double, _
+    ByVal expected As Double _
+) As Integer
+    If actual = expected Then Return -1 ' State snapshots must match exactly so any playback advance remains visible to the audit.
+    Return 0
+End Function
 
 
 Private Sub session_AuditBehavior( _
@@ -267,6 +318,11 @@ Private Sub session_AuditTextControl( _
     textControlCount += 1
 
     textData = Cast(TextBoxData Ptr, textWidget->data)
+    If textData = 0 Then
+        session_AppendControlAuditError errorText, _
+            "text data is unavailable " + expectedName
+        Exit Sub
+    End If
     originalText = textData->text
     pointerX = textWidget->ax + 4
     pointerY = textWidget->ay + textWidget->h \ 2
@@ -303,7 +359,7 @@ Private Sub session_AuditListControl( _
     ByRef errorText As String _
 )
     Dim As ListBoxData Ptr listData
-    Dim As Integer originalActivationCount
+    Dim As ULongInt originalActivationCount
     Dim As Integer originalScrollTop
     Dim As Integer originalSelectedIndex
     Dim As Integer pointerX
@@ -339,6 +395,11 @@ Private Sub session_AuditListControl( _
     listControlCount += 1
 
     listData = Cast(ListBoxData Ptr, listWidget->data)
+    If listData = 0 Then
+        session_AppendControlAuditError errorText, _
+            "list data is unavailable " + expectedName
+        Exit Sub
+    End If
     originalSelectedIndex = listData->selected_index
     originalScrollTop = listData->scroll_top
     originalActivationCount = listData->activation_count
@@ -545,7 +606,8 @@ Private Sub session_AuditSemanticMenuRoutes( _
                 storedPreferences.themeMode = themeMode
         End If
         Dim As Integer menuMarkIsCorrect
-        If themeMenuState <> 0 AndAlso themeMenuState->count >= 8 Then
+        If themeMenuState <> 0 AndAlso _
+            themeMenuState->count >= SESSION_OPTIONS_MENU_THEME_ITEM_COUNT Then
             menuMarkIsCorrect = Left(themeMenuState->items(5 + themeMode), 3) = _
                 "[x]"
         End If
@@ -582,7 +644,8 @@ Private Sub session_AuditSemanticMenuRoutes( _
     End If
     session_AuditBehavior _
         session_InteractionMode = toggledInteractionMode AndAlso _
-        themeMenuState <> 0 AndAlso themeMenuState->count >= 9 AndAlso _
+        themeMenuState <> 0 AndAlso _
+        themeMenuState->count >= SESSION_OPTIONS_MENU_TOUCH_ITEM_COUNT AndAlso _
         Left(themeMenuState->items(8), 3) = IIf( _
             toggledInteractionMode = OSE_UI_INTERACTION_TOUCH, _
             "[x]", "[ ]") AndAlso _
@@ -853,8 +916,10 @@ Private Sub session_AuditSemanticTransportAndDialogs( _
     Dim As ULongInt runningTick = session_PlaybackLastTick
     session_OnFastForward 0
     session_AuditBehavior session_Playing <> 0 AndAlso session_Paused = 0 _
-        AndAlso session_PlaybackSpeedScale = 1.0 AndAlso _
-        session_PlaybackElapsed = runningElapsed AndAlso _
+        AndAlso session_AuditDoubleExactlyEqual( _
+            session_PlaybackSpeedScale, 1.0) <> 0 AndAlso _
+        session_AuditDoubleExactlyEqual( _
+            session_PlaybackElapsed, runningElapsed) <> 0 AndAlso _
         session_PlaybackLastTick = runningTick AndAlso _
         session_TransportButtonIsActive("fast_forward") = 0 AndAlso _
         session_StatusText = "Press Stop before changing playback speed or tempo.", _
@@ -862,19 +927,19 @@ Private Sub session_AuditSemanticTransportAndDialogs( _
         behaviorCheckCount, errorText
     session_OnStop 0
     session_AuditBehavior session_Playing = 0 AndAlso session_Paused = 0 AndAlso _
-        session_PlaybackSpeedScale = 1.0, _
+        session_AuditDoubleExactlyEqual(session_PlaybackSpeedScale, 1.0) <> 0, _
         "Stop did not reset transport", behaviorCheckCount, errorText
     Dim As ULongInt stoppedViewTick = session_ViewStartTick
     session_OnFastForward 0
     session_AuditBehavior session_Playing = 0 AndAlso session_Paused = 0 AndAlso _
-        session_PlaybackSpeedScale = 4.0 AndAlso _
+        session_AuditDoubleExactlyEqual(session_PlaybackSpeedScale, 4.0) <> 0 AndAlso _
         session_ViewStartTick = stoppedViewTick AndAlso _
         session_TransportButtonIsActive("fast_forward") <> 0, _
         "Stopped Fast Forward did not visibly select the next run's speed", _
         behaviorCheckCount, errorText
     session_OnPlay 0
     session_AuditBehavior session_Playing <> 0 AndAlso _
-        session_PlaybackSpeedScale = 4.0 AndAlso _
+        session_AuditDoubleExactlyEqual(session_PlaybackSpeedScale, 4.0) <> 0 AndAlso _
         session_TransportButtonIsActive("fast_forward") <> 0, _
         "Play discarded the speed selected while stopped", _
         behaviorCheckCount, errorText
@@ -883,8 +948,10 @@ Private Sub session_AuditSemanticTransportAndDialogs( _
     runningTick = session_PlaybackLastTick
     session_OnFastForward 0
     session_AuditBehavior session_Playing <> 0 AndAlso session_Paused <> 0 _
-        AndAlso session_PlaybackSpeedScale = 4.0 AndAlso _
-        session_PlaybackElapsed = runningElapsed AndAlso _
+        AndAlso session_AuditDoubleExactlyEqual( _
+            session_PlaybackSpeedScale, 4.0) <> 0 AndAlso _
+        session_AuditDoubleExactlyEqual( _
+            session_PlaybackElapsed, runningElapsed) <> 0 AndAlso _
         session_PlaybackLastTick = runningTick AndAlso _
         session_TransportButtonIsActive("fast_forward") <> 0 AndAlso _
         session_StatusText = "Press Stop before changing playback speed or tempo.", _
@@ -896,8 +963,10 @@ Private Sub session_AuditSemanticTransportAndDialogs( _
     input_MockKey FB.SC_F4, -1
     session_ProcessTransportShortcuts()
     session_AuditBehavior session_Playing <> 0 AndAlso session_Paused = 0 _
-        AndAlso session_PlaybackSpeedScale = 4.0 AndAlso _
-        session_PlaybackElapsed = runningElapsed AndAlso _
+        AndAlso session_AuditDoubleExactlyEqual( _
+            session_PlaybackSpeedScale, 4.0) <> 0 AndAlso _
+        session_AuditDoubleExactlyEqual( _
+            session_PlaybackElapsed, runningElapsed) <> 0 AndAlso _
         session_TransportButtonIsActive("fast_forward") <> 0 AndAlso _
         session_StatusText = "Press Stop before changing playback speed or tempo.", _
         "F4 bypassed the active-transport timing boundary", _
@@ -908,7 +977,7 @@ Private Sub session_AuditSemanticTransportAndDialogs( _
     session_OnFastForward 0
     session_OnFastForward 0
     session_AuditBehavior session_Playing = 0 AndAlso _
-        session_PlaybackSpeedScale = 1.0 AndAlso _
+        session_AuditDoubleExactlyEqual(session_PlaybackSpeedScale, 1.0) <> 0 AndAlso _
         session_TransportButtonIsActive("fast_forward") = 0, _
         "Stopped Fast Forward did not restore the normal-speed selection", _
         behaviorCheckCount, errorText
@@ -999,7 +1068,7 @@ Private Sub session_AuditSemanticTransportAndDialogs( _
         midi_GetEditableNote(drumOriginalNoteCount, drumAuditNote)
     session_AuditBehavior hasDrumAuditNote <> 0 AndAlso _
         drumAuditNote.keyNumber = drumAuditPitch AndAlso _
-        drumAuditNote.channel = 9 AndAlso _
+        drumAuditNote.channel = OSE_MIDI_CHANNEL_DRUMS AndAlso _
         drumAuditNote.velocity = OSE_DRUM_VELOCITY_HARD, _
         "Drum Record did not append the strike on MIDI channel 10", _
         behaviorCheckCount, errorText
@@ -1203,7 +1272,7 @@ Private Sub session_AuditMidiRecordingDispatch( _
         behaviorCheckCount, errorText
 
     message.status = &H90
-    message.data2 = 90
+    message.data2 = SESSION_AUDIT_RETRIGGER_VELOCITY
     message.timestampMilliseconds = 905300
     If session_ProcessRecordedMidiMessage(message, 0) <> 0 Then
         committedEdits += 1
@@ -1216,7 +1285,8 @@ Private Sub session_AuditMidiRecordingDispatch( _
         midi_GetEditableNote(firstNoteIndex, firstNote) <> 0 AndAlso _
         midi_GetEditableNote(secondNoteIndex, secondNote) <> 0 AndAlso _
         firstNote.durationTicks = retriggerTick - firstNote.startTick AndAlso _
-        secondNote.startTick = retriggerTick AndAlso secondNote.velocity = 90, _
+        secondNote.startTick = retriggerTick AndAlso _
+        secondNote.velocity = SESSION_AUDIT_RETRIGGER_VELOCITY, _
         "a pedal-held retrigger failed to retain both note starts", _
         behaviorCheckCount, errorText
 
@@ -1258,7 +1328,7 @@ Private Sub session_AuditMidiRecordingDispatch( _
         "pedal release cancelled a successful note closure at the timeline limit", _
         behaviorCheckCount, errorText
 
-    For editIndex As Integer = 1 To committedEdits ' fblint: disable-line FBL311 REASON: The counter bounds repeated recording edits in this audit.
+    For editIndex As Integer = 1 To committedEdits ' The counter bounds repeated recording edits in this audit.
         If documentHistory_Undo(session_DocumentHistory, session_Summary) = 0 Then
             session_AppendControlAuditError errorText, _
                 "MIDI recording dispatch audit could not undo its edit"
@@ -1433,7 +1503,7 @@ Private Sub session_AuditSemanticEdits( _
         hasAuditionFirstNote <> 0 AndAlso hasAuditionSecondNote <> 0 AndAlso _
         session_SelectedNotePlaybackActive <> 0 AndAlso _
         session_SelectedNotePlayback.count = 2 AndAlso _
-        session_PlaybackSpeedScale = 4.0 AndAlso _
+        session_AuditDoubleExactlyEqual(session_PlaybackSpeedScale, 4.0) <> 0 AndAlso _
         session_SelectedNotePlayback.entries(0).note.startTick <= _
             session_SelectedNotePlayback.entries(1).note.startTick AndAlso _
         session_SelectedNotePlayback.startTick = expectedAuditionStart AndAlso _
@@ -1475,7 +1545,7 @@ Private Sub session_AuditSemanticEdits( _
 
     Dim As Integer originalTempo = session_InitialTempoBpm()
     Dim As Integer auditTempo = originalTempo + 1
-    If auditTempo > 400 Then
+    If auditTempo > SESSION_TEMPO_MAX_BPM Then
         auditTempo = originalTempo - 1
     End If
     textbox_SetText session_TempoBox, Str(auditTempo), -1
@@ -1716,8 +1786,12 @@ Private Sub session_AuditSemanticScorePointerControls( _
         session_ScoreTrackRowHeight > SESSION_SCORE_TRACK_ROW_HEIGHT_DEFAULT _
         AndAlso scoreLayout_LineSpacing(session_ScoreTrackRowHeight) > _
             scoreLayout_LineSpacing(SESSION_SCORE_TRACK_ROW_HEIGHT_DEFAULT) _
-        AndAlso scoreLayout_ScalePixels(session_ScoreTrackRowHeight, 10) > 10 _
-        AndAlso scoreLayout_ScalePixels(session_ScoreTrackRowHeight, 14) > 14, _
+        AndAlso scoreLayout_ScalePixels( _
+            session_ScoreTrackRowHeight, SESSION_AUDIT_HORIZONTAL_SCALE_PROBE_PIXELS) > _
+            SESSION_AUDIT_HORIZONTAL_SCALE_PROBE_PIXELS _
+        AndAlso scoreLayout_ScalePixels( _
+            session_ScoreTrackRowHeight, SESSION_AUDIT_VERTICAL_SCALE_PROBE_PIXELS) > _
+            SESSION_AUDIT_VERTICAL_SCALE_PROBE_PIXELS, _
         "Vertical pinch changed the wrong score axis", _
         behaviorCheckCount, errorText
     session_AuditReleaseTouches auditWidth, auditHeight
@@ -1756,8 +1830,8 @@ Private Sub session_AuditSemanticScorePointerControls( _
         behaviorCheckCount, errorText
     input_ResetForTest()
 
-    Dim As Integer zoomStepIndex ' fblint: disable-line FBL311 REASON: This counter bounds repeated zoom steps in the audit.
-    For zoomStepIndex = 0 To 20 ' fblint: disable-line FBL311 REASON: The counter bounds repeated zoom steps in this audit.
+    Dim As Integer zoomStepIndex ' This counter bounds repeated zoom steps in the audit.
+    For zoomStepIndex = 0 To 20 ' The counter bounds repeated zoom steps in this audit.
         session_ZoomScoreVerticallyAt 280, _
             SESSION_SCORE_TRACK_ROW_ZOOM_STEP, auditHeight
     Next
@@ -1766,7 +1840,7 @@ Private Sub session_AuditSemanticScorePointerControls( _
             SESSION_SCORE_TRACK_ROW_HEIGHT_MAXIMUM, _
         "Vertical score zoom exceeded or missed its maximum", _
         behaviorCheckCount, errorText
-    For zoomStepIndex = 0 To 20 ' fblint: disable-line FBL311 REASON: The counter bounds repeated zoom steps in this audit.
+    For zoomStepIndex = 0 To 20 ' The counter bounds repeated zoom steps in this audit.
         session_ZoomScoreVerticallyAt 280, _
             -SESSION_SCORE_TRACK_ROW_ZOOM_STEP, auditHeight
     Next
@@ -1879,12 +1953,14 @@ Private Sub session_AuditSemanticAutomationMutations( _
                 "Unchanged channel event was not reported", _
                 behaviorCheckCount, errorText
 
-            textbox_SetText session_AutomationData2Box, "78", -1
+            textbox_SetText session_AutomationData2Box, _
+                Str(SESSION_AUDIT_CHANNEL_DATA2_VALUE), -1
             session_OnApplyAutomation 0
             Dim As MidiChannelEventPoint changedChannelEvent
             session_AuditBehavior _
                 session_GetSelectedChannelAutomation(changedChannelEvent) <> 0 _
-                AndAlso changedChannelEvent.data2 = 78, _
+                AndAlso changedChannelEvent.data2 = _
+                    SESSION_AUDIT_CHANNEL_DATA2_VALUE, _
                 "Channel-event Apply did not store its new value", _
                 behaviorCheckCount, errorText
         End If
@@ -1909,12 +1985,14 @@ Private Sub session_AuditSemanticAutomationMutations( _
                 "Unchanged system-common event was not reported", _
                 behaviorCheckCount, errorText
 
-            textbox_SetText session_AutomationData1Box, "5", -1
+            textbox_SetText session_AutomationData1Box, _
+                Str(SESSION_AUDIT_SYSTEM_DATA1_VALUE), -1
             session_OnApplyAutomation 0
             Dim As MidiSystemEventPoint changedSystemEvent
             session_AuditBehavior _
                 session_GetSelectedSystemAutomation(changedSystemEvent) <> 0 _
-                AndAlso changedSystemEvent.data1 = 5, _
+                AndAlso changedSystemEvent.data1 = _
+                    SESSION_AUDIT_SYSTEM_DATA1_VALUE, _
                 "System-common Apply did not store its new value", _
                 behaviorCheckCount, errorText
             session_OnDeleteAutomation 0
@@ -1955,7 +2033,8 @@ Private Sub session_AuditSemanticAutomationMutations( _
         session_AuditBehavior _
             midi_GetChannelEventCount() = originalChannelCount AndAlso _
             midi_GetSystemEventCount() = originalSystemCount AndAlso _
-            documentHistory_RedoCount(session_DocumentHistory) >= 6, _
+            documentHistory_RedoCount(session_DocumentHistory) >= _
+                SESSION_AUDIT_AUTOMATION_UNDO_ACTIONS, _
             "Automation audit edits did not undo as one chronological sequence", _
             behaviorCheckCount, errorText
     End If
@@ -1973,7 +2052,7 @@ Private Sub session_AuditSemanticAudioMutations( _
     Dim As NoteSelectionState originalNoteSelection = session_NoteSelection
     Dim As Integer originalSelectedNote = session_SelectedNote
     Dim As String audioFixture = Left( _
-        Trim(Environ("OSE_TEST_AUDIO_FIXTURE")), OSE_AUDIO_MAX_PATH_BYTES) ' fblint: disable-line FBL750 REASON: This optional test/profile override treats an absent value as the documented normal default.
+        Trim(Environ("OSE_TEST_AUDIO_FIXTURE")), OSE_AUDIO_MAX_PATH_BYTES) ' This optional test/profile override treats an absent value as the documented normal default.
     Dim As Integer originalAudioCount = audio_GetCount()
     Dim As Integer auditAudioIndex = -1
     If audioFixture <> "" Then
@@ -1981,7 +2060,9 @@ Private Sub session_AuditSemanticAudioMutations( _
         session_OnFastForward 0
         session_OnPlay 0
         session_AuditBehavior session_Playing <> 0 AndAlso _
-            session_PlaybackSpeedScale = 4.0 AndAlso audio_GetCount() = 0, _
+            session_AuditDoubleExactlyEqual( _
+                session_PlaybackSpeedScale, 4.0) <> 0 AndAlso _
+            audio_GetCount() = 0, _
             "Audio boundary fixture did not start a fast MIDI-only arrangement", _
             behaviorCheckCount, errorText
         session_ViewStartTick = 23
@@ -1992,7 +2073,8 @@ Private Sub session_AuditSemanticAudioMutations( _
             auditAudioIndex = originalAudioCount
         session_UpdateSoftwarePlayback()
         session_AuditBehavior session_Playing = 0 AndAlso session_Paused = 0 _
-            AndAlso session_PlaybackSpeedScale = 4.0 AndAlso _
+            AndAlso session_AuditDoubleExactlyEqual( _
+                session_PlaybackSpeedScale, 4.0) <> 0 AndAlso _
             session_StatusText = _
                 "Full playback with WAV clips requires 1x. Press Stop, then Play.", _
             "Adding a WAV during fast playback bypassed its transport boundary", _
@@ -2006,8 +2088,10 @@ Private Sub session_AuditSemanticAudioMutations( _
         If session_AudioList <> 0 AndAlso session_AudioList->data <> 0 Then
             Dim As ListBoxData Ptr audioListData = Cast( _
                 ListBoxData Ptr, session_AudioList->data)
-            audioListData->selected_index = auditAudioIndex
-            session_UpdateAudioSelection()
+            If audioListData <> 0 Then
+                audioListData->selected_index = auditAudioIndex
+                session_UpdateAudioSelection()
+            End If
         End If
 
         Dim As Integer undoCount = _
@@ -2017,7 +2101,8 @@ Private Sub session_AuditSemanticAudioMutations( _
         Dim As Integer dirtyState = session_Dirty
         session_OnPlay 0
         session_AuditBehavior session_Playing = 0 AndAlso _
-            session_PlaybackSpeedScale = 4.0 AndAlso _
+            session_AuditDoubleExactlyEqual( _
+                session_PlaybackSpeedScale, 4.0) <> 0 AndAlso _
             session_TransportButtonIsActive("fast_forward") <> 0 AndAlso _
             session_StatusText = _
                 "Full playback with WAV clips requires 1x. Press Stop, then Play.", _
@@ -2030,14 +2115,14 @@ Private Sub session_AuditSemanticAudioMutations( _
         session_OnPlaySelectedNotes 0
         session_AuditBehavior session_Playing <> 0 AndAlso _
             session_SelectedNotePlaybackActive <> 0 AndAlso _
-            session_PlaybackSpeedScale = 4.0, _
+            session_AuditDoubleExactlyEqual(session_PlaybackSpeedScale, 4.0) <> 0, _
             "WAV clip presence blocked fast selected-note playback", _
             behaviorCheckCount, errorText
         session_OnStop 0
         session_OnPlay 0
         session_AuditBehavior session_Playing <> 0 AndAlso _
             session_SelectedNotePlaybackActive = 0 AndAlso _
-            session_PlaybackSpeedScale = 1.0, _
+            session_AuditDoubleExactlyEqual(session_PlaybackSpeedScale, 1.0) <> 0, _
             "Stop then Play did not restore normal-speed WAV playback", _
             behaviorCheckCount, errorText
         session_OnStop 0
@@ -2050,12 +2135,14 @@ Private Sub session_AuditSemanticAudioMutations( _
             "Unchanged audio fields were not reported", _
             behaviorCheckCount, errorText
 
-        textbox_SetText session_AudioGainBox, "900", -1
+        textbox_SetText session_AudioGainBox, _
+            Str(SESSION_AUDIT_AUDIO_GAIN_CHANGE_PERMILLE), -1
         session_OnApplyAudio 0
         Dim As OseAudioClip changedAudioClip
         session_AuditBehavior _
             audio_GetClip(auditAudioIndex, changedAudioClip) <> 0 AndAlso _
-            changedAudioClip.gainPermille = 900 AndAlso _
+            changedAudioClip.gainPermille = _
+                SESSION_AUDIT_AUDIO_GAIN_CHANGE_PERMILLE AndAlso _
             audioSampleSlots_GetLoadedCount() = audio_GetCount(), _
             "Audio Apply did not store its new gain", _
             behaviorCheckCount, errorText
@@ -2072,7 +2159,7 @@ Private Sub session_AuditSemanticAudioMutations( _
         Dim As OseAudioClip restoredAudioClip
         Dim As Integer restoredApply = _
             audio_GetClip(auditAudioIndex, restoredAudioClip) <> 0 AndAlso _
-            restoredAudioClip.gainPermille = 1000
+            restoredAudioClip.gainPermille = OSE_AUDIO_GAIN_PERMILLE_MAX
         session_OnEditMenu 0
         session_AuditBehavior restoredDelete <> 0 AndAlso _
             restoredApply <> 0 AndAlso audio_GetCount() = originalAudioCount _
@@ -2140,7 +2227,7 @@ Private Sub session_AuditSemanticNoteMutations( _
             behaviorCheckCount, errorText
 
         Dim As Integer changedVelocity = originalNote.velocity + 1
-        If changedVelocity > 127 Then
+        If changedVelocity > OSE_MIDI_DATA_BYTE_MAX Then
             changedVelocity = originalNote.velocity - 1
         End If
         textbox_SetText session_NoteVelocityBox, Str(changedVelocity), -1
@@ -2204,7 +2291,7 @@ Private Sub session_AuditSemanticTempoMapMutations( _
             End If
         Wend
         Dim As Integer addedTempoBpm = session_InitialTempoBpm() + 2
-        If addedTempoBpm > 399 Then
+        If addedTempoBpm > SESSION_TEMPO_MAX_BPM - 1 Then
             addedTempoBpm = session_InitialTempoBpm() - 2
         End If
         textbox_SetText session_TempoMapTickValueLabel, _
@@ -2230,7 +2317,8 @@ Private Sub session_AuditSemanticTempoMapMutations( _
         textbox_SetText session_TempoMapBpmBox, Str(addedTempoBpm + 1), -1
         session_OnApplyTempoMap 0
         session_AuditBehavior session_Playing <> 0 AndAlso _
-            session_PlaybackElapsed = runningElapsed AndAlso _
+            session_AuditDoubleExactlyEqual( _
+                session_PlaybackElapsed, runningElapsed) <> 0 AndAlso _
             session_TempoPointBpm(session_TempoMapSelectedIndex) = addedTempoBpm _
             AndAlso Trim(textbox_GetText(session_TempoMapBpmBox)) = _
                 Trim(Str(addedTempoBpm)) AndAlso session_StatusText = _
@@ -2249,7 +2337,8 @@ Private Sub session_AuditSemanticTempoMapMutations( _
         textbox_SetText session_TempoMapTickValueLabel, Str(blockedTempoTick), -1
         session_OnAddTempoMap 0
         session_AuditBehavior session_Playing <> 0 AndAlso _
-            session_PlaybackElapsed = runningElapsed AndAlso _
+            session_AuditDoubleExactlyEqual( _
+                session_PlaybackElapsed, runningElapsed) <> 0 AndAlso _
             session_Summary.tempoCount = originalTempoCount + 1 AndAlso _
             Trim(textbox_GetText(session_TempoMapTickValueLabel)) = _
                 Trim(Str(auditTempoTick)) AndAlso session_StatusText = _
@@ -2258,7 +2347,8 @@ Private Sub session_AuditSemanticTempoMapMutations( _
             behaviorCheckCount, errorText
         session_OnDeleteTempoMap 0
         session_AuditBehavior session_Playing <> 0 AndAlso _
-            session_PlaybackElapsed = runningElapsed AndAlso _
+            session_AuditDoubleExactlyEqual( _
+                session_PlaybackElapsed, runningElapsed) <> 0 AndAlso _
             session_Summary.tempoCount = originalTempoCount + 1 AndAlso _
             session_TempoIndexExactForTick(auditTempoTick) >= 0 AndAlso _
             session_StatusText = "Press Stop before changing playback speed or tempo.", _
@@ -2459,14 +2549,15 @@ Private Sub session_AuditSemanticToolbarNoOp( _
         behaviorCheckCount, errorText
 
     Dim As Integer requestedTempo = originalTempo + 1
-    If requestedTempo > 400 Then
+    If requestedTempo > SESSION_TEMPO_MAX_BPM Then
         requestedTempo = originalTempo - 1
     End If
     Dim As Double runningElapsed = session_PlaybackElapsed
     textbox_SetText session_TempoBox, Str(requestedTempo), -1
     session_OnApplyTempo 0
     session_AuditBehavior session_Playing <> 0 AndAlso _
-        session_PlaybackElapsed = runningElapsed AndAlso _
+        session_AuditDoubleExactlyEqual( _
+            session_PlaybackElapsed, runningElapsed) <> 0 AndAlso _
         session_InitialTempoBpm() = originalTempo AndAlso _
         Trim(textbox_GetText(session_TempoBox)) = Trim(Str(originalTempo)) AndAlso _
         session_StatusText = "Press Stop before changing playback speed or tempo.", _
@@ -2543,7 +2634,7 @@ Private Sub session_AuditSemanticMixerPointerControls( _
                 Dim As Integer pointerY
                 If controlKind = OSE_MIXER_CONTROL_CHANNEL_FADER Then
                     pointerX = mixerControls_ChannelFaderX(fullLayout, slotIndex)
-                    pointerY = IIf(originalValue > 63, _
+                    pointerY = IIf(originalValue > OSE_MIDI_PAN_SIDE_RANGE, _
                         fullLayout.faderBottom, fullLayout.faderTop)
                 Else
                     Dim As Integer knobIndex = controlKind - _
@@ -2552,7 +2643,7 @@ Private Sub session_AuditSemanticMixerPointerControls( _
                         (knobIndex * stripWidth) \ 3
                     Dim As Integer knobCellRight = stripLeft + _
                         ((knobIndex + 1) * stripWidth) \ 3 - 1
-                    pointerX = IIf(originalValue > 63, _
+                    pointerX = IIf(originalValue > OSE_MIDI_PAN_SIDE_RANGE, _
                         knobCellLeft, knobCellRight)
                     pointerY = fullLayout.knobTop + 1
                 End If
@@ -2845,7 +2936,23 @@ Private Sub session_AuditSemanticKeyboardNavigation( _
     input_MockKeyPress FB.SC_F, INPUT_MODIFIER_ALT
     gui_UpdateAll()
     session_ProcessMenuBar()
+    If session_FileMenu = 0 Then
+        session_AppendControlAuditError errorText, _
+            "File menu is unavailable during keyboard audit"
+        Exit Sub
+    End If
+    If session_FileMenu->data = 0 Then
+        session_AppendControlAuditError errorText, _
+            "File menu data is unavailable during keyboard audit"
+        Exit Sub
+    End If
     Dim As MenuData Ptr fileMenuState = Cast(MenuData Ptr, session_FileMenu->data)
+    If fileMenuState = 0 Then
+        session_AppendControlAuditError errorText, _
+            "File menu data is unavailable during keyboard audit"
+        Exit Sub
+    End If
+    If session_FileMenu = 0 Then Exit Sub
     session_AuditBehavior session_FileMenu->visible <> 0 AndAlso _
         fileMenuState->selected = 0 AndAlso gui_GetFocus() = 0, _
         "Alt+F did not open and select the File menu", _
@@ -2854,6 +2961,7 @@ Private Sub session_AuditSemanticKeyboardNavigation( _
     input_MockKeyPress KEY_DOWN
     gui_UpdateAll()
     session_ProcessMenuBar()
+    If fileMenuState = 0 Then Exit Sub
     session_AuditBehavior fileMenuState->selected = 1, _
         "Down did not advance the keyboard menu selection", _
         behaviorCheckCount, errorText
@@ -2861,7 +2969,24 @@ Private Sub session_AuditSemanticKeyboardNavigation( _
     input_MockKeyPress KEY_RIGHT
     gui_UpdateAll()
     session_ProcessMenuBar()
+    If session_EditMenu = 0 Then
+        session_AppendControlAuditError errorText, _
+            "Edit menu is unavailable during keyboard audit"
+        Exit Sub
+    End If
+    If session_EditMenu->data = 0 Then
+        session_AppendControlAuditError errorText, _
+            "Edit menu data is unavailable during keyboard audit"
+        Exit Sub
+    End If
     Dim As MenuData Ptr editMenuState = Cast(MenuData Ptr, session_EditMenu->data)
+    If editMenuState = 0 Then
+        session_AppendControlAuditError errorText, _
+            "Edit menu data is unavailable during keyboard audit"
+        Exit Sub
+    End If
+    If session_EditMenu = 0 Then Exit Sub
+    If session_FileMenu = 0 Then Exit Sub
     session_AuditBehavior session_EditMenu->visible <> 0 AndAlso _
         session_FileMenu->visible = 0 AndAlso editMenuState->selected = 0, _
         "Right did not switch to the next desktop menu", _
@@ -3112,7 +3237,9 @@ Private Sub session_AuditNoteTools( _
     session_OnPause 0
     Dim As Double pausedElapsed = session_PlaybackElapsed
     session_UpdateSoftwarePlayback()
-    session_AuditBehavior session_Paused <> 0 AndAlso session_PlaybackElapsed = pausedElapsed AndAlso _
+    session_AuditBehavior session_Paused <> 0 AndAlso _
+        session_AuditDoubleExactlyEqual( _
+            session_PlaybackElapsed, pausedElapsed) <> 0 AndAlso _
         session_SelectedNoteLooping <> 0, "Pause advanced the selection loop", behaviorCheckCount, errorText
     session_OnPause 0
     session_OnNoteToolAction gui_FindWidget("note_tools_loop")
@@ -3133,7 +3260,9 @@ Private Sub session_AuditNoteTools( _
     Dim As MidiEditableNote drumNote
     midi_GetEditableNote originalNotes, melodyNote
     midi_GetEditableNote originalNotes + 1, drumNote
-    session_AuditBehavior melodyNote.keyNumber = 61 AndAlso drumNote.keyNumber = 38, _
+    session_AuditBehavior _
+        melodyNote.keyNumber = SESSION_AUDIT_MELODY_KEY_NUMBER AndAlso _
+        drumNote.keyNumber = SESSION_AUDIT_DRUM_KEY_NUMBER, _
         "Pitch tool changed drum assignments or missed the melody", behaviorCheckCount, errorText
     session_OnNoteToolAction gui_FindWidget("note_tools_undo")
     session_AuditBehavior session_NoteSelection.count = 2 AndAlso _
@@ -3146,7 +3275,8 @@ Private Sub session_AuditNoteTools( _
     session_SelectOnlyNote originalNotes
     session_OnNoteToolAction gui_FindWidget("note_tools_quantize")
     midi_GetEditableNote originalNotes, melodyNote
-    session_AuditBehavior melodyNote.startTick = 0 AndAlso melodyNote.durationTicks = 90, _
+    session_AuditBehavior melodyNote.startTick = 0 AndAlso _
+        melodyNote.durationTicks = SESSION_AUDIT_QUANTIZED_NOTE_DURATION_TICKS, _
         "Selection quantize changed duration or missed the grid", behaviorCheckCount, errorText
     session_OnNoteToolAction gui_FindWidget("note_tools_undo")
     session_OnNoteToolAction gui_FindWidget("note_tools_close")
@@ -3183,7 +3313,9 @@ Private Sub session_AuditNoteTools( _
                 End If
             Next
         Next
-        session_AuditBehavior hitCount = 12 AndAlso session_Phrase.numerator = 4 AndAlso session_Phrase.denominator = 4, _
+        session_AuditBehavior hitCount = OSE_DRUM_PAD_COUNT AndAlso _
+            session_Phrase.numerator = SESSION_AUDIT_COMMON_TIME_NUMERATOR AndAlso _
+            session_Phrase.denominator = SESSION_AUDIT_COMMON_TIME_DENOMINATOR, _
             "Starter beat did not create a complete 4/4 pattern", behaviorCheckCount, errorText
         session_OnPhraseAction gui_FindWidget("phrase_at_view")
         session_AuditBehavior textbox_GetText(session_PhraseTickBox) = LTrim(Str(session_ViewStartTick)), _
@@ -3204,7 +3336,8 @@ Private Sub session_AuditNoteTools( _
     session_SnapIndex = originalSnap
     session_ViewStartTick = originalView
     session_UpdateStatusWidget 800
-    session_AuditBehavior session_StatusLabel->visible <> 0 AndAlso session_StatusLabel->x = 8, _
+    session_AuditBehavior session_StatusLabel->visible <> 0 AndAlso _
+        session_StatusLabel->x = SESSION_STATUS_LABEL_LEFT, _
         "Feedback is hidden in a narrow window", behaviorCheckCount, errorText
     session_OnHelpMenu 1
     session_AuditActionButton "quick_start_close", @session_OnAboutClose, widgetActionCount, errorText
@@ -3314,6 +3447,11 @@ Private Sub session_AuditDrumPhraseControls( _
     input_ResetForTest()
     gui_UpdateAll()
     Dim As Widget Ptr firstCell = session_PhraseCells(0, 0)
+    If firstCell = 0 Then
+        session_AppendControlAuditError errorText, _
+            "drum phrase grid has no first cell"
+        Exit Sub
+    End If
     input_MockMouse firstCell->ax + firstCell->w \ 2, firstCell->ay + firstCell->h \ 2, 1
     gui_UpdateAll()
     input_MockMouse firstCell->ax + firstCell->w \ 2, firstCell->ay + firstCell->h \ 2, 0
@@ -3335,7 +3473,8 @@ Private Sub session_AuditDrumPhraseControls( _
     Dim As MidiEditableNote insertedNote
     Dim As Integer noteFound = midi_GetEditableNote(originalNotes, insertedNote)
     session_AuditBehavior midi_GetEditableNoteCount() = originalNotes + 2 AndAlso noteFound <> 0 AndAlso _
-        insertedNote.channel = 9 AndAlso insertedNote.keyNumber = drumKit_Pitch(8) AndAlso _
+        insertedNote.channel = OSE_MIDI_CHANNEL_DRUMS AndAlso _
+        insertedNote.keyNumber = drumKit_Pitch(8) AndAlso _
         session_Summary.timeSignatureCount = originalSignatureCount, _
         "Phrase insertion did not preserve channel or song meter", behaviorCheckCount, errorText
     Dim As ULongInt insertionEnd
@@ -3518,7 +3657,7 @@ Private Sub session_AuditSemanticMixerMeters( _
     session_Playing = 0
     session_Paused = 0
     mixerState_Initialize session_MixerChannels
-    session_ChannelVolume(0) = 0.82
+    session_ChannelVolume(0) = CSng(0.82)
     session_ChannelPan(0) = 0.0
     session_MasterVolume = 1.0
     mixerMeter_Initialize session_MixerMeter
@@ -3963,7 +4102,7 @@ Private Function session_AuditScorePixels( _
         (SESSION_SCORE_LEFT + scoreWidth - 1, SESSION_SCORE_TOP + scoreHeight - 1), _
         captureImage
     ' GET reports errors through ERR; IMAGEINFO would replace that status.
-    If Err <> 0 Then ' fblint: disable-line FBL613 REASON: Gfxlib sets ERR on both capture success and failure without ON ERROR.
+    If Err <> 0 Then ' Gfxlib sets ERR on both capture success and failure without ON ERROR.
         ImageDestroy captureImage
         session_AppendControlAuditError errorText, "score capture failed"
         Return ""
@@ -3979,7 +4118,7 @@ Private Function session_AuditScorePixels( _
         session_AppendControlAuditError errorText, "invalid score capture image"
         Return ""
     End If
-    Dim As LongInt byteCount = CLngInt(pitch) * CLngInt(captureHeight) ' fblint: disable-line FBL-NUM-002 REASON: Both operands are converted to 64 bits before multiplication.
+    Dim As LongInt byteCount = CLngInt(pitch) * CLngInt(captureHeight) ' Both operands are converted to 64 bits before multiplication.
     ' A 64 MiB ceiling bounds copied data even if image metadata is malformed.
     If byteCount < 1 OrElse byteCount > bufferSize OrElse _
         byteCount > 64LL * 1024 * 1024 Then
@@ -4036,7 +4175,7 @@ Private Sub session_AuditScoreRendering( _
     ' Warm both pages with a clean score before drawing any transient cursor.
     input_MockMouse -1, -1, 0
     input_Update()
-    For pageVisit As Integer = 0 To 1 ' fblint: disable-line FBL311 REASON: This counter bounds visits to both native work pages; the backend selects the page.
+    For pageVisit As Integer = 0 To 1 ' This counter bounds visits to both native work pages; the backend selects the page.
         session_DrawApplication screenWidth, screenHeight
         backend_Flip()
     Next pageVisit
@@ -4156,6 +4295,11 @@ Private Function session_WriteControlAudit(ByVal reportFilename As String) As In
             Continue For
         End If
         Dim As MenuData Ptr menuState = Cast(MenuData Ptr, menuWidgets(menuIndex)->data)
+        If menuState = 0 Then
+            session_AppendControlAuditError errorText, _
+                "menu data is unavailable at index " + Str(menuIndex)
+            Continue For
+        End If
         If menuState->count <> expectedMenuItems(menuIndex) Then
             session_AppendControlAuditError errorText, _
                 "wrong item count in menu index " + Str(menuIndex)
@@ -4206,14 +4350,33 @@ Private Function session_WriteControlAudit(ByVal reportFilename As String) As In
     ' two responsive channel-page controls, twenty-four performance keys, and
     ' twelve drum pads.
     Dim As Integer customControlCount = SESSION_SCORE_TOOL_COUNT + _
-        OSE_SCORE_DURATION_COUNT + 6 + SESSION_CHANNEL_COUNT * 7 + 5 + _
+        OSE_SCORE_DURATION_COUNT + SESSION_AUDIT_SCORE_PALETTE_AUXILIARY_CONTROL_COUNT + _
+        SESSION_CHANNEL_COUNT * SESSION_AUDIT_MIXER_STRIP_CONTROL_COUNT + _
+        SESSION_AUDIT_MIXER_FIXED_CONTROL_COUNT + _
         SESSION_KEYBOARD_NOTE_COUNT + OSE_DRUM_PAD_COUNT
-    If SESSION_SCORE_TOOL_COUNT <> 5 OrElse _
-        SESSION_SCORE_PALETTE_ROW_COUNT <> OSE_SCORE_DURATION_COUNT OrElse _
-        SESSION_CHANNEL_COUNT <> 16 OrElse _
-        SESSION_KEYBOARD_NOTE_COUNT <> 24 OrElse _
-        OSE_DRUM_PAD_COUNT <> 12 OrElse _
-        OSE_MIXER_CONTROL_PAGE_NEXT <> 12 Then
+    Dim As Integer controlContractChanged = 0
+    ' These direct comparisons are intentional runtime audit contracts. Their
+    ' fixed expected values make later feature-count drift visible.
+    ' Fixed contract values stay visible to detect audit drift.
+    If SESSION_SCORE_TOOL_COUNT <> SESSION_AUDIT_EXPECTED_SCORE_TOOL_COUNT Then _
+        controlContractChanged = -1
+    ' Fixed contract values stay visible to detect audit drift.
+    If SESSION_SCORE_PALETTE_ROW_COUNT <> OSE_SCORE_DURATION_COUNT Then _
+        controlContractChanged = -1
+    ' Fixed contract values stay visible to detect audit drift.
+    If SESSION_CHANNEL_COUNT <> SESSION_AUDIT_EXPECTED_CHANNEL_COUNT Then _
+        controlContractChanged = -1
+    ' Fixed contract values stay visible to detect audit drift.
+    If SESSION_KEYBOARD_NOTE_COUNT <> SESSION_AUDIT_EXPECTED_KEYBOARD_NOTE_COUNT Then _
+        controlContractChanged = -1
+    ' Fixed contract values stay visible to detect audit drift.
+    If OSE_DRUM_PAD_COUNT <> SESSION_AUDIT_EXPECTED_DRUM_PAD_COUNT Then _
+        controlContractChanged = -1
+    ' Fixed contract values stay visible to detect audit drift.
+    If OSE_MIXER_CONTROL_PAGE_NEXT <> SESSION_AUDIT_EXPECTED_MIXER_PAGE_NEXT_INDEX Then _
+        controlContractChanged = -1
+
+    If controlContractChanged <> 0 Then
         session_AppendControlAuditError errorText, _
             "code-drawn control contract constants changed"
     End If
@@ -4298,6 +4461,7 @@ Private Function session_WriteControlAudit(ByVal reportFilename As String) As In
     session_AuditScoreRendering renderCheckCount, errorText
 
     Dim As Integer fileNumber = FreeFile()
+    ' This caller-selected behavioral audit report is a generated artifact that is replaced on each run.
     If Open(reportFilename For Output As #fileNumber) <> 0 Then
         Return 0
     End If

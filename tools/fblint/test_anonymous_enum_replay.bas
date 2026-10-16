@@ -2,7 +2,10 @@
 ' File: tools/fblint/test_anonymous_enum_replay.bas
 ' Purpose: Exercise production anonymous enum replay keys on compiler exports.
 ' Responsibilities: Retain distinct enum identities and leave source names and records intact.
-' This file intentionally does NOT replace the full replay frame comparison.
+' Targets: FreeBASIC fb dialect, native schema-27 replay consumer.
+' Module API: Command-line compiler model path; checks run in this executable.
+' This file intentionally does NOT contain:
+'     the full replay frame comparison or compiler export generation.
 #Lang "fb"
 #Include Once "test_fixture_symbol_classes.bi"
 Const FBLINT_MAX_SEMANTIC_SYMBOL_TYPES As LongInt = 250000

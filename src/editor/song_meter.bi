@@ -101,7 +101,8 @@ Public Sub session_OnSongMeterAction(ByVal source As Widget Ptr)
             End If
             Dim As Integer denominatorPower = 0
             Dim As ULongInt denominatorValue = 1
-            While denominatorValue < denominator AndAlso denominatorPower < 7
+            While denominatorValue < denominator AndAlso _
+                denominatorPower < SESSION_MAX_TIME_SIGNATURE_POWER
                 denominatorValue *= 2
                 denominatorPower += 1
             Wend
@@ -158,7 +159,8 @@ Public Sub session_OnSongMeter(ByVal source As Widget Ptr)
         session_SetStatus "Close the current window first."
         Exit Sub
     End If
-    If session_Summary.division < 1 OrElse session_Summary.division > 32767 Then
+    If session_Summary.division < 1 OrElse _
+        session_Summary.division > OSE_MAX_MIDI_TICKS_PER_QUARTER_NOTE Then
         session_SetStatus "Time signatures require musical tick timing."
         Exit Sub
     End If

@@ -137,7 +137,7 @@ If test_ReadData(filename) <> canonicalBlack Then _
 If Dir(filename + ".ose-tmp-*") <> "" Then _
     test_Fail "successful save left an atomic temporary file"
 
-Dim As String soundFontPath = "C:\SoundFonts\Timbres of Heaven 4.00.sf2" ' fblint: disable-line FBL007 REASON: This path is parser/serialization test data; the test does not open a Windows file.
+Dim As String soundFontPath = "C:\SoundFonts\Timbres of Heaven 4.00.sf2" ' This path is parser/serialization test data; the test does not open a Windows file.
 preferences.soundFontPath = soundFontPath
 If userPreferences_Save(filename, preferences) = 0 Then _
     test_Fail "SoundFont preference could not be saved"

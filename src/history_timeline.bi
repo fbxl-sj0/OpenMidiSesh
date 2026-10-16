@@ -36,7 +36,7 @@ Const OSE_HISTORY_DOMAIN_NONE As Integer = 0
 Const OSE_HISTORY_DOMAIN_MIDI As Integer = 1
 Const OSE_HISTORY_DOMAIN_AUDIO As Integer = 2
 
-Type OseHistoryTimeline ' fblint: disable-line FBL910 REASON: This record is process-local state, never a raw serialized or external ABI layout.
+Type OseHistoryTimeline ' This record is process-local state, never a raw serialized or external ABI layout.
     undoDomains(0 To OSE_HISTORY_TIMELINE_DEPTH - 1) As Integer
     As Integer undoStart
     As Integer undoCount

@@ -3,7 +3,9 @@
 ' Purpose: Preserve byte-oriented semantic field decoding after the plain copy optimization.
 ' Responsibilities: Raw bytes, escaped bytes, embedded NULs and malformed escapes.
 ' Targets: FreeBASIC fb dialect, native semantic wire consumer.
-' This file intentionally does NOT construct compiler facts or benchmark readers.
+' Module API: Standalone decoder regression executable; its local helper is private.
+' This file intentionally does NOT contain:
+'     compiler fact construction or benchmark readers.
 #Lang "fb"
 ' The wire's unsigned integer fields have a 32-bit ceiling and use decimal text.
 Const FBLINT_SEMANTIC_MAX_INTEGER As LongInt = 4294967295

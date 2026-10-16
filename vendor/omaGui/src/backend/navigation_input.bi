@@ -3,7 +3,12 @@
     File: navigation_input.bi
     Purpose: Declare portable controller navigation.
     Responsibilities: Expose semantic actions over the existing sampled input frame.
-    This file does not contain application commands or a second event queue.
+    Targets: FreeBASIC fb dialect; opt-in OMAGUI_NAVIGATION_EXTENSIONS profile.
+    Module API boundary: declares controller actions and sampled-frame mapping procedures.
+
+    This file intentionally does NOT contain:
+        - application commands
+        - a second event queue
 
     The navigation profile is opt-in through OMAGUI_NAVIGATION_EXTENSIONS.
     All state belongs to the GUI thread, like the core registry and input frame.

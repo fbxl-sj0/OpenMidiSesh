@@ -66,7 +66,7 @@ Const OSE_SCORE_CONTROL_DURATION As Integer = 2
 Const OSE_SCORE_CONTROL_MODIFIER As Integer = 3
 Const OSE_SCORE_CONTROL_PALETTE_BACKGROUND As Integer = 4
 
-' fblint: disable-next-line FBL911,FBL014 REASON: This is an in-memory record; its fields are not a raw on-disk UDT layout.
+' This is an in-memory record; its fields are not a raw on-disk UDT layout.
 Type OseScoreControlHit
     As Integer kind
     As Integer index

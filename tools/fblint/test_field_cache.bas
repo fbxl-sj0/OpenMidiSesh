@@ -4,7 +4,8 @@
 ' Responsibilities: Every field, memory caps, replacement models and snapshots.
 ' Targets: FreeBASIC fb dialect, native schema-27 consumer.
 ' Module API: Two genuine compiler model paths on the command line.
-' This file intentionally does NOT construct semantic records or infer source types.
+' This file intentionally does NOT contain:
+'     semantic record construction or source type inference.
 #Lang "fb"
 #Include Once "test_fixture_symbol_classes.bi"
 Const FBLINT_MAX_SEMANTIC_SYMBOL_TYPES As LongInt = 250000

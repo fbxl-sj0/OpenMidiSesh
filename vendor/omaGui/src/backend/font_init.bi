@@ -4,6 +4,9 @@
 
     File: font_init.bi
 
+    Targets: FreeBASIC fb dialect; targets that build the generated default-font table.
+    Module API boundary: include fragment used by font_init_pointers; declares no public entrypoints.
+
     Purpose:
 
         Initialize the generated default-font glyph pointer table.

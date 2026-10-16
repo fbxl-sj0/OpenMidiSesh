@@ -4,6 +4,9 @@
 
     File: layout.bas
 
+    Targets: FreeBASIC fb dialect; shared omaGUI widget layout profile.
+    Module API boundary: implements the row, column and grid procedures declared by layout.bi.
+
     Purpose:
 
         Arrange direct child widgets without embedding fixed screen

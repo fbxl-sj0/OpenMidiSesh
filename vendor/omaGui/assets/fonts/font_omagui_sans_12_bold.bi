@@ -32,7 +32,7 @@
 
 ' Format: Width, Height, AlphaData...
 ' This module owns the pointer table and initializes it before text rendering.
-' fblint: disable-next-line FBL301
+
 Dim Shared As UByte Ptr font_omagui_sans_12_bold_chars(32 To 126)
 
 ' Font data for character 32 (' ')

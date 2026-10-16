@@ -1853,6 +1853,27 @@ Function gui_RemoveWidgetPtr(ByVal target As Widget Ptr) As Integer
     Return 0
 End Function
 
+Function gui_IsWidgetWithinTree( _
+    ByVal candidate As Widget Ptr, ByVal root As Widget Ptr _
+) As Integer
+    If candidate = 0 OrElse root = 0 Then Return 0
+    If gui_IsRegisteredWidget(candidate) = 0 OrElse _
+       gui_IsRegisteredWidget(root) = 0 Then Return 0
+    Return IIf(gui_IsWithinTree(candidate, root), -1, 0)
+End Function
+
+Function gui_CountWidgetsInTree(ByVal root As Widget Ptr) As Integer
+    If root = 0 OrElse gui_IsRegisteredWidget(root) = 0 Then Return 0
+
+    Dim As Integer widget_count
+    Dim As Widget Ptr current = widget_list_head
+    While current <> 0
+        If gui_IsWithinTree(current, root) Then widget_count += 1
+        current = current->next_widget
+    Wend
+    Return widget_count
+End Function
+
 Sub gui_RemoveWidget(ByVal nm As String)
     Dim As Widget Ptr curr = widget_list_head
     While curr <> 0

@@ -39,17 +39,17 @@ Dim Shared omagui_nav_nav_key_consumed(0 To 255) As Integer
     so its private polling state must be shared with the accessor routines in
     this file.  It is not part of the public input API.
 '/
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
+
 Dim Shared As Integer mX, mY, mButtons, mWheelDelta
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
+
 Dim Shared As Integer previousWheelPosition, wheelPositionInitialized
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
+
 Dim Shared As Integer mockX, mockY, mockButtons, mockWheelDelta
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
+
 Dim Shared As Integer useMockMouse, useMockTouch, useMockKeys, useMockText
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
+
 Dim Shared As Integer pointerDispatchEnabled = -1, keyboardDispatchEnabled = -1
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
+
 Dim Shared As String textBuffer, mockText
 
 ' Ten contacts bound both native polling and deterministic input fixtures.
@@ -76,11 +76,11 @@ Private Dim Shared As Integer inputKeyBatchActive
     only reports the final state, so ScreenEvent records each press together
     with the modifier state that existed at that instant.
 '/
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
+
 Dim Shared As Integer inputNativeModifiers
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
+
 Dim Shared As Integer inputKeyPressEvents(0 To INPUT_KEY_LAST)
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
+
 Dim Shared As Integer inputKeyPressChords(0 To INPUT_KEY_LAST)
 ' KeyDown callbacks can change a physical key's meaning for its focused
 ' control. Raw ordered records remain intact so KeyUp still sees the real key.
@@ -90,18 +90,18 @@ Dim Shared As Integer inputEffectiveKeyPressed(0 To INPUT_KEY_LAST)
 Dim Shared As Integer inputEffectiveKeyPressEvents(0 To INPUT_KEY_LAST)
 Dim Shared As Integer inputEffectiveKeyPressChords(0 To INPUT_KEY_LAST)
 ' Track both Shift keys separately. Releasing one must not release the other.
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
+
 Dim Shared As Integer inputNativeModifierKeys(0 To INPUT_KEY_LAST)
 
 ' All event storage belongs to the GUI input thread. No callback or pointer
 ' escapes these fixed buffers. Mock records become visible only at Update.
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
+
 Dim Shared As InputKeyEvent inputKeyEvents(0 To INPUT_KEY_EVENT_CAPACITY - 1)
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
+
 Dim Shared As InputKeyEvent mockKeyEvents(0 To INPUT_KEY_EVENT_CAPACITY - 1)
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
+
 Dim Shared As Long inputKeyEventLength, mockKeyEventLength
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
+
 Dim Shared As Integer inputKeyEventOverflow, mockKeyEventOverflow
 
 /'
@@ -111,28 +111,28 @@ Dim Shared As Integer inputKeyEventOverflow, mockKeyEventOverflow
     release-driven widgets keep their ordinary capture semantics.
 '/
 Const INPUT_POINTER_EVENT_CAPACITY As Long = 64
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
+
 Dim Shared As Long inputPointerEventX(0 To INPUT_POINTER_EVENT_CAPACITY - 1)
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
+
 Dim Shared As Long inputPointerEventY(0 To INPUT_POINTER_EVENT_CAPACITY - 1)
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
+
 Dim Shared As Integer inputPointerEventButtons( _
     0 To INPUT_POINTER_EVENT_CAPACITY - 1 _
 )
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
+
 Dim Shared As Long inputPointerEventHead, inputPointerEventTail
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
+
 Dim Shared As Long inputPointerEventCount
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
+
 Dim Shared As Integer inputNativeButtons, inputNativeButtonsInitialized
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
+
 Dim Shared As Integer inputNativeX, inputNativeY
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
+
 Dim Shared As Integer inputWindowCloseRequested
 
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
+
 Dim Shared As Integer mockKeys(0 To INPUT_KEY_LAST)
-' FB-LINTER: DISABLE-NEXT-LINE FBL301
+
 Dim Shared As Integer mockPreviousKeys(0 To INPUT_KEY_LAST)
 ' A restored GUI must not interpret the key/button that ended external drawing
 ' as a new activation. This suppression belongs to the GUI input thread.
@@ -933,7 +933,7 @@ Sub input_ResumeAfterScreenChange()
             If event_value.type = FB.EVENT_WINDOW_CLOSE Then inputWindowCloseRequested = -1
         Next event_index
         If useMockText = 0 Then
-            ' fblint: disable-next-line FBL311 REASON: This counted drain is bounded even if the producer keeps supplying text.
+            ' This counted drain is bounded even if the producer keeps supplying text.
             For key_index As Integer = 1 To MAX_DISCARDED_EVENTS
                 If Len(Inkey) = 0 Then Exit For
             Next key_index

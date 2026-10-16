@@ -3,7 +3,12 @@
     File: navigation_input.bas
     Purpose: Map the current input frame to controller actions.
     Responsibilities: Bound controller polling, repeat timers and deterministic fixtures.
-    This file does not contain application commands or a second event queue.
+    Targets: FreeBASIC fb dialect; opt-in OMAGUI_NAVIGATION_EXTENSIONS profile.
+    Module API boundary: maps the sampled input frame to navigation actions.
+
+    This file intentionally does NOT contain:
+        - application commands
+        - a second event queue
 
     The navigation profile is opt-in through OMAGUI_NAVIGATION_EXTENSIONS.
     All state belongs to the GUI thread, like the core registry and input frame.

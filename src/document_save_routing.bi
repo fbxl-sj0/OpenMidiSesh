@@ -9,7 +9,8 @@
 
     Targets: FreeBASIC fb dialect; shared Windows/Linux x64 and Android editor builds.
 
-    Module API: documentSave_SelectTarget and OSE_DOCUMENT_SAVE_* constants for editor Save routing.
+    Module API boundary: documentSave_SelectTarget and OSE_DOCUMENT_SAVE_* constants for editor Save routing.
+    This is a PRIVATE IMPLEMENTATION INCLUDE, not a public application API.
 
     Purpose:
 

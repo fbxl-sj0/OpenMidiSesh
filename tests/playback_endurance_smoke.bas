@@ -50,13 +50,13 @@ Const TEST_RECOVERY_SECONDS As Double = 1.0
 
 Declare Sub fb_sfxUpdate CDecl Alias "fb_sfxUpdate" (ByVal frames As Long)
 ' These are public, target-stable names in the linked sfxlib C ABI.
-' fblint: disable-next-line FBL931 REASON: This declaration binds the verified sfxlib C ABI export used by the test.
+' This declaration binds the verified sfxlib C ABI export used by the test.
 Declare Sub fb_sfxForegroundFeedBegin CDecl Alias "fb_sfxForegroundFeedBegin" ()
-' fblint: disable-next-line FBL931 REASON: This declaration binds the verified sfxlib C ABI export used by the test.
+' This declaration binds the verified sfxlib C ABI export used by the test.
 Declare Sub fb_sfxForegroundFeedEnd CDecl Alias "fb_sfxForegroundFeedEnd" ()
 ' The definition query is a target-stable sfxlib C ABI used only to prove the
 ' restart cleared and then rebuilt the production instrument table.
-' fblint: disable-next-line FBL931 REASON: This declaration binds the verified sfxlib C ABI export used by the test.
+' This declaration binds the verified sfxlib C ABI export used by the test.
 Declare Function fb_sfxInstrumentDefined CDecl Alias "fb_sfxInstrumentDefined" (ByVal instrumentId As Integer) As Long
 
 ' -------------------------------------------------------------------------
@@ -138,9 +138,9 @@ End If
 ' driver prevents that deterministic workload from starving an unrelated live
 ' hardware callback while retaining the complete production mixer and capture.
 ' FreeBASIC provides the process environment on both supported desktop hosts.
-' fblint: disable-next-line FBL750 REASON: The null-driver test deliberately sets and verifies its own process environment.
+' The null-driver test deliberately sets and verifies its own process environment.
 SetEnviron "SFXLIB_DRIVER=null"
-' fblint: disable-next-line FBL750 REASON: The null-driver test deliberately sets and verifies its own process environment.
+' The null-driver test deliberately sets and verifies its own process environment.
 If LCase(Trim(Environ("SFXLIB_DRIVER"))) <> "null" Then _
     test_Fail "null output driver selection could not be established"
 

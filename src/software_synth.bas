@@ -36,15 +36,15 @@
 
 #lang "fb"
 
-#inclib "sfx" ' fblint: disable-line FBL930 REASON: The supported FreeBASIC toolchain supplies sfx on Windows and Linux.
+#inclib "sfx" ' The supported FreeBASIC toolchain supplies sfx on Windows and Linux.
 #include once "software_synth.bi"
 #include once "sfx_runtime.bi"
 #include once "soundfont_synth.bi"
 #include once "generated_voice_stop_internal.bi"
 
-' fblint: disable-next-line FBL301 REASON: retained configuration belongs to the process-wide synth adapter.
+' retained configuration belongs to the process-wide synth adapter.
 Dim Shared softwareSynth_ConfiguredGeneration As Integer
-' fblint: disable-next-line FBL301 REASON: this cursor selects the next module-owned fallback voice.
+' this cursor selects the next module-owned fallback voice.
 Dim Shared softwareSynth_NextFallbackVoice As Integer
 Dim Shared softwareSynth_FallbackVoiceChannel( _
     0 To OSE_SOFTWARE_SYNTH_VOICE_COUNT - 1 _

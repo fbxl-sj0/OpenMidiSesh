@@ -79,14 +79,14 @@ Private Function session_NoteAccidental( _
     If keyNumber < 0 Then
         keyNumber = 0
     End If
-    If keyNumber > 127 Then
-        keyNumber = 127
+    If keyNumber > SESSION_MIDI_MAX_KEY Then
+        keyNumber = SESSION_MIDI_MAX_KEY
     End If
-    If sharpsFlats < -7 Then
-        sharpsFlats = -7
+    If sharpsFlats < -SESSION_MAX_KEY_SIGNATURE_ALTERATION Then
+        sharpsFlats = -SESSION_MAX_KEY_SIGNATURE_ALTERATION
     End If
-    If sharpsFlats > 7 Then
-        sharpsFlats = 7
+    If sharpsFlats > SESSION_MAX_KEY_SIGNATURE_ALTERATION Then
+        sharpsFlats = SESSION_MAX_KEY_SIGNATURE_ALTERATION
     End If
 
     Dim As Integer pitchClass = keyNumber Mod 12
@@ -183,13 +183,13 @@ Private Sub session_DrawScaledNotationPolygon( _
         and paths are rejected before scaling to prevent divide-by-zero and
         out-of-range array access in malformed symbol data.
     '/
-    If targetWidth < 2 Or targetHeight < 2 Then
+    If targetWidth < 2 OrElse targetHeight < 2 Then
         Exit Sub
     End If
-    If designWidth < 1 Or designHeight < 1 Then
+    If designWidth < 1 OrElse designHeight < 1 Then
         Exit Sub
     End If
-    If pointCount < 3 Or pointCount > GRAPHICSHAPE_MAX_POINTS Then
+    If pointCount < 3 OrElse pointCount > GRAPHICSHAPE_MAX_POINTS Then
         Exit Sub
     End If
 
@@ -249,7 +249,7 @@ Private Sub session_DrawVectorNoteHead( _
     Const DESIGN_WIDTH As Integer = 100
     Const DESIGN_HEIGHT As Integer = 70
 
-    If headWidth < 2 Or headHeight < 2 Then
+    If headWidth < 2 OrElse headHeight < 2 Then
         Exit Sub
     End If
     Dim As Integer originX = centerX - headWidth \ 2
@@ -694,7 +694,7 @@ Private Function session_NoteStemDirection( _
     Dim As Integer hasLowerNote = 0
     Dim As Integer hasHigherNote = 0
     Dim As Integer chordNoteCount = 1
-    Dim As Long chordYTotal = sourceY
+    Dim As LongInt chordYTotal = sourceY
     For candidateCacheIndex As Integer = 0 To _
         session_ScoreVisibleNoteCount - 1
         Dim As Integer candidateIndex = _
@@ -729,7 +729,7 @@ Private Function session_NoteStemDirection( _
         ' A chord is one visual voice in this preview. Average its notehead
         ' positions so every note receives the same stem direction instead of
         ' producing opposing stems for the upper and lower chord members.
-        Dim As Integer chordAverageY = CInt(chordYTotal \ chordNoteCount)
+        Dim As Integer chordAverageY = chordYTotal \ chordNoteCount
         automaticDirection = 1
         If chordAverageY < sourceStaffY + staffMiddleOffset Then _
             automaticDirection = 0
@@ -1005,7 +1005,7 @@ Private Sub session_DrawScoreBeams( _
                 session_ThemePalette.textColor, 1
         Next
         drawnBeamCount += 1
-        If drawnBeamCount >= 512 Then
+        If drawnBeamCount >= SESSION_SCORE_RENDER_MAX_BEAMS Then
             Exit For
         End If
     Next
@@ -1112,11 +1112,11 @@ Private Sub session_DrawScorePartialBeams( _
                 beamRight - beamLeft + 1, beamThickness, _
                 session_ThemePalette.textColor, 1
             drawnPartialCount += 1
-            If drawnPartialCount >= 1024 Then
+            If drawnPartialCount >= SESSION_SCORE_RENDER_MAX_PARTIAL_BEAMS Then
                 Exit For
             End If
         Next
-        If drawnPartialCount >= 1024 Then
+        If drawnPartialCount >= SESSION_SCORE_RENDER_MAX_PARTIAL_BEAMS Then
             Exit For
         End If
     Next
@@ -1211,7 +1211,7 @@ Private Sub session_DrawScoreTies( _
             controlX, curveY + tieControlOffset, _
             secondX - tieHeadInset, secondY + tieHeadInset, noteColor
         drawnTieCount += 1
-        If drawnTieCount >= 512 Then
+        If drawnTieCount >= SESSION_SCORE_RENDER_MAX_TIES Then
             Exit For
         End If
     Next
@@ -1355,7 +1355,7 @@ Private Function session_TimeSignatureBeatTicks( _
     End If
 
     Dim As ULongInt beatTicks = CULngInt(session_Summary.division) * 4
-    For powerIndex As Integer = 1 To signaturePoint.denominatorPower ' fblint: disable-line FBL311 REASON: The counter bounds the power-of-two denominator calculation.
+    For powerIndex As Integer = 1 To signaturePoint.denominatorPower ' The counter bounds the power-of-two denominator calculation.
         beatTicks \= 2
     Next
     If beatTicks = 0 Then
@@ -1403,11 +1403,11 @@ Private Sub session_DrawKeySignature( _
     ByVal firstTrack As Integer, _
     ByVal sharpsFlats As Integer _
 )
-    If sharpsFlats < -7 Then
-        sharpsFlats = -7
+    If sharpsFlats < -SESSION_MAX_KEY_SIGNATURE_ALTERATION Then
+        sharpsFlats = -SESSION_MAX_KEY_SIGNATURE_ALTERATION
     End If
-    If sharpsFlats > 7 Then
-        sharpsFlats = 7
+    If sharpsFlats > SESSION_MAX_KEY_SIGNATURE_ALTERATION Then
+        sharpsFlats = SESSION_MAX_KEY_SIGNATURE_ALTERATION
     End If
     If sharpsFlats = 0 Then
         Exit Sub
@@ -1484,7 +1484,7 @@ Private Function session_ScoreIsMeasureStart(ByVal tick As ULongInt) As Integer
     If tick < signaturePoint.tick OrElse measureTicks = 0 Then
         Return 0
     End If
-    If (tick - signaturePoint.tick) Mod measureTicks = 0 Then ' fblint: disable-line FBL406 REASON: Range checks keep the dividend nonnegative and the modulus positive before this calculation.
+    If (tick - signaturePoint.tick) Mod measureTicks = 0 Then ' Range checks keep the dividend nonnegative and the modulus positive before this calculation.
         Return -1
     End If
     Return 0
@@ -1561,7 +1561,7 @@ Private Sub session_MusicalPosition( _
     End If
 
     Dim As ULongInt offsetInMeasure = _
-        (tick - segmentStart) Mod measureTicks ' fblint: disable-line FBL406 REASON: Range checks keep the dividend nonnegative and the modulus positive before this calculation.
+        (tick - segmentStart) Mod measureTicks ' Range checks keep the dividend nonnegative and the modulus positive before this calculation.
     beatNumber = offsetInMeasure \ beatTicks + 1
     subTick = offsetInMeasure Mod beatTicks
 End Sub
@@ -1686,7 +1686,7 @@ Private Sub session_DrawScoreMeterGuides( _
                 scoreLeft, scoreRight, ticksPerView)
             Dim As ULong guideColor = session_ThemePalette.scoreGuideColor
             Dim As Integer isMeasureStart = 0
-            If (guideTick - signaturePoint.tick) Mod measureTicks = 0 Then ' fblint: disable-line FBL406 REASON: Range checks keep the dividend nonnegative and the modulus positive before this calculation.
+            If (guideTick - signaturePoint.tick) Mod measureTicks = 0 Then ' Range checks keep the dividend nonnegative and the modulus positive before this calculation.
                 guideColor = session_ThemePalette.scoreStrongGuideColor
                 isMeasureStart = -1
             End If
@@ -1711,7 +1711,7 @@ Private Sub session_DrawScoreMeterGuides( _
                     session_ThemePalette.scoreStrongGuideColor, 2
             End If
             drawnGuideCount += 1
-            If drawnGuideCount >= 256 Then
+            If drawnGuideCount >= SESSION_SCORE_RENDER_MAX_GUIDES Then
                 Exit Sub
             End If
             If beatTicks > viewEndTick - guideTick Then
@@ -1802,11 +1802,11 @@ Private Sub session_DrawRestGlyph( _
                 backend_Line restX, staffY + 9, restX + 8, _
                     staffY + 9 + REST_FLAG_RISE, restColor
             End If
-            If durationCode >= 5 Then
+            If durationCode >= OSE_SCORE_DURATION_THIRTY_SECOND Then
                 backend_Line restX, staffY + 13, restX + 8, _
                     staffY + 13 + REST_FLAG_RISE, restColor
             End If
-            If durationCode >= 6 Then
+            If durationCode >= OSE_SCORE_DURATION_SIXTY_FOURTH Then
                 backend_Line restX, staffY + 17, restX + 8, _
                     staffY + 17 + REST_FLAG_RISE, restColor
             End If
@@ -1911,7 +1911,7 @@ Private Sub session_DrawRestSpan( _
                 restColor
             drawnRestCount += 1
         End If
-        If drawnRestCount >= 1024 Then
+        If drawnRestCount >= SESSION_SCORE_RENDER_MAX_RESTS Then
             Exit Sub
         End If
         cursorTick = restEnd
@@ -2034,7 +2034,7 @@ Private Sub session_DrawScoreRests( _
                             session_ThemePalette.textColor, drawnRestCount
                         cursorTick = nextNoteTick
                     End If
-                    If drawnRestCount >= 1024 Then
+                    If drawnRestCount >= SESSION_SCORE_RENDER_MAX_RESTS Then
                         Exit Sub
                     End If
                 Wend
@@ -2677,7 +2677,7 @@ Private Sub session_DrawScoreRuler( _
     ' cannot stretch ruler marks away from the notes they describe. Thin dense
     ' grids before drawing, while retaining their actual time coordinates.
     Dim As ULongInt rulerStepTicks = session_ScoreSnapTicks()
-    While ticksPerView \ rulerStepTicks > 256
+    While ticksPerView \ rulerStepTicks > SESSION_SCORE_RENDER_MAX_RULER_DIVISIONS
         rulerStepTicks *= 2
     Wend
     Dim As ULongInt firstRulerTick = _
@@ -2715,15 +2715,15 @@ End Sub
 
 
 ' Score drawing branches by notation feature but owns no input or mutation.
-' fblint: disable-next-line FBL111 REASON: Score rendering branches by notation feature without mutating document state.
+' Score rendering branches by notation feature without mutating document state.
 Private Sub session_DrawScore(ByVal screenWidth As Integer, ByVal screenHeight As Integer)
     Dim As Integer scoreWidth = screenWidth - SESSION_SCORE_LEFT - 4
     Dim As Integer scoreHeight = screenHeight - SESSION_TOP_HEIGHT - SESSION_MIXER_HEIGHT - 8
-    If scoreWidth < 160 Then
-        scoreWidth = 160
+    If scoreWidth < SESSION_SCORE_VIEW_MINIMUM_WIDTH Then
+        scoreWidth = SESSION_SCORE_VIEW_MINIMUM_WIDTH
     End If
-    If scoreHeight < 150 Then
-        scoreHeight = 150
+    If scoreHeight < SESSION_SCORE_VIEW_MINIMUM_HEIGHT Then
+        scoreHeight = SESSION_SCORE_VIEW_MINIMUM_HEIGHT
     End If
 
     Dim As Double scoreSectionClock
@@ -2864,8 +2864,8 @@ Private Sub session_DrawScore(ByVal screenWidth As Integer, ByVal screenHeight A
         If session_ScoreVisibleNoteOverflowed <> 0 Then _
             scoreTitle += " [dense view clipped]"
         Dim As Integer scoreTitleCharacters = (scoreWidth - 280) \ 8
-        If scoreTitleCharacters < 12 Then
-            scoreTitleCharacters = 12
+        If scoreTitleCharacters < SESSION_SCORE_TITLE_MINIMUM_CHARACTERS Then
+            scoreTitleCharacters = SESSION_SCORE_TITLE_MINIMUM_CHARACTERS
         End If
         scoreTitle = session_ClipText(scoreTitle, scoreTitleCharacters)
         backend_PrintAligned SESSION_SCORE_LEFT + 4, SESSION_SCORE_TOP + 5, _
@@ -3036,15 +3036,15 @@ Private Sub session_DrawMixerMeter( _
         Dim As Integer segmentY = meterTop + meterHeight - 2 - _
             (segmentIndex + 1) * segmentHeight - segmentIndex
         Dim As ULong segmentColor = session_ThemePalette.meterIdleGreenColor
-        If segmentIndex >= 9 Then
+        If segmentIndex >= SESSION_MIXER_METER_RED_SEGMENT_FIRST Then
             segmentColor = session_ThemePalette.meterIdleRedColor
-        ElseIf segmentIndex >= 7 Then
+        ElseIf segmentIndex >= SESSION_MIXER_METER_YELLOW_SEGMENT_FIRST Then
             segmentColor = session_ThemePalette.meterIdleYellowColor
         End If
         If segmentIndex < activeSegments Then
-            If segmentIndex >= 9 Then
+            If segmentIndex >= SESSION_MIXER_METER_RED_SEGMENT_FIRST Then
                 segmentColor = session_ThemePalette.meterActiveRedColor
-            ElseIf segmentIndex >= 7 Then
+            ElseIf segmentIndex >= SESSION_MIXER_METER_YELLOW_SEGMENT_FIRST Then
                 segmentColor = session_ThemePalette.meterActiveYellowColor
             Else
                 segmentColor = session_ThemePalette.meterActiveGreenColor
@@ -3420,7 +3420,7 @@ Private Sub session_DrawMixer(ByVal screenWidth As Integer, ByVal screenHeight A
             17, session_ThemePalette.borderColor, 0
         Dim As String instrumentName = "Prog " + _
             Str(CInt(session_Summary.channelProgram(channelIndex)) + 1)
-        If channelIndex = 9 Then
+        If channelIndex = OSE_MIDI_CHANNEL_DRUMS Then
             instrumentName = "Drums"
         End If
         instrumentName = session_ClipText(instrumentName, maximumNameCharacters)
@@ -3432,7 +3432,8 @@ Private Sub session_DrawMixer(ByVal screenWidth As Integer, ByVal screenHeight A
         Dim As Single knobValue(0 To 2)
         knobValue(0) = session_ChannelChorus(channelIndex)
         knobValue(1) = session_ChannelReverb(channelIndex)
-        knobValue(2) = (session_ChannelPan(channelIndex) + 1.0) * 0.5
+        knobValue(2) = CSng( _
+            (session_ChannelPan(channelIndex) + 1.0) * 0.5)
         Dim As String knobLabel(0 To 2) = {"Ch", "Rv", "Pn"}
         For knobIndex As Integer = 0 To 2
             Dim As Integer knobCenterX = stripLeft + knobCellWidth * knobIndex + _
@@ -3534,7 +3535,7 @@ Private Sub session_DrawUiIcon( _
         End If
         For pixelX As Integer = 0 To OSE_UI_ICON_SIZE - 1
             iconCoverage(pixelY * OSE_UI_ICON_SIZE + pixelX) = _
-                uiIcons_DecodeCoverage(rowText[pixelX])
+                CUByte(uiIcons_DecodeCoverage(rowText[pixelX]))
         Next
     Next
     If backend_DrawAlphaMask(iconLeft, iconTop, OSE_UI_ICON_SIZE, _
@@ -3797,7 +3798,7 @@ Private Sub session_DrawAddNotePalette()
         backend_Print durationLeft + 28, contentTop + 8, durationColor, _
             scoreControls_DurationLabel(rowIndex)
 
-        If rowIndex < 6 Then
+        If rowIndex < SESSION_SCORE_MODIFIER_ROW_COUNT Then
             Dim As Integer modifierLeft = durationLeft + _
                 SESSION_SCORE_PALETTE_COLUMN_WIDTH
             Dim As Integer modifierSelected
@@ -3968,19 +3969,19 @@ Private Sub session_DrawApplication(ByVal screenWidth As Integer, ByVal screenHe
                 session_ThemePalette.shadowColor
         Next
 
-        If screenWidth >= 1040 AndAlso _
+        If screenWidth >= SESSION_SCORE_WIDE_LAYOUT_MINIMUM_WIDTH AndAlso _
             session_InteractionMode = OSE_UI_INTERACTION_FINE Then
             backend_Print 654, SESSION_TOOLBAR_TOP + 13, _
                 session_ThemePalette.textColor, "Tempo"
         End If
 
-        If screenWidth >= 1040 AndAlso _
+        If screenWidth >= SESSION_SCORE_WIDE_LAYOUT_MINIMUM_WIDTH AndAlso _
             session_InteractionMode = OSE_UI_INTERACTION_FINE Then
             backend_PrintAligned 510, SESSION_TOOLBAR_TOP + 2, 136, 12, _
                 session_ThemePalette.textColor, "MEASURE  BEAT  TICK", _
                 BACKEND_FONT_DEFAULT, BACKEND_ALIGN_CENTER, BACKEND_ALIGN_TOP
         End If
-        If screenWidth >= 1100 AndAlso _
+        If screenWidth >= SESSION_SCORE_ACTIVITY_MINIMUM_WIDTH AndAlso _
             session_InteractionMode = OSE_UI_INTERACTION_FINE Then
             Dim As ULong statusColor = session_ThemePalette.activityOffColor
             If (chromeStatus And 1) <> 0 Then _
@@ -4015,6 +4016,7 @@ Private Sub session_DrawApplication(ByVal screenWidth As Integer, ByVal screenHe
         session_StatusLabel->data <> 0 Then
         Dim As LabelData Ptr statusData = Cast( _
             LabelData Ptr, session_StatusLabel->data)
+        If statusData = 0 Then Exit Sub
         Dim As ULongInt statusFingerprint = session_VisualFingerprintText( _
             &h27d4eb2f165667c5ull, statusData->text)
         If session_StatusPageValid(workPage) = 0 OrElse _
@@ -4043,7 +4045,7 @@ Private Sub session_DrawApplication(ByVal screenWidth As Integer, ByVal screenHe
     Dim As ULongInt displaySubTick
     session_MusicalPosition displayTick, displayMeasure, displayBeat, _
         displaySubTick
-    If screenWidth >= 1040 AndAlso _
+    If screenWidth >= SESSION_SCORE_WIDE_LAYOUT_MINIMUM_WIDTH AndAlso _
         session_InteractionMode = OSE_UI_INTERACTION_FINE Then
         backend_Rect 510, SESSION_TOOLBAR_TOP + 16, 136, 25, _
             session_ThemePalette.timelineFillColor, 1

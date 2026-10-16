@@ -171,4 +171,63 @@ Function system_IsDirectory(ByRef directoryPath As Const String) As Integer
 
 End Function
 
+' -------------------------------------------------------------------------
+' Attribute-only file queries
+' -------------------------------------------------------------------------
+
+Type SystemPathQuery
+    As String entry_name
+    As Integer found
+End Type
+
+Private Function system_FindPathEntry(ByRef entryName As Const String, _
+    ByVal attributes As UInteger, ByVal context As Any Ptr) As Integer
+    Dim As SystemPathQuery Ptr query = Cast(SystemPathQuery Ptr, context)
+#If Defined(__FB_WIN32__) Or Defined(__FB_DOS__)
+    If LCase(entryName) <> LCase(query->entry_name) Then Return 0
+#Else
+    If entryName <> query->entry_name Then Return 0
+#EndIf
+    query->found = -1
+    Return 1
+End Function
+
+Function system_PathExists(ByRef pathValue As Const String) As Integer
+    If pathValue = "" OrElse InStr(pathValue, Chr(0)) Then Return 0
+#If Defined(__FB_WIN32__) And Not Defined(OMAGUI_PORTABLE_ONLY)
+    Return omaGUI_NativeWindows.GetFileAttributesA(StrPtr(pathValue)) <> &hFFFFFFFFUL
+#Else
+    ' Exact-name comparison avoids treating literal wildcard bytes in Unix
+    ' filenames as a DIR pattern. The callback runs inside one enumeration.
+    Dim As Integer separator_position = InStrRev(pathValue, "/")
+#If Defined(__FB_WIN32__) Or Defined(__FB_DOS__)
+    Dim As Integer backslash_position = InStrRev(pathValue, Chr(92))
+    If backslash_position > separator_position Then separator_position = backslash_position
+#EndIf
+    Dim As String parent_path = Left(pathValue, separator_position)
+    If parent_path = "" Then parent_path = CurDir
+    Dim As SystemPathQuery query
+    query.entry_name = Mid(pathValue, separator_position + 1)
+    If query.entry_name = "" Then Return system_IsDirectory(pathValue)
+    system_EnumerateDirectory parent_path, SYSTEM_DIRECTORY_FILES Or SYSTEM_DIRECTORY_FOLDERS, @system_FindPathEntry, @query
+    Return query.found
+#EndIf
+End Function
+
+Sub system_GetFileDetails(ByRef pathValue As Const String, ByRef sizeValue As LongInt, ByRef modifiedValue As Double)
+    sizeValue = -1 : modifiedValue = 0
+    If pathValue = "" OrElse InStr(pathValue, Chr(0)) Then Exit Sub
+#If Defined(__FB_WIN32__) And Not Defined(OMAGUI_PORTABLE_ONLY)
+    Dim As omaGUI_NativeWindows.FindData data_value
+    Dim As Any Ptr find_handle = omaGUI_NativeWindows.FindFirstFileA(StrPtr(pathValue), @data_value)
+    If find_handle = CPtr(Any Ptr, -1) Then Exit Sub
+    If data_value.fileSizeHigh <= &h7FFFFFFFUL Then _
+        sizeValue = CLngInt((CULngInt(data_value.fileSizeHigh) Shl 32) Or data_value.fileSizeLow)
+    omaGUI_NativeWindows.FindClose find_handle
+#EndIf
+    ' FileDateTime uses stat, unlike FileLen's stream-based legacy fallback.
+    ' No permission to read file contents is needed to display a timestamp.
+    modifiedValue = FileDateTime(pathValue)
+End Sub
+
 ' end of filesystem.bas

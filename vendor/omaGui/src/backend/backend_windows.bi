@@ -1,6 +1,8 @@
 /'
     Project: omaGUI
     File: backend_windows.bi
+    Targets: FreeBASIC fb dialect; native Windows 32-bit and 64-bit GUI backends.
+    Module API boundary: internal omaGUI_NativeWindows ABI declarations for backend adapters.
     Purpose: Declare the small Windows ABI used by native GUI bridges.
     Responsibilities: Keep handle types, imports and constants out of the
         application's global namespace; retain 32-bit Windows scalar widths.
@@ -46,7 +48,7 @@ Namespace omaGUI_NativeWindows
         Declare Function EmptyClipboard Alias "EmptyClipboard" () As Long
         Declare Function IsClipboardFormatAvailable Alias "IsClipboardFormatAvailable" (ByVal formatValue As ULong) As Long
         Declare Function GetClipboardData Alias "GetClipboardData" (ByVal formatValue As ULong) As Any Ptr
-        ' fblint: disable-next-line FBL971 REASON: SetClipboardData transfers a mutable HGLOBAL handle to the clipboard owner.
+        ' SetClipboardData transfers a mutable HGLOBAL handle to the clipboard owner.
         Declare Function SetClipboardData Alias "SetClipboardData" (ByVal formatValue As ULong, ByVal memoryHandle As Any Ptr) As Any Ptr
         Declare Function GlobalAlloc Alias "GlobalAlloc" (ByVal flags As ULong, ByVal byteCount As UInteger) As Any Ptr
         Declare Function GlobalFree Alias "GlobalFree" (ByVal memoryHandle As Any Ptr) As Any Ptr
@@ -54,7 +56,7 @@ Namespace omaGUI_NativeWindows
         Declare Function GlobalUnlock Alias "GlobalUnlock" (ByVal memoryHandle As Any Ptr) As Long
         Declare Function GlobalSize Alias "GlobalSize" (ByVal memoryHandle As Any Ptr) As UInteger
         Declare Function FindFirstFileA Alias "FindFirstFileA" (ByVal pathText As Const ZString Ptr, ByVal dataValue As FindData Ptr) As Any Ptr
-        ' fblint: disable-next-line FBL971 REASON: FindNextFileA writes the caller's native directory record; its output pointer is mutable.
+        ' FindNextFileA writes the caller's native directory record; its output pointer is mutable.
         Declare Function FindNextFileA Alias "FindNextFileA" (ByVal searchHandle As Any Ptr, ByVal dataValue As FindData Ptr) As Long
         Declare Function FindClose Alias "FindClose" (ByVal searchHandle As Any Ptr) As Long
         Declare Function GetFileAttributesA Alias "GetFileAttributesA" (ByVal pathText As Const ZString Ptr) As ULong

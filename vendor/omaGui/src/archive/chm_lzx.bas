@@ -361,7 +361,7 @@ Private Function chmlzx_ReadLengths( _
                 Return chmlzx_SetError( _
                     decoder, "LZX zero-length run exceeds its code table" _
                 )
-            ' fblint: disable-next-line FBL311 REASON: The loop counter bounds repeated work; the cursor or stream state supplies each value.
+            ' The loop counter bounds repeated work; the cursor or stream state supplies each value.
             For repeatIndex As Integer = 0 To repeatCount - 1
                 targetTree->codeLengths(targetIndex) = 0
                 targetIndex += 1
@@ -374,7 +374,7 @@ Private Function chmlzx_ReadLengths( _
                 Return chmlzx_SetError( _
                     decoder, "LZX long zero run exceeds its code table" _
                 )
-            ' fblint: disable-next-line FBL311 REASON: The loop counter bounds repeated work; the cursor or stream state supplies each value.
+            ' The loop counter bounds repeated work; the cursor or stream state supplies each value.
             For repeatIndex As Integer = 0 To repeatCount - 1
                 targetTree->codeLengths(targetIndex) = 0
                 targetIndex += 1
@@ -393,7 +393,7 @@ Private Function chmlzx_ReadLengths( _
             decodedLength = _
                 (CInt(targetTree->codeLengths(targetIndex)) - _
                  decodedLength + 17) Mod 17
-            ' fblint: disable-next-line FBL311 REASON: The loop counter bounds repeated work; the cursor or stream state supplies each value.
+            ' The loop counter bounds repeated work; the cursor or stream state supplies each value.
             For repeatIndex As Integer = 0 To repeatCount - 1
                 targetTree->codeLengths(targetIndex) = CByte(decodedLength)
                 targetIndex += 1
@@ -683,7 +683,7 @@ Private Function chmlzx_DecodeRun( _
             )
         sourcePosition = windowPosition - CInt(matchOffset)
         If sourcePosition < 0 Then sourcePosition += decoder->windowSize
-        ' fblint: disable-next-line FBL311 REASON: The loop counter bounds repeated work; the cursor or stream state supplies each value.
+        ' The loop counter bounds repeated work; the cursor or stream state supplies each value.
         For copyIndex As Integer = 0 To matchLength - 1
             decoder->window[windowPosition] = decoder->window[sourcePosition]
             windowPosition += 1
@@ -713,7 +713,7 @@ Private Function chmlzx_DecodeUncompressedRun( _
             decoder, "invalid raw LZX block length" _
         )
 
-    ' fblint: disable-next-line FBL311 REASON: The loop counter bounds repeated work; the cursor or stream state supplies each value.
+    ' The loop counter bounds repeated work; the cursor or stream state supplies each value.
     For byteIndex As Integer = 0 To byteCount - 1
         If chmlzx_ReadRawByte(decoder, byteValue) = 0 Then Return 0
         decoder->window[decoder->windowPosition] = byteValue

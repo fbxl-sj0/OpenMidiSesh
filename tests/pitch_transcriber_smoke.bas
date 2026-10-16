@@ -88,7 +88,7 @@ Private Sub test_SetWaveField( _
 )
     If bytePosition < 1 OrElse bytePosition > Len(waveData) OrElse _
         Len(fieldData) > Len(waveData) - bytePosition + 1 Then End 1
-    ' fblint: disable-next-line FBL514 REASON: the complete binary field fits the existing allocation.
+    ' the complete binary field fits the existing allocation.
     Mid(waveData, bytePosition, Len(fieldData)) = fieldData
 End Sub
 
@@ -134,7 +134,7 @@ Private Function test_WriteToneWave(ByVal filename As String) As Integer
         Else
             sampleWord = CULng(signedSample)
         End If
-        ' The fixture is allocated to its exact RIFF length above. FB-LINTER: DISABLE-NEXT-LINE FBL514 REASON: The fixture is allocated to its exact RIFF length above.
+        ' The fixture is allocated to its exact RIFF length above.
         Mid(waveData, 45 + sampleIndex * 2, 2) = test_Le16(sampleWord)
     Next
 

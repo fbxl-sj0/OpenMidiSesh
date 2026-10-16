@@ -168,7 +168,7 @@ Function rasterimage_DetectFormat( _
     bytes() As UByte, ByVal byteCount As LongInt _
 ) As Integer
     ' Dimension zero safely reports whether the byte array is allocated.
-    ' fblint: disable-next-line FBL-ARR-004 -- this query does not read an element bound.
+    ' this query does not read an element bound.
     If UBound(bytes, 0) <> 1 Then Return RASTERIMAGE_FORMAT_UNKNOWN
     Dim As Integer firstIndex
     Dim As Integer lastIndex
@@ -434,7 +434,7 @@ Private Function rastergif_CollectSubBlocks( _
 End Function
 
 
-' fblint: disable-next-line FBL110,FBL111 -- GIF block state and output bounds stay together in this decoder pass.
+' GIF block state and output bounds stay together in this decoder pass.
 Private Function rastergif_Decode( _
     bytes() As UByte, ByVal byteCount As LongInt, _
     ByRef loadedImage As RasterImage Ptr, _
@@ -1094,7 +1094,7 @@ Private Function rasterjpeg_ConsumeRestart( _
 End Function
 
 
-' fblint: disable-next-line FBL110,FBL111 -- JPEG marker, scan and output state stay together in this decoder pass.
+' JPEG marker, scan and output state stay together in this decoder pass.
 Private Function rasterjpeg_Decode( _
     bytes() As UByte, ByVal byteCount As LongInt, _
     ByRef loadedImage As RasterImage Ptr, _

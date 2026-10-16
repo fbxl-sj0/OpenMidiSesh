@@ -69,7 +69,7 @@ Private Function historyTimeline_RingNewestIndex( _
         ringCount <= 0 OrElse ringCount > OSE_HISTORY_TIMELINE_DEPTH Then
         Return -1
     End If
-    Return (ringStart + ringCount - 1) Mod OSE_HISTORY_TIMELINE_DEPTH ' fblint: disable-line FBL406 REASON: Range checks keep the dividend nonnegative and the modulus positive before this calculation.
+    Return (ringStart + ringCount - 1) Mod OSE_HISTORY_TIMELINE_DEPTH ' Range checks keep the dividend nonnegative and the modulus positive before this calculation.
 End Function
 
 

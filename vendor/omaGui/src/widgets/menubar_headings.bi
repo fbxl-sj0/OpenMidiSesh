@@ -38,7 +38,7 @@ End Function
 
 Private Function menubar_NextHeading(ByVal bar_data As MenuBarData Ptr, ByVal current_menu As Integer, ByVal direction As Integer) As Integer
     If bar_data = 0 OrElse bar_data->menu_count = 0 Then Return -1
-    ' fblint: disable-next-line FBL311 REASON: The loop counter bounds repeated work; the cursor or stream state supplies each value.
+    ' The loop counter bounds repeated work; the cursor or stream state supplies each value.
     For attempt As Integer = 1 To bar_data->menu_count
         current_menu += direction
         If current_menu < 0 Then current_menu = bar_data->menu_count - 1

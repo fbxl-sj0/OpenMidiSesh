@@ -50,7 +50,7 @@ End Function
 
 Private Sub test_FillPassingMetrics(ByRef metrics As OseUiSmoothnessMetrics)
     uiFramePacing_Initialize metrics
-    For sampleIndex As Integer = 0 To OSE_UI_SMOOTHNESS_MINIMUM_SAMPLES - 1 ' fblint: disable-line FBL311 REASON: The counter supplies a fixed number of frame samples.
+    For sampleIndex As Integer = 0 To OSE_UI_SMOOTHNESS_MINIMUM_SAMPLES - 1 ' The counter supplies a fixed number of frame samples.
         If Not uiFramePacing_Record(metrics.frameIntervals, 16.0) OrElse _
             Not uiFramePacing_Record(metrics.frameWork, 8.0) OrElse _
             Not uiFramePacing_Record(metrics.inputLatency, 9.0) Then _
@@ -66,7 +66,7 @@ If metrics.frameIntervals.count <> 0 OrElse _
     test_Fail "initialization did not clear counters"
 
 Dim As Double values(0 To 4) = {5.0, 1.0, 4.0, 2.0, 3.0}
-For sampleIndex As Integer = 0 To 4 ' fblint: disable-line FBL311 REASON: The counter supplies a fixed number of frame samples.
+For sampleIndex As Integer = 0 To 4 ' The counter supplies a fixed number of frame samples.
     If Not uiFramePacing_Record( _
         metrics.frameIntervals, values(sampleIndex)) Then _
         test_Fail "a valid statistic sample was rejected"
@@ -89,7 +89,7 @@ If uiFramePacing_Record(metrics.frameIntervals, -1.0) <> 0 OrElse _
     test_Fail "invalid timing values were not rejected"
 
 Dim As OseUiTimingSeries fullSeries
-For sampleIndex As Integer = 0 To OSE_UI_TIMING_SAMPLE_CAPACITY - 1 ' fblint: disable-line FBL311 REASON: The counter supplies a fixed number of frame samples.
+For sampleIndex As Integer = 0 To OSE_UI_TIMING_SAMPLE_CAPACITY - 1 ' The counter supplies a fixed number of frame samples.
     If Not uiFramePacing_Record(fullSeries, 1.0) Then _
         test_Fail "capacity rejected an in-range sample"
 Next
@@ -117,7 +117,7 @@ If uiFramePacing_Evaluate(metrics, -1, result) <> 0 OrElse _
 
 test_FillPassingMetrics metrics
 metrics.frameWork.values(0) = 25.0
-For sampleIndex As Integer = 1 To 20 ' fblint: disable-line FBL311 REASON: The counter supplies a fixed number of frame samples.
+For sampleIndex As Integer = 1 To 20 ' The counter supplies a fixed number of frame samples.
     metrics.frameWork.values(sampleIndex) = 17.0
 Next
 If uiFramePacing_Evaluate(metrics, -1, result) <> 0 Then _
@@ -125,7 +125,7 @@ If uiFramePacing_Evaluate(metrics, -1, result) <> 0 Then _
 
 test_FillPassingMetrics metrics
 metrics.inputLatency.values(0) = 30.0
-For sampleIndex As Integer = 1 To 20 ' fblint: disable-line FBL311 REASON: The counter supplies a fixed number of frame samples.
+For sampleIndex As Integer = 1 To 20 ' The counter supplies a fixed number of frame samples.
     metrics.inputLatency.values(sampleIndex) = 21.0
 Next
 If uiFramePacing_Evaluate(metrics, -1, result) <> 0 Then _

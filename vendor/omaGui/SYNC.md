@@ -20,4 +20,9 @@ Arial-derived font data excluded and retain the existing reviewed open-font
 payloads and notices. TREE.sha256 describes each complete local dependency;
 SNAPSHOT.sha256 describes its existing redistributable subset where present.
 
+The October 8, 2026 file-browser upgrade is documented in FILEDIALOG.md.
+Browser contracts passed on Windows, Midcom Linux and Haiku, with a native
+Windows fbVNC consumer build and clean focused lint. This source update
+preserves unrelated consumer work and does not install application binaries.
+
 <!-- end of SYNC.md -->

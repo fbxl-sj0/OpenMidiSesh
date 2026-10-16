@@ -45,7 +45,7 @@ Const OSE_MOD_EXPORT_MAX_ROWS As Integer = _
     OSE_MOD_EXPORT_ROWS_PER_PATTERN * OSE_MOD_EXPORT_MAX_PATTERNS
 
 ' Logical fields only; this report is never written as a raw binary layout.
-' fblint: disable-next-line FBL911,FBL014 REASON: This is an in-memory record; its fields are not a raw on-disk UDT layout.
+' This is an in-memory record; its fields are not a raw on-disk UDT layout.
 Type OseModExportReport
     As Integer notesConsidered
     As Integer notesWritten

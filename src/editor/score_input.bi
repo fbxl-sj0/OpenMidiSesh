@@ -122,8 +122,10 @@ Private Sub session_SetSelectedTrackPreservingNotes(ByVal trackIndex As Integer)
     If session_TrackList <> 0 AndAlso session_TrackList->data <> 0 Then
         Dim As ListBoxData Ptr trackData = Cast( _
             ListBoxData Ptr, session_TrackList->data)
-        If trackIndex < trackData->item_count Then _
-            trackData->selected_index = trackIndex
+        If trackData <> 0 Then
+            If trackIndex < trackData->item_count Then _
+                trackData->selected_index = trackIndex
+        End If
     End If
     session_SelectedTrack = trackIndex
 End Sub
@@ -350,7 +352,7 @@ Private Function session_StepEntryPitch(ByVal scanCode As Integer) As Integer
         Return -1
     End If
     Dim As Integer pitch = session_KeyboardBasePitch + noteOffset
-    If pitch < 0 OrElse pitch > 127 Then
+    If pitch < 0 OrElse pitch > SESSION_MIDI_MAX_KEY Then
         Return -1
     End If
     Return pitch
@@ -358,7 +360,7 @@ End Function
 
 
 Private Sub session_StopAuditionPitch(ByVal pitch As Integer)
-    If pitch < 0 OrElse pitch > 127 Then
+    If pitch < 0 OrElse pitch > SESSION_MIDI_MAX_KEY Then
         Exit Sub
     End If
     Dim As Integer auditionChannel = session_AuditionChannelForPitch(pitch)
@@ -450,7 +452,7 @@ End Function
 
 
 Private Sub session_StartAuditionPitch(ByVal pitch As Integer)
-    If pitch < 0 OrElse pitch > 127 Then
+    If pitch < 0 OrElse pitch > SESSION_MIDI_MAX_KEY Then
         Exit Sub
     End If
     If session_Playing <> 0 OrElse session_WavExport.active <> 0 Then
@@ -498,7 +500,7 @@ Private Function session_CloseLiveKeyboardNote( _
     ByVal pitch As Integer, _
     ByVal currentTick As ULongInt _
 ) As Integer
-    If pitch < 0 OrElse pitch > 127 Then
+    If pitch < 0 OrElse pitch > SESSION_MIDI_MAX_KEY Then
         Return 0
     End If
     Dim As Integer noteIndex = session_LiveNoteIndex(pitch)
@@ -532,7 +534,8 @@ Private Function session_StartLiveKeyboardNote( _
     ByVal pitch As Integer, _
     ByVal currentTick As ULongInt _
 ) As Integer
-    If session_LiveRecording = 0 OrElse pitch < 0 OrElse pitch > 127 OrElse _
+    If session_LiveRecording = 0 OrElse pitch < 0 OrElse _
+        pitch > SESSION_MIDI_MAX_KEY OrElse _
         session_LiveNoteIndex(pitch) >= 0 OrElse _
         currentTick >= OSE_MAX_MIDI_TICK Then Return 0
     If session_SelectedTrack < 0 OrElse _
@@ -686,7 +689,7 @@ Private Function session_CloseLiveMidiNote( _
 ) As Integer
     If channelIndex < 0 OrElse channelIndex >= SESSION_CHANNEL_COUNT Then _
         Return 0
-    If keyNumber < 0 OrElse keyNumber > 127 Then
+    If keyNumber < 0 OrElse keyNumber > SESSION_MIDI_MAX_KEY Then
         Return 0
     End If
 
@@ -796,13 +799,14 @@ Private Function session_RecordIncomingSystemExclusive( _
         currentTick >= OSE_MAX_MIDI_TICK Then Return 0
 
     Dim As Integer sysexStatus = message.payload(0)
-    If sysexStatus <> &HF0 AndAlso sysexStatus <> &HF7 Then
+    If sysexStatus <> OSE_MIDI_STATUS_SYSEX_START AndAlso _
+        sysexStatus <> OSE_MIDI_STATUS_SYSEX_END Then
         Return 0
     End If
     Dim As Integer sysexLength = message.payloadLength - 1
     Dim As String sysexPayload = Space(sysexLength)
     For payloadIndex As Integer = 0 To sysexLength - 1
-        ' The destination was allocated to exactly this size. FB-LINTER: DISABLE-NEXT-LINE FBL514 REASON: The destination was allocated to exactly this size.
+        ' The destination was allocated to exactly this size.
         Mid(sysexPayload, payloadIndex + 1, 1) = _
             Chr(message.payload(payloadIndex + 1))
     Next
@@ -848,27 +852,32 @@ Private Function session_ProcessRecordedMidiMessage( _
     If message.messageKind = OSE_MIDI_INPUT_SYSEX_MESSAGE Then _
         Return session_RecordIncomingSystemExclusive(message, currentTick)
 
-    If message.status = &HF1 OrElse message.status = &HF2 OrElse _
-        message.status = &HF3 OrElse message.status = &HF6 Then _
+    If message.status = OSE_MIDI_STATUS_TIME_CODE_QUARTER_FRAME OrElse _
+        message.status = OSE_MIDI_STATUS_SONG_POSITION OrElse _
+        message.status = OSE_MIDI_STATUS_SONG_SELECT OrElse _
+        message.status = OSE_MIDI_STATUS_TUNE_REQUEST Then _
         Return session_RecordIncomingSystemCommon(message, currentTick)
 
-    Dim As Integer messageType = message.status And &HF0
+    Dim As Integer messageType = message.status And OSE_MIDI_STATUS_TYPE_MASK
     Dim As Integer channelIndex = message.status And &H0F
     Dim As Integer keyNumber = message.data1
     Dim As Integer velocity = message.data2
 
     ' Monitoring is separate from recording. The audit feeds complete messages
     ' through this dispatcher with monitoring disabled, without native devices.
-    If monitorInput <> 0 AndAlso message.status >= &H80 AndAlso _
-        message.status <= &HEF AndAlso midiOutput_IsOpen() <> 0 Then
+    If monitorInput <> 0 AndAlso _
+        message.status >= OSE_MIDI_STATUS_CHANNEL_MIN AndAlso _
+        message.status <= OSE_MIDI_STATUS_CHANNEL_MAX AndAlso _
+        midiOutput_IsOpen() <> 0 Then
         Dim As Integer thruData2 = velocity
-        If messageType = &HC0 OrElse messageType = &HD0 Then
+        If messageType = OSE_MIDI_STATUS_PROGRAM_CHANGE OrElse _
+            messageType = OSE_MIDI_STATUS_CHANNEL_PRESSURE Then
             thruData2 = 0
         End If
         midiOutput_Send message.status, keyNumber, thruData2
     End If
 
-    If messageType = &H90 AndAlso velocity > 0 Then
+    If messageType = OSE_MIDI_STATUS_NOTE_ON AndAlso velocity > 0 Then
         If currentTick >= OSE_MAX_MIDI_TICK Then
             Return 0
         End If
@@ -910,7 +919,9 @@ Private Function session_ProcessRecordedMidiMessage( _
                 session_Summary.channelPan(channelIndex), velocity, _
                 session_MasterVolume, session_ChannelIsAudible(channelIndex)
             Dim As OseSoftwareSynthPlayOptions liveInputOptions
-            liveInputOptions.bankNumber = IIf(channelIndex = 9, 128, 0)
+            liveInputOptions.bankNumber = IIf( _
+                channelIndex = OSE_MIDI_CHANNEL_DRUMS, _
+                OSE_MIDI_DRUM_BANK_NUMBER, 0)
             liveInputOptions.fallbackVoiceChannel = -1
             softwareSynth_PlayMidiNote channelIndex, keyNumber, _
                 session_Summary.channelProgram(channelIndex), _
@@ -920,8 +931,8 @@ Private Function session_ProcessRecordedMidiMessage( _
                 CSng(velocity) / 127.0, 0.18
         End If
         Return -1
-    ElseIf messageType = &H80 OrElse _
-        (messageType = &H90 AndAlso velocity = 0) Then
+    ElseIf messageType = OSE_MIDI_STATUS_NOTE_OFF OrElse _
+        (messageType = OSE_MIDI_STATUS_NOTE_ON AndAlso velocity = 0) Then
         Dim As Integer slotIndex = channelIndex * 128 + keyNumber
         If session_LiveMidiSustain(channelIndex) <> 0 Then
             If session_LiveMidiNoteIndex(slotIndex) >= 0 Then _
@@ -929,15 +940,18 @@ Private Function session_ProcessRecordedMidiMessage( _
         Else
             Return session_CloseLiveMidiNote(channelIndex, keyNumber, currentTick)
         End If
-    ElseIf messageType = &HA0 OrElse messageType = &HB0 OrElse _
-        messageType = &HC0 OrElse messageType = &HD0 OrElse _
-        messageType = &HE0 Then
+    ElseIf messageType = OSE_MIDI_STATUS_POLY_PRESSURE OrElse _
+        messageType = OSE_MIDI_STATUS_CONTROL_CHANGE OrElse _
+        messageType = OSE_MIDI_STATUS_PROGRAM_CHANGE OrElse _
+        messageType = OSE_MIDI_STATUS_CHANNEL_PRESSURE OrElse _
+        messageType = OSE_MIDI_STATUS_PITCH_BEND Then
         Dim As Integer historyPrepared = 0
         Dim As Integer messageChanged = 0
-        If messageType = &HB0 AndAlso keyNumber = 64 Then
+        If messageType = OSE_MIDI_STATUS_CONTROL_CHANGE AndAlso _
+            keyNumber = OSE_MIDI_CONTROLLER_SUSTAIN_PEDAL Then
             Dim As Integer sustainWasDown = session_LiveMidiSustain(channelIndex)
             Dim As Integer sustainIsDown = 0
-            If velocity >= 64 Then
+            If velocity >= OSE_MIDI_VELOCITY_THRESHOLD Then
                 sustainIsDown = -1
             End If
             session_LiveMidiSustain(channelIndex) = sustainIsDown
@@ -1490,7 +1504,8 @@ Private Function session_ApplyMidiMixerDragValue( _
             If panValue = session_Summary.channelPan(channelIndex) Then
                 Return 0
             End If
-            session_ChannelPan(channelIndex) = controlValue * 2.0 - 1.0
+            session_ChannelPan(channelIndex) = _
+                CSng(controlValue * 2.0 - 1.0)
             If session_SyncChannelMix(channelIndex) = 0 Then
                 Return -1
             End If
@@ -1664,8 +1679,8 @@ Private Function session_ScoreVisibleTrackCount( _
 
     Dim As Integer scoreHeight = screenHeight - SESSION_TOP_HEIGHT - _
         SESSION_MIXER_HEIGHT - 8
-    If scoreHeight < 150 Then
-        scoreHeight = 150
+    If scoreHeight < SESSION_SCORE_VIEW_MINIMUM_HEIGHT Then
+        scoreHeight = SESSION_SCORE_VIEW_MINIMUM_HEIGHT
     End If
 
     Dim As Integer firstStaffY = SESSION_SCORE_TOP + _
@@ -1769,9 +1784,9 @@ End Function
 Private Sub session_PrepareScoreNoteCache(ByVal screenHeight As Integer)
     session_ScoreVisibleNoteCount = 0
     session_ScoreVisibleNoteOverflowed = 0
-    If session_ScoreCacheGeneration = &hffffffffu Then
+    If session_ScoreCacheGeneration = SESSION_MAX_SCORE_CACHE_GENERATION Then
         ' This is a fixed array. Erase resets values but preserves its bounds.
-        ' fblint: disable-next-line FBL-ARR-007 REASON: Erase resets this fixed array while preserving its bounds.
+        ' Erase resets this fixed array while preserving its bounds.
         Erase session_ScoreModelCacheGeneration
         session_ScoreCacheGeneration = 1
     Else
@@ -1845,11 +1860,11 @@ Private Sub session_NoteScreenPosition( _
 )
     Dim As Integer scoreWidth = screenWidth - SESSION_SCORE_LEFT - 4
     Dim As Integer scoreHeight = screenHeight - SESSION_TOP_HEIGHT - SESSION_MIXER_HEIGHT - 8
-    If scoreWidth < 160 Then
-        scoreWidth = 160
+    If scoreWidth < SESSION_SCORE_VIEW_MINIMUM_WIDTH Then
+        scoreWidth = SESSION_SCORE_VIEW_MINIMUM_WIDTH
     End If
-    If scoreHeight < 150 Then
-        scoreHeight = 150
+    If scoreHeight < SESSION_SCORE_VIEW_MINIMUM_HEIGHT Then
+        scoreHeight = SESSION_SCORE_VIEW_MINIMUM_HEIGHT
     End If
 
     Dim As ULongInt ticksPerView = session_ViewTicks()
@@ -1899,8 +1914,8 @@ Private Function session_MidiDiatonicIndexForKey( _
     If keyNumber < 0 Then
         keyNumber = 0
     End If
-    If keyNumber > 127 Then
-        keyNumber = 127
+    If keyNumber > SESSION_MIDI_MAX_KEY Then
+        keyNumber = SESSION_MIDI_MAX_KEY
     End If
 
     Dim As Integer whiteOffset
@@ -2023,8 +2038,8 @@ Private Function session_FindNoteAt( _
         Dim As Integer noteY
         session_NoteScreenPosition editableNote, screenWidth, screenHeight, noteX, noteY
         Dim As Integer scoreWidth = screenWidth - SESSION_SCORE_LEFT - 4
-        If scoreWidth < 160 Then
-            scoreWidth = 160
+        If scoreWidth < SESSION_SCORE_VIEW_MINIMUM_WIDTH Then
+            scoreWidth = SESSION_SCORE_VIEW_MINIMUM_WIDTH
         End If
         Dim As Integer noteWidth = session_NoteScreenWidth(editableNote, scoreWidth)
         If noteWidth < hitHalfWidth Then
@@ -2074,8 +2089,8 @@ Private Function session_TickFromScreenX( _
     ByVal screenWidth As Integer _
 ) As ULongInt
     Dim As Integer scoreWidth = screenWidth - SESSION_SCORE_LEFT - 4
-    If scoreWidth < 160 Then
-        scoreWidth = 160
+    If scoreWidth < SESSION_SCORE_VIEW_MINIMUM_WIDTH Then
+        scoreWidth = SESSION_SCORE_VIEW_MINIMUM_WIDTH
     End If
     Dim As Integer timelineWidth = scoreWidth - SESSION_SCORE_NOTE_LEFT - _
         SESSION_SCORE_NOTE_RIGHT

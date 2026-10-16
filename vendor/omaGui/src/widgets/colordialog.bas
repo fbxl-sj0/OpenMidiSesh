@@ -53,6 +53,7 @@ Const COLORDIALOG_BUTTON_SIZE As Integer = 26
 Type ColorDialogData
     As Widget Ptr window_widget
     As Widget Ptr selection_label
+    As Widget Ptr accept_button, cancel_button
     As Widget Ptr color_buttons(0 To COLORDIALOG_COLOR_COUNT - 1)
     As Integer selected_index
     As Integer finished
@@ -190,8 +191,6 @@ Function colordialog_Create( _
     ByVal initial_color_index As Integer _
 ) As Widget Ptr
     Dim As ColorDialogData Ptr dialog_data
-    Dim As Widget Ptr accept_button
-    Dim As Widget Ptr cancel_button
     Dim As Widget Ptr root_widget
     Dim As Widget Ptr swatch_widget
     Dim As Integer color_index
@@ -258,20 +257,20 @@ Function colordialog_Create( _
         widget_name & "_selection", "", 18, 154, RGB(0, 0, 0), _
         BACKEND_FONT_ARIAL_10_REGULAR _
     )
-    accept_button = button_Create( _
+    dialog_data->accept_button = button_Create( _
         widget_name & "_accept", "OK", 284, 190, 84, 30, _
         @colordialog_OnAccept _
     )
-    cancel_button = button_Create( _
+    dialog_data->cancel_button = button_Create( _
         widget_name & "_cancel", "Cancel", 378, 190, 84, 30, _
         @colordialog_OnCancel _
     )
     gui_AddGeneratedWidget dialog_data->selection_label
-    gui_AddGeneratedWidget accept_button
-    gui_AddGeneratedWidget cancel_button
+    gui_AddGeneratedWidget dialog_data->accept_button
+    gui_AddGeneratedWidget dialog_data->cancel_button
     gui_SetParent dialog_data->selection_label, dialog_data->window_widget
-    gui_SetParent accept_button, dialog_data->window_widget
-    gui_SetParent cancel_button, dialog_data->window_widget
+    gui_SetParent dialog_data->accept_button, dialog_data->window_widget
+    gui_SetParent dialog_data->cancel_button, dialog_data->window_widget
     ' The modal stack accepts only registered roots.
     gui_AddWidget root_widget
     If gui_TrySetModalRoot(root_widget) = 0 Then
@@ -296,6 +295,37 @@ Function colordialog_GetSelectedIndex( _
 ) As Integer
     If dialog_widget = 0 OrElse dialog_widget->data = 0 Then Return -1
     Return Cast(ColorDialogData Ptr, dialog_widget->data)->selected_index
+End Function
+
+
+Function colordialog_SetColors( _
+    ByVal dialog_widget As Widget Ptr, _
+    ByVal foreground_color As ULong, _
+    ByVal background_color As ULong _
+) As Integer
+    If dialog_widget = 0 OrElse dialog_widget->data = 0 Then Return 0
+    Dim As ColorDialogData Ptr dialog_data = _
+        Cast(ColorDialogData Ptr, dialog_widget->data)
+    If dialog_data->window_widget = 0 OrElse _
+       subwindow_SetClientColor( _
+           dialog_data->window_widget, background_color _
+       ) = 0 OrElse _
+       subwindow_SetTitleColors( _
+           dialog_data->window_widget, background_color, foreground_color _
+       ) = 0 Then Return 0
+    If label_SetTextColorLiteral( _
+        dialog_data->selection_label, foreground_color _
+    ) = 0 OrElse label_SetBackgroundColor( _
+        dialog_data->selection_label, background_color _
+    ) = 0 Then Return 0
+    If dialog_data->accept_button = 0 OrElse _
+       button_SetBackgroundColor( _
+           dialog_data->accept_button, background_color _
+       ) = 0 OrElse dialog_data->cancel_button = 0 OrElse _
+       button_SetBackgroundColor( _
+           dialog_data->cancel_button, background_color _
+       ) = 0 Then Return 0
+    Return -1
 End Function
 
 /' end of colordialog.bas '/

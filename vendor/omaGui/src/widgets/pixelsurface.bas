@@ -102,9 +102,9 @@ Function pixelsurface_Resize( _
                 Dim As ULongInt new_index = CULngInt(row_index) * width_value + column_index
                 Dim As ULongInt old_index = CULngInt(row_index) * surface.width + column_index
                 ' Both offsets lie inside their checked resize intersection.
-                ' fblint: disable-next-line FBL525
+
                 new_colors[new_index] = surface.colors[old_index]
-                ' fblint: disable-next-line FBL525
+
                 new_occupied[new_index] = surface.occupied[old_index]
             Next column_index
         Next row_index
@@ -179,7 +179,7 @@ Private Function pixelsurface_ClipLine( _
 ) As Integer
     ' Cohen-Sutherland clipping bounds all later integer subtraction to the
     ' small canvas rectangle, even when a caller supplies extreme endpoints.
-    ' fblint: disable-next-line FBL311 REASON: The loop counter bounds repeated work; the cursor or stream state supplies each value.
+    ' The loop counter bounds repeated work; the cursor or stream state supplies each value.
     For pass_index As Integer = 1 To 8
         Dim As Integer start_code = pixelsurface_LineOutCode( _
             start_x, start_y, surface_width, surface_height)
@@ -687,7 +687,7 @@ Function pixelsurface_DrawEllipse( _
     Dim As Double axis_y
     Dim As Double normalized_start = start_angle
     Dim As Double normalized_end = end_angle
-    ' fblint: disable-next-line FBL311 REASON: The loop counter bounds repeated work; the cursor or stream state supplies each value.
+    ' The loop counter bounds repeated work; the cursor or stream state supplies each value.
     Dim As LongInt turn_count
 
     If radius < 0 OrElse radius > PIXELSURFACE_MAX_DRAW_RADIUS Then Return 0

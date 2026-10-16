@@ -14,7 +14,7 @@
         - preserve the established confirm/cancel API and child names
         - report caller-selected result values without applying application policy
         - keep input inside the confirmation window while it is active
-        - offer bounded wrapped messages and portable severity icons
+        - offer bounded wrapped messages, text illustrations, and severity icons
 
     Targets:
 
@@ -47,6 +47,7 @@ Type ConfirmDialogData
     As Integer closeResult
     As Integer finished
     As Widget Ptr iconWidget
+    As Widget Ptr illustrationLabel
 End Type
 
 Type ConfirmDialogIconData
@@ -101,6 +102,7 @@ Private Sub confirmdialog_FreeUnregistered(ByVal root As Widget Ptr)
             confirmdialog_FreeChild dataValue->actionButtons(choiceIndex)
         Next choiceIndex
         confirmdialog_FreeChild dataValue->iconWidget
+        confirmdialog_FreeChild dataValue->illustrationLabel
         confirmdialog_FreeChild dataValue->messageLabel
         confirmdialog_FreeChild dataValue->windowWidget
         Delete dataValue
@@ -162,6 +164,41 @@ Private Sub confirmdialog_OnCancel(ByVal w As Widget Ptr)
 End Sub
 
 
+Private Function confirmdialog_IllustrationLineCount( _
+    ByRef illustration_text As Const String _
+) As Integer
+
+    Const MAXIMUM_ILLUSTRATION_BYTES = 2048
+    Const MAXIMUM_ILLUSTRATION_LINES = 32
+
+    If Len(illustration_text) = 0 OrElse _
+       Len(illustration_text) > MAXIMUM_ILLUSTRATION_BYTES OrElse _
+       InStr(illustration_text, Chr(0)) Then Return 0
+
+    Dim As Integer line_count = 1
+    Dim As Integer has_visible_character
+    For character_index As Integer = 1 To Len(illustration_text)
+        Dim As Integer character_code = Asc(illustration_text, character_index)
+        Select Case character_code
+        Case 10
+            line_count += 1
+        Case 13
+            If character_index >= Len(illustration_text) OrElse _
+               Asc(illustration_text, character_index + 1) <> 10 Then Return 0
+        Case 32 To 126
+            If character_code <> 32 Then has_visible_character = -1
+        Case Else
+            Return 0
+        End Select
+        If line_count > MAXIMUM_ILLUSTRATION_LINES Then Return 0
+    Next character_index
+
+    If has_visible_character = 0 Then Return 0
+    Return line_count
+
+End Function
+
+
 Private Function confirmdialog_CreateConfigured( _
     ByVal nm As String, _
     ByVal title As String, _
@@ -184,6 +221,7 @@ Private Function confirmdialog_CreateConfigured( _
     Const CONFIRM_DIALOG_BUTTON_WIDTH = 88
     Const CONFIRM_DIALOG_BUTTON_HEIGHT = 28
     Const CONFIRM_DIALOG_BUTTON_GAP = 8
+    Const MAXIMUM_ILLUSTRATION_LINES = 32
 
     Dim As Widget Ptr root = New Widget
     Dim As ConfirmDialogData Ptr dialogData = New ConfirmDialogData
@@ -225,13 +263,26 @@ Private Function confirmdialog_CreateConfigured( _
     Dim As Integer dialogHeight = CONFIRM_DIALOG_HEIGHT
     Dim As Integer defaultChoice
     Dim As Integer messageX = 16
+    Dim As Integer illustrationLineCount
+    Dim As Integer illustrationWidth
+    Dim As Integer illustrationHeight
     Dim As ConfirmDialogOptions optionValue
     If options <> 0 Then
+        If Len(options->illustration_text) > 2048 Then
+            confirmdialog_FreeUnregistered root
+            Return 0
+        End If
         optionValue = *options
+        If Len(optionValue.illustration_text) > 0 Then _
+            illustrationLineCount = confirmdialog_IllustrationLineCount( _
+                optionValue.illustration_text _
+            )
         If optionValue.width < 320 OrElse optionValue.width > 4096 OrElse _
            optionValue.maximum_height < 150 OrElse optionValue.maximum_height > 4096 OrElse _
            optionValue.icon_kind < CONFIRM_ICON_NONE OrElse optionValue.icon_kind > CONFIRM_ICON_INFORMATION OrElse _
            optionValue.default_choice < 0 OrElse optionValue.default_choice >= dialogData->actionCount OrElse _
+           (Len(optionValue.illustration_text) > 0 AndAlso _
+            (illustrationLineCount = 0 OrElse optionValue.icon_kind <> CONFIRM_ICON_NONE)) OrElse _
            Len(message) > 16384 OrElse x < -1000000 OrElse x > 1000000 OrElse y < -1000000 OrElse y > 1000000 Then
             confirmdialog_FreeUnregistered root
             Return 0
@@ -270,6 +321,54 @@ Private Function confirmdialog_CreateConfigured( _
         confirmdialog_FreeUnregistered root
         Return 0
     End If
+    If illustrationLineCount > 0 Then
+        dialogData->illustrationLabel = label_Create( _
+            nm & "_illustration", optionValue.illustration_text, 16, 38 _
+        )
+        If dialogData->illustrationLabel = 0 OrElse _
+           label_SetBorderStyle( _
+               dialogData->illustrationLabel, LABEL_BORDER_SINGLE _
+           ) = 0 Then
+            confirmdialog_FreeUnregistered root
+            Return 0
+        End If
+        label_SetWordWrap( _
+            dialogData->illustrationLabel, dialogWidth - 160, _
+            MAXIMUM_ILLUSTRATION_LINES _
+        )
+        If label_GetRenderedLineCount(dialogData->illustrationLabel) <> _
+           illustrationLineCount Then
+            confirmdialog_FreeUnregistered root
+            Return 0
+        End If
+        Dim As Integer measuredIllustrationWidth
+        If label_GetTextSize( _
+            dialogData->illustrationLabel, measuredIllustrationWidth, _
+            illustrationHeight _
+        ) = 0 Then
+            confirmdialog_FreeUnregistered root
+            Return 0
+        End If
+        illustrationWidth = measuredIllustrationWidth + 8
+        If illustrationWidth > dialogWidth - 160 Then
+            confirmdialog_FreeUnregistered root
+            Return 0
+        End If
+        label_SetWordWrap( _
+            dialogData->illustrationLabel, illustrationWidth, _
+            MAXIMUM_ILLUSTRATION_LINES _
+        )
+        dialogData->illustrationLabel->h = illustrationHeight
+        messageX = 16 + illustrationWidth + 12
+        If dialogWidth - messageX - 16 < 128 Then
+            confirmdialog_FreeUnregistered root
+            Return 0
+        End If
+        dialogData->messageLabel->x = messageX
+        label_SetWordWrap( _
+            dialogData->messageLabel, dialogWidth - messageX - 16, 0 _
+        )
+    End If
     If options <> 0 Then
         ' Message dialogs keep their measured layout and remain reachable
         ' until answered. General subwindow minimize/maximize actions do not
@@ -283,7 +382,9 @@ Private Function confirmdialog_CreateConfigured( _
         ' capacity boundary as well, since that boundary can hide an ellipsis.
         Dim As Integer messageHeight = lineCount * (backend_GetTextHeight() + 2)
         If messageHeight < 32 Then messageHeight = 32
-        dialogHeight = 38 + messageHeight + 16 + CONFIRM_DIALOG_BUTTON_HEIGHT + 18
+        Dim As Integer contentHeight = messageHeight
+        If illustrationHeight > contentHeight Then contentHeight = illustrationHeight
+        dialogHeight = 38 + contentHeight + 16 + CONFIRM_DIALOG_BUTTON_HEIGHT + 18
         If dialogHeight < CONFIRM_DIALOG_HEIGHT Then dialogHeight = CONFIRM_DIALOG_HEIGHT
         If lineCount >= LABEL_MAXIMUM_WRAPPED_LINES OrElse dialogHeight > optionValue.maximum_height Then
             confirmdialog_FreeUnregistered root
@@ -291,6 +392,8 @@ Private Function confirmdialog_CreateConfigured( _
         End If
         dialogData->windowWidget->h = dialogHeight
         dialogData->messageLabel->h = messageHeight
+        If dialogData->illustrationLabel <> 0 Then _
+            dialogData->illustrationLabel->h = contentHeight
         If optionValue.icon_kind <> CONFIRM_ICON_NONE Then
             dialogData->iconWidget = New Widget
             If dialogData->iconWidget = 0 Then
@@ -346,6 +449,10 @@ Private Function confirmdialog_CreateConfigured( _
     gui_AddGeneratedWidget dialogData->messageLabel
     gui_SetParent dialogData->windowWidget, root
     gui_SetParent dialogData->messageLabel, dialogData->windowWidget
+    If dialogData->illustrationLabel <> 0 Then
+        gui_AddGeneratedWidget dialogData->illustrationLabel
+        gui_SetParent dialogData->illustrationLabel, dialogData->windowWidget
+    End If
     If dialogData->iconWidget <> 0 Then
         gui_AddGeneratedWidget dialogData->iconWidget
         gui_SetParent dialogData->iconWidget, dialogData->windowWidget
@@ -462,6 +569,12 @@ Function confirmdialog_GetMessageLabel(ByVal w As Widget Ptr) As Widget Ptr
     If w = 0 OrElse w->data = 0 OrElse _
        w->destroy <> @confirmdialog_Destroy Then Return 0
     Return Cast(ConfirmDialogData Ptr, w->data)->messageLabel
+End Function
+
+Function confirmdialog_GetIllustrationLabel(ByVal w As Widget Ptr) As Widget Ptr
+    If w = 0 OrElse w->data = 0 OrElse _
+       w->destroy <> @confirmdialog_Destroy Then Return 0
+    Return Cast(ConfirmDialogData Ptr, w->data)->illustrationLabel
 End Function
 
 ' end of confirmdialog.bas

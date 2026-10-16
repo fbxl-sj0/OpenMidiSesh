@@ -128,6 +128,7 @@ Private Sub session_ShowDesktopMenuAt( _
     session_ShowDesktopMenu menuWidget, menuLeft
     If menuWidget <> 0 AndAlso menuWidget->data <> 0 Then
         Dim As MenuData Ptr menuState = Cast(MenuData Ptr, menuWidget->data)
+        If menuState = 0 Then Exit Sub
         menuState->selected = IIf(menuState->count > 0, 0, -1)
         session_MenuKeyboardSelection = menuState->selected
     End If
@@ -171,6 +172,7 @@ Private Sub session_MoveDesktopMenuSelection( _
         Exit Sub
     End If
     Dim As MenuData Ptr menuState = Cast(MenuData Ptr, menuWidget->data)
+    If menuState = 0 Then Exit Sub
     If menuState->count <= 0 Then
         menuState->selected = -1
         Exit Sub
@@ -198,6 +200,7 @@ Private Sub session_ActivateDesktopMenuSelection( _
         Exit Sub
     End If
     Dim As MenuData Ptr menuState = Cast(MenuData Ptr, menuWidget->data)
+    If menuState = 0 Then Exit Sub
     Dim As Integer selectedIndex = menuState->selected
     If selectedIndex < 0 OrElse selectedIndex >= menuState->count Then
         Exit Sub
@@ -242,9 +245,11 @@ Private Sub session_ProcessMenuBar()
             visibleMenu->data <> 0 Then
             Dim As MenuData Ptr visibleMenuState = _
                 Cast(MenuData Ptr, visibleMenu->data)
-            If session_MenuKeyboardSelection >= 0 AndAlso _
-                session_MenuKeyboardSelection < visibleMenuState->count Then _
-                visibleMenuState->selected = session_MenuKeyboardSelection
+            If visibleMenuState <> 0 Then
+                If session_MenuKeyboardSelection >= 0 AndAlso _
+                    session_MenuKeyboardSelection < visibleMenuState->count Then _
+                    visibleMenuState->selected = session_MenuKeyboardSelection
+                End If
         End If
         If input_KeyPressEvent(KEY_ESCAPE) <> 0 Then
             session_HideDesktopMenus()
@@ -282,21 +287,22 @@ Private Sub session_ProcessMenuBar()
         input_MouseY() >= 0 AndAlso input_MouseY() < SESSION_MENU_HEIGHT Then
         Dim As Integer mouseX = input_MouseX()
         session_MenuKeyboardAccess = 0
-        If mouseX >= 6 AndAlso mouseX < 44 Then
+        If mouseX >= SESSION_MENU_FILE_LEFT_X AndAlso _
+            mouseX < SESSION_MENU_FILE_RIGHT_X Then
             session_ShowDesktopMenuAt 0, menuScreenWidth
-        ElseIf mouseX < 84 Then
+        ElseIf mouseX < SESSION_MENU_EDIT_RIGHT_X Then
             session_ShowDesktopMenuAt 1, menuScreenWidth
-        ElseIf mouseX < 148 Then
+        ElseIf mouseX < SESSION_MENU_VIEW_RIGHT_X Then
             session_ShowDesktopMenuAt 2, menuScreenWidth
-        ElseIf mouseX < 204 Then
+        ElseIf mouseX < SESSION_MENU_MUSIC_RIGHT_X Then
             session_ShowDesktopMenuAt 3, menuScreenWidth
-        ElseIf mouseX < 252 Then
+        ElseIf mouseX < SESSION_MENU_SETUP_RIGHT_X Then
             session_ShowDesktopMenuAt 4, menuScreenWidth
-        ElseIf mouseX < 306 Then
+        ElseIf mouseX < SESSION_MENU_TOOLS_RIGHT_X Then
             session_ShowDesktopMenuAt 5, menuScreenWidth
-        ElseIf mouseX < 370 Then
+        ElseIf mouseX < SESSION_MENU_HELP_RIGHT_X Then
             session_ShowDesktopMenuAt 6, menuScreenWidth
-        ElseIf mouseX >= menuScreenWidth - 54 Then
+        ElseIf mouseX >= menuScreenWidth - SESSION_MENU_SYSTEM_RIGHT_MARGIN Then
             session_ShowDesktopMenuAt 7, menuScreenWidth
         End If
     End If
@@ -653,7 +659,7 @@ Private Sub session_LayoutToolbarWidgets(ByVal screenWidth As Integer)
     Next
 
     Dim As Integer showSetupControls = Iif( _
-        screenWidth >= 1040 AndAlso _
+        screenWidth >= SESSION_SCORE_WIDE_LAYOUT_MINIMUM_WIDTH AndAlso _
         session_InteractionMode = OSE_UI_INTERACTION_FINE, -1, 0)
     If session_TempoLabel <> 0 Then _
         session_TempoLabel->visible = showSetupControls
@@ -677,11 +683,11 @@ Private Sub session_LayoutPaneScrollbars( _
     Dim As Integer scoreWidth = screenWidth - SESSION_SCORE_LEFT - 4
     Dim As Integer scoreHeight = screenHeight - SESSION_TOP_HEIGHT - _
         SESSION_MIXER_HEIGHT - 8
-    If scoreWidth < 160 Then
-        scoreWidth = 160
+    If scoreWidth < SESSION_SCORE_VIEW_MINIMUM_WIDTH Then
+        scoreWidth = SESSION_SCORE_VIEW_MINIMUM_WIDTH
     End If
-    If scoreHeight < 150 Then
-        scoreHeight = 150
+    If scoreHeight < SESSION_SCORE_VIEW_MINIMUM_HEIGHT Then
+        scoreHeight = SESSION_SCORE_VIEW_MINIMUM_HEIGHT
     End If
     If session_ScoreHorizontalScrollbar <> 0 Then
         session_ScoreHorizontalScrollbar->x = SESSION_SCORE_LEFT
@@ -707,6 +713,7 @@ Private Sub session_ProcessPaneScrollbars(ByVal screenHeight As Integer)
         session_ScoreHorizontalScrollbar->data <> 0 Then
         Dim As ScrollBarData Ptr horizontalData = Cast( _
             ScrollBarData Ptr, session_ScoreHorizontalScrollbar->data)
+        If horizontalData = 0 Then Exit Sub
         Dim As ULongInt viewTicks = session_ViewTicks()
         Dim As ULongInt timelineTicks = session_TimelineDurationTicks()
         Dim As ULongInt maximumStart = _
@@ -737,6 +744,7 @@ Private Sub session_ProcessPaneScrollbars(ByVal screenHeight As Integer)
         session_ScoreVerticalScrollbar->data <> 0 Then
         Dim As ScrollBarData Ptr verticalData = Cast( _
             ScrollBarData Ptr, session_ScoreVerticalScrollbar->data)
+        If verticalData = 0 Then Exit Sub
         Dim As Integer visibleTracks = session_ScoreVisibleTrackCount(screenHeight)
         Dim As Integer maximumFirst = scoreScroll_MaximumFirstTrack( _
             session_Summary.trackCount, visibleTracks)

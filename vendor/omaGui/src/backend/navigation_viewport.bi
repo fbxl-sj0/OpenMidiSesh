@@ -3,7 +3,12 @@
     File: navigation_viewport.bi
     Purpose: Declare the opt-in logical display and accessibility profile.
     Responsibilities: Keep layout coordinates independent of physical pixels.
-    This file does not contain widget policy or window-system input polling.
+    Targets: FreeBASIC fb dialect; gfxlib with OMAGUI_NAVIGATION_EXTENSIONS.
+    Module API boundary: declares logical display options and physical/logical mapping.
+
+    This file intentionally does NOT contain:
+        - widget policy
+        - window-system input polling
 
     The GUI thread owns viewport state. Legacy games select this profile before
     initialization. Applications without that opt-in keep the native pixel path.

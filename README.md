@@ -1,84 +1,92 @@
 <!--
     Project: OpenSesh
     File: README.md
-    Purpose: Introduce the project and direct users to builds and documentation.
-    Responsibilities: explain capabilities, prerequisites and release status.
-    This file does not contain historical audit results or private reference code.
+    Purpose: Introduce the editor and point users to practical documentation.
+    Responsibilities: explain the product, capabilities, platforms and first steps.
+    This file does not contain contributor setup details.
 -->
 
 # OpenSesh
 
-OpenSesh is an independent, GPL-licensed MIDI editor written in FreeBASIC.
-It combines a score preview, a sixteen-channel mixer, MIDI and audio editing,
-software synthesis, and native MIDI endpoints in one desktop application.
+## A MIDI workspace for writing and shaping songs
 
-![OpenSesh in the Dark theme](tests/visual_baselines/main-dark-1280x720.png)
+OpenSesh keeps a multi-track score view and a sixteen-channel mixer in one
+desktop editor. Edit notes, arrange drum phrases, shape a mix, and hear changes
+through the built-in synthesizer or a SoundFont you choose.
 
-- Load and save Standard MIDI Files, edit notes and tracks, and undo MIDI and
-  audio edits in chronological order.
-- Play through the built-in synth, a user-supplied SoundFont, or a native MIDI
-  endpoint. Export PCM WAV and ProTracker MOD files.
-- Create drum phrases, use the performance keyboard, and work with Desktop or
-  Touch controls in Light, Dark, or Black themes.
+![OpenSesh main window in the Dark theme](tests/visual_baselines/main-dark-1280x720.png)
 
-The current version is **0.9.0-dev**. Native package CI targets Windows, Linux,
-FreeBSD, NetBSD, OpenBSD and Haiku x86_64. [GitHub releases](https://github.com/fbxl-sj0/OpenMidiSesh/releases)
-provide archives with the executable, licenses, corresponding source and checksums.
-Extract the complete archive for your system, then run `opensesh.exe` on Windows
-or `opensesh` elsewhere. See [platform requirements](docs/CI.md) before downloading.
-BSD and Haiku currently support editing and software synthesis without external
-MIDI endpoints. Android has a separate packaging path; external Android MIDI
-endpoints are unavailable. Development builds have not completed every
-physical-device, accessibility, or signing check listed in the release checklist.
+The built-in sound means a hardware synthesizer is optional. OpenSesh can also
+send and receive MIDI through native endpoints on Windows and Linux. Add WAV
+clips to a project, record a live part, or export a WAV mix and a ProTracker MOD
+file.
 
-## Build and run
+## What you can do
 
-The project uses the FreeBASIC 1.20.x toolchain with sfxlib. The exact reviewed
-Windows files are recorded in `windows_toolchain_lock.json`; a generic
-FreeBASIC installation may lack the required interfaces or libraries.
-The redistributable omaGUI source is included in the repository.
+- Open, edit, and save Standard MIDI Files, including notes, tracks, tempo and
+  meter maps, and supported MIDI controller events.
+- Draw, select, move, resize, quantize, duplicate, and transpose notes in the
+  score view. Undo and redo MIDI and audio edits together.
+- Build reusable drum phrases, preview them, and insert them into a song as
+  ordinary channel 10 drum notes.
+- Balance sixteen MIDI channels with volume, pan, chorus, reverb, mute, solo,
+  and record-arm controls.
+- Play through the included synthesizer or load a user-supplied SoundFont.
+- Record from a MIDI device, use the on-screen performance keyboard, or
+  transcribe a single melodic line from microphone input where the host
+  supports it.
+- Place external WAV clips on the song timeline and export a complete WAV mix.
+  Export MIDI notes as a four-channel ProTracker MOD module.
+- Switch between Desktop and Touch controls and choose Light, Dark, or Black
+  themes.
 
-Windows PowerShell:
+## Get the editor
 
-```powershell
-powershell -NoProfile -File .\build_editor.ps1 -OutputPath .\build\opensesh.exe
-.\build\opensesh.exe
-```
+The current version is **0.9.0-dev**. Download the package for your system from
+[GitHub Releases](https://github.com/fbxl-sj0/OpenMidiSesh/releases). Extract
+the complete archive and run <code>OpenSesh.exe</code> on Windows or
+<code>opensesh</code> on Unix-like systems. Package-specific runtime
+requirements are listed in [Dependencies](docs/DEPENDENCIES.md).
 
-Linux with the required compiler and ALSA development libraries installed:
+| Platform | Editor and built-in sound | Native MIDI endpoints |
+| --- | --- | --- |
+| Windows x86_64 | Desktop editor | WinMM input and sfxlib output |
+| Linux x86_64 | Desktop editor | ALSA Sequencer input and output |
+| FreeBSD, NetBSD, OpenBSD, Haiku x86_64 | Desktop editor | Not available; built-in sound and editing work |
+| Android | Touch-oriented package | Not available; built-in sound and editing work |
 
-```bash
-OUTPUT_PATH="$PWD/build/opensesh" bash build_editor.sh
-./build/opensesh
-```
+Android is built through a separate packaging script. It shares the editor,
+score, gestures, and synthesizer with the desktop program.
 
-Pass a MIDI filename as the first command-line argument to open it at startup.
-SoundFonts and personal recordings are not included in release packages.
+## Build from source
+
+The repository includes the omaGUI source used by the editor. Windows and Linux
+quick-start commands are:
+
+~~~powershell
+powershell -NoProfile -File ./build_editor.ps1 -OutputPath ./build/opensesh.exe
+~~~
+
+~~~bash
+OUTPUT_PATH="$PWD/build/opensesh" bash ./build_editor.sh
+~~~
+
+See [Building OpenSesh](docs/BUILDING.md) for toolchain requirements, platform
+notes, and Android instructions.
 
 ## Documentation
 
-- [User guide](docs/USER_GUIDE.md): editing, playback, recording, themes, and commands.
-- [Architecture](docs/ARCHITECTURE.md): module boundaries and resource ownership.
-- [Dependencies](docs/DEPENDENCIES.md) and [third-party notices](THIRD_PARTY_NOTICES.md).
-- [Release checklist](docs/RELEASE_CHECKLIST.md): automated checks and hardware qualification.
-- [Contributing](CONTRIBUTING.md), [security reporting](SECURITY.md), and [changelog](CHANGELOG.md).
-- [Strict lint](docs/LINTING.md) and [CI coverage](docs/CI.md).
-- [Clean-room provenance](docs/CLEAN_ROOM.md).
-
-## Repository layout
-
-| Path | Contents |
-| --- | --- |
-| `src/` | Application modules, public and internal headers, platform resources |
-| `docs/` | User, architecture, dependency and release documentation |
-| `tests/` | Deterministic tests, platform runners and reviewed visual baselines |
-| `vendor/omaGui/` | Byte-pinned redistributable GUI dependency |
-| `build/` | Ignored local builds, generated fixtures and validation evidence |
+- [User guide](docs/USER_GUIDE.md): the main window, editing, playback, and
+  exporting.
+- [Architecture](docs/ARCHITECTURE.md): application components and data flow.
+- [Building](docs/BUILDING.md): compiler setup and build commands.
+- [Dependencies](docs/DEPENDENCIES.md): bundled and host-provided components.
+- [Contributing](CONTRIBUTING.md): source conventions and contribution workflow.
+- [CI and releases](docs/CI.md): automated build coverage and publishing checks.
 
 ## License
 
-OpenSesh is licensed under [GPL-3.0-or-later](COPYING). Dependencies retain
-their own licenses and attributions. See [LICENSE](LICENSE) and
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+OpenSesh is licensed under [GPL-3.0-or-later](COPYING). Dependency licenses
+and attributions are listed in [Third-Party Notices](THIRD_PARTY_NOTICES.md).
 
 <!-- end of README.md -->

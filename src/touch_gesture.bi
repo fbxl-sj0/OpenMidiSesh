@@ -32,14 +32,14 @@
 #ifndef __OSE_TOUCH_GESTURE_BI__
 #define __OSE_TOUCH_GESTURE_BI__
 
-' fblint: disable-next-line FBL911,FBL014 REASON: This is an in-memory record; its fields are not a raw on-disk UDT layout.
+' This is an in-memory record; its fields are not a raw on-disk UDT layout.
 Type OseTouchContact
     As Integer id
     As Integer x
     As Integer y
 End Type
 
-' fblint: disable-next-line FBL911,FBL014 REASON: This is an in-memory record; its fields are not a raw on-disk UDT layout.
+' This is an in-memory record; its fields are not a raw on-disk UDT layout.
 Type OseTouchGestureState
     As Integer active
     As Integer primaryId
@@ -57,7 +57,7 @@ Type OseTouchGestureState
     As Double lastSpanY
 End Type
 
-' fblint: disable-next-line FBL911,FBL014 REASON: This is an in-memory record; its fields are not a raw on-disk UDT layout.
+' This is an in-memory record; its fields are not a raw on-disk UDT layout.
 Type OseTouchGestureResult
     As Integer started
     As Integer tap

@@ -19,6 +19,12 @@
         - exercise scrolling, dragging and playback benchmark workloads
         - create the production widget hierarchy used by those workloads
 
+    Resource ownership:
+
+        - benchmark note batches use temporary heap storage; the MIDI model
+          copies them before the buffer is released
+        - shared editor state remains owned by state.bi
+
     This file intentionally does NOT contain:
 
         - an independently linked public module
@@ -58,23 +64,26 @@ Private Function session_CreateSmoothnessFixture() As Integer
         Quarter notes leave a full-beat release interval, proving that the
         VU bars animate instead of merely reaching one steady mock level.
     '/
-    Dim As MidiEditableNote notes(0 To SESSION_SMOOTHNESS_NOTE_COUNT - 1)
+    Dim As MidiEditableNote Ptr notes = Callocate( _
+        SESSION_SMOOTHNESS_NOTE_COUNT, SizeOf(MidiEditableNote))
+    If notes = 0 Then Return 0
     For noteIndex As Integer = 0 To SESSION_SMOOTHNESS_NOTE_COUNT - 1
         Dim As Integer sequenceIndex = noteIndex \ SESSION_SMOOTHNESS_TRACK_COUNT
         Dim As Integer trackIndex = noteIndex Mod SESSION_SMOOTHNESS_TRACK_COUNT
-        notes(noteIndex).startTick = CULngInt(sequenceIndex) * 960
-        notes(noteIndex).durationTicks = 480
-        notes(noteIndex).keyNumber = CUByte(48 + _
+        notes[noteIndex].startTick = CULngInt(sequenceIndex) * 960
+        notes[noteIndex].durationTicks = 480
+        notes[noteIndex].keyNumber = CUByte(48 + _
             ((sequenceIndex + trackIndex) Mod 24))
-        notes(noteIndex).channel = CUByte(trackIndex)
-        notes(noteIndex).velocity = CUByte(48 + _
+        notes[noteIndex].channel = CUByte(trackIndex)
+        notes[noteIndex].velocity = CUByte(48 + _
             ((sequenceIndex * 11 + trackIndex * 3) Mod 80))
-        notes(noteIndex).trackIndex = trackIndex
+        notes[noteIndex].trackIndex = trackIndex
     Next
 
-    If midi_AddEditableNotes( _
-        session_Summary, @notes(0), SESSION_SMOOTHNESS_NOTE_COUNT) <> 0 Then _
-        Return 0
+    Dim As Integer firstAddedIndex = midi_AddEditableNotes( _
+        session_Summary, notes, SESSION_SMOOTHNESS_NOTE_COUNT)
+    Deallocate notes
+    If firstAddedIndex <> 0 Then Return 0
     If midi_GetEditableNoteCount() <> SESSION_SMOOTHNESS_NOTE_COUNT Then
         Return 0
     End If
@@ -117,8 +126,9 @@ Private Sub session_InjectSmoothnessInput( _
 
     input_MockTouchCount 0
     If modeName = "interaction" Then
-        Dim As Integer phaseIndex = frameIndex Mod 120
-        If phaseIndex < 60 Then
+        Dim As Integer phaseIndex = frameIndex Mod _
+            SESSION_SMOOTHNESS_INTERACTION_CYCLE_FRAMES
+        If phaseIndex < SESSION_SMOOTHNESS_POINTER_PHASE_START Then
             If session_InteractionMode = OSE_UI_INTERACTION_TOUCH Then
                 /'
                     Two opposing finger drags exercise pan. The final twenty
@@ -126,11 +136,12 @@ Private Sub session_InjectSmoothnessInput( _
                     separate gestures, covering both zoom axes under the same
                     timing gate as real interaction.
                 '/
-                If phaseIndex < 40 Then
-                    Dim As Integer touchPhase = phaseIndex Mod 20
-                    If touchPhase < 19 Then
+                If phaseIndex < SESSION_SMOOTHNESS_TOUCH_PAN_PHASE_END Then
+                    Dim As Integer touchPhase = phaseIndex Mod _
+                        SESSION_SMOOTHNESS_TOUCH_GESTURE_FRAMES
+                    If touchPhase < SESSION_SMOOTHNESS_TOUCH_GESTURE_RELEASE_PHASE Then
                         pointerY = SESSION_SCORE_TOP + 70
-                        If phaseIndex < 20 Then
+                        If phaseIndex < SESSION_SMOOTHNESS_TOUCH_GESTURE_FRAMES Then
                             pointerX = 720 - touchPhase * 14
                         Else
                             pointerX = 460 + touchPhase * 14
@@ -138,7 +149,7 @@ Private Sub session_InjectSmoothnessInput( _
                         input_MockTouch 0, pointerX, pointerY, 1
                         input_MockTouchCount 1
                     End If
-                ElseIf phaseIndex < 49 Then
+                ElseIf phaseIndex < SESSION_SMOOTHNESS_HORIZONTAL_PINCH_PHASE_END Then
                     Dim As Integer spanGrowth = (phaseIndex - 40) * 8
                     pointerY = SESSION_SCORE_TOP + 70
                     input_MockTouch 0, 620 - (100 + spanGrowth) \ 2, _
@@ -146,7 +157,8 @@ Private Sub session_InjectSmoothnessInput( _
                     input_MockTouch 1, 620 + (100 + spanGrowth) \ 2, _
                         pointerY + 40, 12
                     input_MockTouchCount 2
-                ElseIf phaseIndex >= 50 AndAlso phaseIndex < 59 Then
+                ElseIf phaseIndex >= SESSION_SMOOTHNESS_VERTICAL_PINCH_PHASE_START _
+                    AndAlso phaseIndex < SESSION_SMOOTHNESS_VERTICAL_PINCH_PHASE_END Then
                     Dim As Integer spanGrowth = (phaseIndex - 50) * 8
                     pointerY = SESSION_SCORE_TOP + 100
                     input_MockTouch 0, 560, _
@@ -159,7 +171,11 @@ Private Sub session_InjectSmoothnessInput( _
                 ' Twelve-frame sweeps move both double-buffer pages through
                 ' distinct score states, then reverse before an endpoint can
                 ' hide later input.
-                wheelDelta = IIf((phaseIndex Mod 24) < 12, -1, 1) ' fblint: disable-line FBL406 REASON: The Mod operands are nonnegative; the minus sign belongs to a different expression.
+                wheelDelta = IIf( _
+                    (phaseIndex Mod SESSION_SMOOTHNESS_WHEEL_SWEEP_PHASE_COUNT) < _
+                        SESSION_SMOOTHNESS_WHEEL_FORWARD_PHASE_COUNT, _
+                    -1, 1 _
+                ) ' The Mod operands are nonnegative; the minus sign belongs to a different expression.
             End If
         Else
             Dim As OseMixerControlLayout mixerLayout
@@ -169,10 +185,13 @@ Private Sub session_InjectSmoothnessInput( _
             pointerX = mixerLayout.masterLeft + 31
             pointerY = mixerLayout.faderTop + _
                 ((mixerLayout.faderBottom - mixerLayout.faderTop) * _
-                (phaseIndex - 60)) \ 59
+                (phaseIndex - SESSION_SMOOTHNESS_POINTER_PHASE_START)) \ _
+                (SESSION_SMOOTHNESS_POINTER_RELEASE_PHASE - _
+                SESSION_SMOOTHNESS_POINTER_PHASE_START)
             ' Release on the final phase so the production drag lifecycle is
             ' exercised repeatedly rather than leaving capture stuck on exit.
-            pointerButtons = IIf(phaseIndex < 119, 1, 0)
+            pointerButtons = IIf( _
+                phaseIndex < SESSION_SMOOTHNESS_POINTER_RELEASE_PHASE, 1, 0)
         End If
     Else
         ' A moving pointer forces ordinary hover hit-testing in idle and
@@ -229,6 +248,7 @@ Private Function session_WriteSmoothnessReport( _
     uiFramePacing_Evaluate metrics, workloadValid, result
 
     Dim As Integer fileNumber = FreeFile()
+    ' This caller-selected smoothness report is a generated artifact that is replaced on each run.
     If Open(reportFilename For Output As #fileNumber) <> 0 Then
         Return 0
     End If

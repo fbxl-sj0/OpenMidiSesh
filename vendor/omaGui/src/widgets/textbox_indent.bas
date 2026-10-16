@@ -70,7 +70,7 @@ Private Function textboxIndent_PrefixLength(ByRef source_text As Const String, B
         If character_code = 32 Then
             removed_columns += 1
         ElseIf character_code = 9 Then
-            removed_columns += TEXTBOX_TAB_COLUMNS - (removed_columns Mod TEXTBOX_TAB_COLUMNS) ' fblint: disable-line FBL406 REASON: The Mod operands are nonnegative; the minus sign belongs to a different expression.
+            removed_columns += TEXTBOX_TAB_COLUMNS - (removed_columns Mod TEXTBOX_TAB_COLUMNS) ' The Mod operands are nonnegative; the minus sign belongs to a different expression.
         Else
             Exit While
         End If

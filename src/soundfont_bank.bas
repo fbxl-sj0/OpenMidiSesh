@@ -109,7 +109,7 @@ Const SF2_GEN_EXCLUSIVE_CLASS As Integer = 57
 Const SF2_GEN_OVERRIDING_ROOT_KEY As Integer = 58
 Const SF2_GEN_LOOP_END_COARSE_OFFSET As Integer = 50
 
-' fblint: disable-next-line FBL911,FBL014 REASON: This is an in-memory record; its fields are not a raw on-disk UDT layout.
+' This is an in-memory record; its fields are not a raw on-disk UDT layout.
 Type SoundFontPresetHeader
     As String name
     As UShort programNumber
@@ -117,25 +117,25 @@ Type SoundFontPresetHeader
     As UShort bagIndex
 End Type
 
-' fblint: disable-next-line FBL911,FBL014 REASON: This is an in-memory record; its fields are not a raw on-disk UDT layout.
+' This is an in-memory record; its fields are not a raw on-disk UDT layout.
 Type SoundFontBag
     As UShort generatorIndex
     As UShort modulatorIndex
 End Type
 
-' fblint: disable-next-line FBL911,FBL014 REASON: This is an in-memory record; its fields are not a raw on-disk UDT layout.
+' This is an in-memory record; its fields are not a raw on-disk UDT layout.
 Type SoundFontGenerator
     As UShort operatorNumber
     As UShort amount
 End Type
 
-' fblint: disable-next-line FBL911,FBL014 REASON: This is an in-memory record; its fields are not a raw on-disk UDT layout.
+' This is an in-memory record; its fields are not a raw on-disk UDT layout.
 Type SoundFontInstrumentHeader
     As String name
     As UShort bagIndex
 End Type
 
-' fblint: disable-next-line FBL911,FBL014 REASON: This is an in-memory record; its fields are not a raw on-disk UDT layout.
+' This is an in-memory record; its fields are not a raw on-disk UDT layout.
 Type SoundFontSampleHeader
     As String name
     As ULong startPoint
@@ -149,14 +149,14 @@ Type SoundFontSampleHeader
     As UShort sampleType
 End Type
 
-' fblint: disable-next-line FBL911,FBL014 REASON: This is an in-memory record; its fields are not a raw on-disk UDT layout.
+' This is an in-memory record; its fields are not a raw on-disk UDT layout.
 Type SoundFontChunkLocation
     As ULongInt offset
     As ULongInt length
     As Integer found
 End Type
 
-' fblint: disable-next-line FBL911,FBL014 REASON: This is an in-memory record; its fields are not a raw on-disk UDT layout.
+' This is an in-memory record; its fields are not a raw on-disk UDT layout.
 Type SoundFontGeneratorState
     As Integer keyLow
     As Integer keyHigh
@@ -189,7 +189,7 @@ Type SoundFontGeneratorState
     As Integer overridingRootKey
 End Type
 
-' fblint: disable-next-line FBL911,FBL014 REASON: This is an in-memory record; its fields are not a raw on-disk UDT layout.
+' This is an in-memory record; its fields are not a raw on-disk UDT layout.
 Type SoundFontBankStorage
     As String filename
     As String bankName
@@ -211,7 +211,7 @@ Type SoundFontBankStorage
     As Integer sampleHeaderCount
 End Type
 
-' fblint: disable-next-line FBL301 REASON: this module owns the one selected immutable bank.
+' this module owns the one selected immutable bank.
 Dim Shared soundfontBank_Active As SoundFontBankStorage
 
 ' -------------------------------------------------------------------------

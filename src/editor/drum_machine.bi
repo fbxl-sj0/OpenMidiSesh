@@ -67,15 +67,17 @@ Private Function session_PhraseReadFields() As Integer
         Return 0
     End If
     For charIndex As Integer = 1 To Len(title)
-        If Asc(title, charIndex) < 32 Then
+        If Asc(title, charIndex) < SESSION_PRINTABLE_ASCII_MINIMUM Then
             Return 0
         End If
     Next
-    If session_Phrase.numerator <> beats OrElse session_Phrase.denominator <> unitValue OrElse _
-        session_Phrase.subdivisions <> divisions OrElse session_Phrase.title <> title Then
-        session_Phrase.numerator = beats
-        session_Phrase.denominator = unitValue
-        session_Phrase.subdivisions = divisions
+    If session_Phrase.numerator <> CInt(beats) OrElse _
+        session_Phrase.denominator <> CInt(unitValue) OrElse _
+        session_Phrase.subdivisions <> CInt(divisions) OrElse _
+        session_Phrase.title <> title Then
+        session_Phrase.numerator = CInt(beats)
+        session_Phrase.denominator = CInt(unitValue)
+        session_Phrase.subdivisions = CInt(divisions)
         session_Phrase.title = title
         session_PhraseChanged = -1
         session_PhraseLooping = 0
@@ -130,6 +132,7 @@ Private Sub session_PhraseRefreshGrid()
             Cast(ButtonData Ptr, session_PhraseRows(rowIndex)->data)->text = drumKit_Name(padIndex)
         For columnIndex As Integer = 0 To session_PhraseVisibleColumns - 1
             Dim As Widget Ptr cell = session_PhraseCells(rowIndex, columnIndex)
+            If cell = 0 Then Continue For
             cell->visible = IIf(padIndex >= 0 AndAlso _
                 session_PhraseFirstStep + columnIndex < steps, -1, 0)
         Next
@@ -175,6 +178,7 @@ Private Function session_PhraseCellIndex(ByVal source As Widget Ptr) As Integer
 End Function
 
 Private Sub session_RenderPhraseCell(ByVal source As Widget Ptr)
+    If source = 0 Then Exit Sub
     Dim As Integer cellIndex = session_PhraseCellIndex(source)
     If cellIndex < 0 Then
         Exit Sub
@@ -223,7 +227,9 @@ Public Sub session_OnPhraseCell(ByVal source As Widget Ptr)
     If padIndex < 0 OrElse _
         stepIndex >= session_Phrase.numerator * session_Phrase.subdivisions Then Exit Sub
     If session_Phrase.velocity(padIndex, stepIndex) = 0 Then
-        session_Phrase.velocity(padIndex, stepIndex) = session_DrumVelocity
+        If drumKit_VelocityName(session_DrumVelocity) = "" Then Exit Sub
+        session_Phrase.velocity(padIndex, stepIndex) = _
+            CUByte(session_DrumVelocity)
         session_TriggerDrumPad padIndex
     Else
         session_Phrase.velocity(padIndex, stepIndex) = 0
@@ -395,7 +401,7 @@ Public Sub session_OnPhraseAction(ByVal source As Widget Ptr)
             End If
             Dim As Integer nextSlot = (session_PhraseSlot + 1) Mod OSE_DRUM_PHRASE_COUNT
             If source->name = "phrase_prev" Then
-                nextSlot = (session_PhraseSlot + OSE_DRUM_PHRASE_COUNT - 1) Mod OSE_DRUM_PHRASE_COUNT ' fblint: disable-line FBL406 REASON: Range checks keep the dividend nonnegative and the modulus positive before this calculation.
+                nextSlot = (session_PhraseSlot + OSE_DRUM_PHRASE_COUNT - 1) Mod OSE_DRUM_PHRASE_COUNT ' Range checks keep the dividend nonnegative and the modulus positive before this calculation.
             End If
             If source->name = "phrase_copy" Then
                 ' Copy goes to an unused slot, so it cannot silently replace a beat.
@@ -485,7 +491,8 @@ Public Sub session_OnDrumMachine(ByVal source As Widget Ptr)
         session_SetStatus "Close the current modal window first."
         Exit Sub
     End If
-    If session_Summary.division < 1 OrElse session_Summary.division > 32767 Then
+    If session_Summary.division < 1 OrElse _
+        session_Summary.division > OSE_MAX_MIDI_TICKS_PER_QUARTER_NOTE Then
         session_SetStatus "Drum phrases require a song with musical tick timing."
         Exit Sub
     End If
@@ -498,11 +505,11 @@ Public Sub session_OnDrumMachine(ByVal source As Widget Ptr)
     backend_GetSize screenWidth, screenHeight
     Dim As Integer windowWidth = screenWidth - 16
     Dim As Integer windowHeight = screenHeight - 16
-    If windowWidth > 1040 Then
-        windowWidth = 1040
+    If windowWidth > SESSION_DRUM_MACHINE_SCREEN_WIDTH_LIMIT Then
+        windowWidth = SESSION_DRUM_MACHINE_SCREEN_WIDTH_LIMIT
     End If
-    If windowHeight > 780 Then
-        windowHeight = 780
+    If windowHeight > SESSION_DRUM_MACHINE_SCREEN_HEIGHT_LIMIT Then
+        windowHeight = SESSION_DRUM_MACHINE_SCREEN_HEIGHT_LIMIT
     End If
     session_PhraseWindow = session_CreateEditorWindow("drum_machine", "Drum Machine - Beat Phrases", _
         (screenWidth - windowWidth) \ 2, (screenHeight - windowHeight) \ 2, windowWidth, windowHeight)
@@ -555,8 +562,8 @@ Public Sub session_OnDrumMachine(ByVal source As Widget Ptr)
         session_PhraseVisibleColumns = 8
     End If
     session_PhraseVisibleRows = (windowHeight - 340) \ minimumCell
-    If session_PhraseVisibleRows > 12 Then
-        session_PhraseVisibleRows = 12
+    If session_PhraseVisibleRows > OSE_DRUM_PAD_COUNT Then
+        session_PhraseVisibleRows = OSE_DRUM_PAD_COUNT
     End If
     If session_PhraseVisibleRows < 1 Then
         session_PhraseVisibleRows = 1

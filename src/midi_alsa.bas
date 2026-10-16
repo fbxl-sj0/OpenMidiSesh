@@ -63,7 +63,7 @@
 
 #include once "midi_output_stop_internal.bi"
 
-#inclib "asound" ' fblint: disable-line FBL930 REASON: This Linux-only backend links the public ALSA library and asserts its event record layout.
+#inclib "asound" ' This Linux-only backend links the public ALSA library and asserts its event record layout.
 
 ' -------------------------------------------------------------------------
 ' ALSA public constants and ABI records
@@ -618,7 +618,7 @@ Private Sub midiAlsa_PumpInput()
     If midiAlsa_InputOpened = 0 OrElse midiAlsa_InputHandle = 0 OrElse _
         midiAlsa_InputParser = 0 Then Exit Sub
 
-    For eventIndex As Integer = 0 To OSE_ALSA_MAX_PUMP_EVENTS - 1 ' fblint: disable-line FBL311 REASON: The counter bounds the input pump work per frame.
+    For eventIndex As Integer = 0 To OSE_ALSA_MAX_PUMP_EVENTS - 1 ' The counter bounds the input pump work per frame.
         Dim As Any Ptr receivedEvent
         Dim As Long inputResult = snd_seq_event_input( _
             midiAlsa_InputHandle, @receivedEvent)
@@ -792,16 +792,16 @@ End Function
 
 Function midiOutput_Send( _
     ByVal statusByte As Integer, _
-    ByVal data1 As Integer, _
-    ByVal data2 As Integer _
+    ByVal firstDataByte As Integer, _
+    ByVal secondDataByte As Integer _
 ) As Integer
     If midiAlsa_OutputOpened = 0 Then Return 0
     If statusByte < &H80 OrElse statusByte > &HEF Then Return 0
-    If data1 < 0 OrElse data1 > 127 Then Return 0
-    If data2 < 0 OrElse data2 > 127 Then Return 0
+    If firstDataByte < 0 OrElse firstDataByte > 127 Then Return 0
+    If secondDataByte < 0 OrElse secondDataByte > 127 Then Return 0
 #If Defined(OSE_MIDI_OUTPUT_TESTING)
-    If midiOutput_TestBackendSend(CLng(statusByte), CLng(data1), _
-        CLng(data2)) <> 0 Then
+    If midiOutput_TestBackendSend(CLng(statusByte), CLng(firstDataByte), _
+        CLng(secondDataByte)) <> 0 Then
         midiOutput_Close()
         Return 0
     End If
@@ -812,8 +812,8 @@ Function midiOutput_Send( _
 
     Dim As UByte midiBytes(0 To 2)
     midiBytes(0) = CByte(statusByte)
-    midiBytes(1) = CByte(data1)
-    midiBytes(2) = CByte(data2)
+    midiBytes(1) = CByte(firstDataByte)
+    midiBytes(2) = CByte(secondDataByte)
     Dim As Integer byteCount = 3
     Dim As Integer messageFamily = statusByte And &HF0
     If messageFamily = &HC0 OrElse messageFamily = &HD0 Then byteCount = 2

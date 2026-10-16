@@ -129,7 +129,7 @@ Public Function scoreAddTool_DurationTicks( _
             ' one division for each step after the quarter-note duration.
             Dim As Integer shiftCount = state.durationIndex - _
                 OSE_SCORE_DURATION_QUARTER
-            For shiftIndex As Integer = 1 To shiftCount ' fblint: disable-line FBL311 REASON: The counter bounds the number of duration halvings.
+            For shiftIndex As Integer = 1 To shiftCount ' The counter bounds the number of duration halvings.
                 durationTicks \= 2
                 If durationTicks = 0 Then
                     durationTicks = 1

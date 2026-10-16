@@ -182,7 +182,7 @@ Private Sub backend_SetPresentationTiming(ByVal active As Integer)
                 backend_TimerPeriodActive = -1
         End If
     ElseIf backend_TimerPeriodActive <> 0 Then
-        ' fblint: disable-next-line FBL310 REASON: The Windows-only branch uses declarations supplied by windows.bi and the system headers.
+        ' The Windows-only branch uses declarations supplied by windows.bi and the system headers.
         omaGUI_NativeWindows.timeEndPeriod BACKEND_TIMER_PERIOD_MILLISECONDS
         backend_TimerPeriodActive = 0
     End If
@@ -1001,24 +1001,24 @@ Function backend_LoadFontPack( _
 
     If font_id < LBound(backend_FontPacks) OrElse font_id > UBound(backend_FontPacks) OrElse _
        font_id = BACKEND_FONT_CUSTOM OrElse filename = "" Then _
-        Return 0 ' fblint: disable-line FBL-IO-004 REASON: A failed Open acquires no handle; every successful open is closed below.
+        Return 0 ' A failed Open acquires no handle; every successful open is closed below.
 
     fileNumber = FreeFile
     If Open(filename For Binary Access Read As #fileNumber) <> 0 Then
-        Return 0 ' fblint: disable-line FBL-IO-004 REASON: A failed Open acquires no handle; every successful open is closed below.
+        Return 0 ' A failed Open acquires no handle; every successful open is closed below.
     End If
     fileLength = Lof(fileNumber)
     If fileLength < BACKEND_FONT_PACK_HEADER_BYTES OrElse _
        fileLength > BACKEND_FONT_PACK_MAX_BYTES Then
         Close #fileNumber
-        Return 0 ' fblint: disable-line FBL-IO-004 REASON: A failed Open acquires no handle; every successful open is closed below.
+        Return 0 ' A failed Open acquires no handle; every successful open is closed below.
     End If
     fileSize = CUInt(fileLength)
 
     fontFileData = Space(CInt(fileSize))
     If Get(fileNumber, , fontFileData) <> 0 Then
         Close #fileNumber
-        Return 0 ' fblint: disable-line FBL-IO-004 REASON: A failed Open acquires no handle; every successful open is closed below.
+        Return 0 ' A failed Open acquires no handle; every successful open is closed below.
     End If
     Close #fileNumber
     fontBytes = Cast(UByte Ptr, StrPtr(fontFileData))
@@ -1080,15 +1080,15 @@ Function backend_LoadFontPack( _
     Next glyphIndex
 
     If invalidPack <> 0 OrElse bytePosition <> CULngInt(fileSize) Then _
-        Return 0 ' fblint: disable-line FBL-IO-004 REASON: A failed Open acquires no handle; every successful open is closed below.
+        Return 0 ' A failed Open acquires no handle; every successful open is closed below.
 
-    ' fblint: disable-next-line FBL310 -- this record type is private to the backend module.
+    ' this record type is private to the backend module.
     newGlyphs = Callocate(CULngInt(glyphCount) * SizeOf(BackendFontGlyphIndex))
     If newGlyphs = 0 Then Return 0
     newBitmapStorage = Allocate(bitmapStorageSize)
     If newBitmapStorage = 0 Then
         Deallocate newGlyphs
-        Return 0 ' fblint: disable-line FBL-IO-004 REASON: A failed Open acquires no handle; every successful open is closed below.
+        Return 0 ' A failed Open acquires no handle; every successful open is closed below.
     End If
 
     bytePosition = headerSize
@@ -1179,7 +1179,7 @@ Function backend_RaiseWindow() As Integer
         Restore only minimized windows. omaGUI_NativeWindows.RestoreWindow also unmaximizes a normal
         maximized window, which would surprise users when they open a file.
     '/
-    ' fblint: disable-next-line FBL310 REASON: The Windows-only branch uses declarations supplied by windows.bi and the system headers.
+    ' The Windows-only branch uses declarations supplied by windows.bi and the system headers.
     If omaGUI_NativeWindows.IsIconic(nativeHandle) <> 0 Then omaGUI_NativeWindows.ShowWindow nativeHandle, omaGUI_NativeWindows.RestoreWindow
     If omaGUI_NativeWindows.SetForegroundWindow(nativeHandle) = 0 Then Return 0
     Return -1
@@ -1421,8 +1421,8 @@ End Sub
 
 Function backend_DrawHorizontalSpans( _
     ByVal spanCount As Integer, _
-    ByVal spanX1 As Integer Ptr, _
-    ByVal spanX2 As Integer Ptr, _
+    ByVal spanStartX As Integer Ptr, _
+    ByVal spanEndX As Integer Ptr, _
     ByVal spanY As Integer Ptr, _
     ByVal clr As ULong, _
     ByVal alpha As Integer _
@@ -1433,7 +1433,7 @@ Function backend_DrawHorizontalSpans( _
     If backend_HeadlessActive = BACKEND_HEADLESS Then Return -1
     If alpha <= 0 Then Return -1
     If spanCount <= 0 OrElse spanCount > 4096 OrElse _
-        spanX1 = 0 OrElse spanX2 = 0 OrElse spanY = 0 Then Return 0
+        spanStartX = 0 OrElse spanEndX = 0 OrElse spanY = 0 Then Return 0
 
 #Ifdef __FB_GFXLIB3__
     Dim As Integer screenWidth
@@ -1446,8 +1446,8 @@ Function backend_DrawHorizontalSpans( _
     If alpha > 255 Then alpha = 255
     Dim As ULongInt pointCount
     For spanIndex As Integer = 0 To spanCount - 1
-        Dim As Integer firstX = spanX1[spanIndex]
-        Dim As Integer lastX = spanX2[spanIndex]
+        Dim As Integer firstX = spanStartX[spanIndex]
+        Dim As Integer lastX = spanEndX[spanIndex]
         Dim As Integer rowY = spanY[spanIndex]
         If rowY < 0 OrElse rowY >= screenHeight OrElse _
             lastX < 0 OrElse firstX >= screenWidth Then Continue For
@@ -1468,8 +1468,8 @@ Function backend_DrawHorizontalSpans( _
 
     Dim As Integer pointIndex
     For spanIndex As Integer = 0 To spanCount - 1
-        Dim As Integer firstX = spanX1[spanIndex]
-        Dim As Integer lastX = spanX2[spanIndex]
+        Dim As Integer firstX = spanStartX[spanIndex]
+        Dim As Integer lastX = spanEndX[spanIndex]
         Dim As Integer rowY = spanY[spanIndex]
         If rowY < 0 OrElse rowY >= screenHeight OrElse _
             lastX < 0 OrElse firstX >= screenWidth Then Continue For
@@ -2457,7 +2457,7 @@ Private Sub DrawCharFont(ByVal x As Integer, ByVal y As Integer, _
             For px As Integer = 0 To w - 1
                 Dim As ULong coverage = p[2 + py * w + px]
                 If text_alpha <> 255 Then coverage = (coverage * text_alpha) \ 255
-                ' fblint: disable-next-line FBL310 -- private mask state is declared in backend_font_span.bi.
+                ' private mask state is declared in backend_font_span.bi.
                 backend_FontSpanPixels[py * backend_FontSpanPitch + px] = coverage Shl 24
             Next px
         Next py
@@ -2760,7 +2760,7 @@ Private Sub backend_PrintPercentStyled( _
                         ' Shear leaves empty leading pixels. Clear their coverage
                         ' because the reusable mask may still contain a prior glyph.
                         If useFontSpan <> 0 Then
-                            ' fblint: disable-next-line FBL310 -- private mask state is declared in backend_font_span.bi.
+                            ' private mask state is declared in backend_font_span.bi.
                             backend_FontSpanPixels[dest_y * backend_FontSpanPitch + dest_x] = 0
                         End If
                         Continue For
@@ -2785,7 +2785,7 @@ Private Sub backend_PrintPercentStyled( _
                     glyph_alpha = _
                         glyph[2 + source_y * glyph_width + source_x]
                 If useFontSpan <> 0 Then
-                    ' fblint: disable-next-line FBL310 -- private mask state is declared in backend_font_span.bi.
+                    ' private mask state is declared in backend_font_span.bi.
                     backend_FontSpanPixels[dest_y * backend_FontSpanPitch + dest_x] = CULng(glyph_alpha) Shl 24
                 Else
                     backend_PSetAlpha( _

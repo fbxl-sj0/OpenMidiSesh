@@ -59,11 +59,11 @@ Type MusicSymbolGlyph
     As UByte pixels(0 To MUSIC_SYMBOL_MAXIMUM_PIXELS - 1)
 End Type
 
-' fblint: disable-next-line FBL301 REASON: the loaded glyph cache is owned by this module.
+' the loaded glyph cache is owned by this module.
 Dim Shared musicSymbols_Glyphs( _
     MUSIC_SYMBOL_FIRST_CODE To MUSIC_SYMBOL_LAST_CODE _
 ) As MusicSymbolGlyph
-' fblint: disable-next-line FBL301 REASON: this flag belongs to the same module-owned cache.
+' this flag belongs to the same module-owned cache.
 Dim Shared musicSymbols_Loaded As Integer
 
 

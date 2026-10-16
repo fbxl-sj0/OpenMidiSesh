@@ -35,7 +35,7 @@
 
 #include once "mixer_controls.bi"
 
-' fblint: disable-next-line FBL911,FBL014 REASON: This is an in-memory record; its fields are not a raw on-disk UDT layout.
+' This is an in-memory record; its fields are not a raw on-disk UDT layout.
 Type OseMixerChannelState
     As Integer mute(0 To OSE_MIXER_CHANNEL_COUNT - 1)
     As Integer solo(0 To OSE_MIXER_CHANNEL_COUNT - 1)

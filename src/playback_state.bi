@@ -35,7 +35,7 @@
 
 Const OSE_PLAYBACK_CHANNEL_COUNT As Integer = 16
 
-' fblint: disable-next-line FBL911,FBL014 REASON: This is an in-memory record; its fields are not a raw on-disk UDT layout.
+' This is an in-memory record; its fields are not a raw on-disk UDT layout.
 Type OsePlaybackChannelState
     As UByte bankSelectMsb(0 To OSE_PLAYBACK_CHANNEL_COUNT - 1)
     As UByte bankSelectLsb(0 To OSE_PLAYBACK_CHANNEL_COUNT - 1)

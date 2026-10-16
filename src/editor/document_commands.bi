@@ -138,12 +138,12 @@ Private Function session_CaptureDirectory() As String
 
     Dim As String userDirectory
 #If Defined(__FB_WIN32__)
-    userDirectory = Trim(Environ("USERPROFILE")) ' fblint: disable-line FBL750 REASON: The directory is validated below; an absent user directory falls back to CurDir.
+    userDirectory = Trim(Environ("USERPROFILE")) ' The directory is validated below; an absent user directory falls back to CurDir.
     Dim As String musicDirectory = capturePaths_Join(userDirectory, "Music")
     If session_DirectoryExists(musicDirectory) <> 0 Then _
         userDirectory = musicDirectory
 #Else
-    userDirectory = Trim(Environ("HOME")) ' fblint: disable-line FBL750 REASON: The directory is validated below; an absent user directory falls back to CurDir.
+    userDirectory = Trim(Environ("HOME")) ' The directory is validated below; an absent user directory falls back to CurDir.
 #EndIf
     If session_DirectoryExists(userDirectory) <> 0 Then
         Dim As String captureDirectory = capturePaths_Join( _
@@ -169,6 +169,7 @@ Private Sub session_SetStatus(ByVal message As String)
         Exit Sub
     End If
     Dim As LabelData Ptr statusData = Cast(LabelData Ptr, session_StatusLabel->data)
+    If statusData = 0 Then Exit Sub
     statusData->text = message
 End Sub
 
@@ -178,7 +179,8 @@ Private Sub session_UpdateThemeMenuLabels()
         Exit Sub
     End If
     Dim As MenuData Ptr menuState = Cast(MenuData Ptr, session_OptionsMenu->data)
-    If menuState->count < 8 Then
+    If menuState = 0 Then Exit Sub
+    If menuState->count < SESSION_OPTIONS_MENU_THEME_ITEM_COUNT Then
         Exit Sub
     End If
 
@@ -188,12 +190,12 @@ Private Sub session_UpdateThemeMenuLabels()
         "[x] Dark Theme", "[ ] Dark Theme")
     menuState->items(7) = IIf(session_ThemeMode = OSE_UI_THEME_BLACK, _
         "[x] Black Theme", "[ ] Black Theme")
-    If menuState->count >= 9 Then
+    If menuState->count >= SESSION_OPTIONS_MENU_TOUCH_ITEM_COUNT Then
         menuState->items(8) = IIf( _
             session_InteractionMode = OSE_UI_INTERACTION_TOUCH, _
             "[x] Touch Interface", "[ ] Touch Interface")
     End If
-    If menuState->count >= 11 Then
+    If menuState->count >= SESSION_OPTIONS_MENU_SYNTH_ITEM_COUNT Then
         If soundfontSynth_IsActive() <> 0 Then
             menuState->items(9) = "SoundFont: " + _
                 Left(soundfontSynth_GetName(), 30) + "..."
@@ -475,23 +477,6 @@ Sub session_ApplyInteractionMode( _
 End Sub
 
 
-Private Function textbox_GetText(ByVal textWidget As Widget Ptr) As String
-    /'
-        omaGUI textbox compatibility
-
-        The current omaGUI keeps TextBoxData public and exposes the checked
-        textbox_SetText mutator, but no longer declares the former read helper.
-        Centralizing the read here avoids spreading data casts throughout the
-        editor and preserves the existing validation call sites.
-    '/
-    If textWidget = 0 OrElse textWidget->data = 0 Then
-        Return ""
-    End If
-    Dim As TextBoxData Ptr textData = Cast(TextBoxData Ptr, textWidget->data)
-    Return textData->text
-End Function
-
-
 Private Sub session_UpdateStatusWidget(ByVal screenWidth As Integer)
     If session_StatusLabel = 0 OrElse session_StatusLabel->data = 0 Then
         Exit Sub
@@ -500,18 +485,19 @@ Private Sub session_UpdateStatusWidget(ByVal screenWidth As Integer)
     ' The shelf's lower line is reserved for feedback in both profiles.
     ' Validation errors and selection hints must survive a narrow window.
     session_StatusLabel->visible = -1
-    session_StatusLabel->x = 8
+    session_StatusLabel->x = SESSION_STATUS_LABEL_LEFT
     session_StatusLabel->y = SESSION_SCORE_TOP - 12
 
     Dim As Integer reservedRight = 54
     Dim As Integer availablePixels = screenWidth - session_StatusLabel->x - _
         reservedRight
     Dim As Integer maximumCharacters = availablePixels \ 8
-    If maximumCharacters < 8 Then
-        maximumCharacters = 8
+    If maximumCharacters < SESSION_STATUS_MINIMUM_VISIBLE_CHARACTERS Then
+        maximumCharacters = SESSION_STATUS_MINIMUM_VISIBLE_CHARACTERS
     End If
 
     Dim As LabelData Ptr statusData = Cast(LabelData Ptr, session_StatusLabel->data)
+    If statusData = 0 Then Exit Sub
     statusData->text = session_ClipText(session_StatusText, maximumCharacters)
 End Sub
 
@@ -584,18 +570,18 @@ End Sub
 
 Private Sub session_RefreshMixerFromSummary()
     For channelIndex As Integer = 0 To SESSION_CHANNEL_COUNT - 1
-        session_ChannelVolume(channelIndex) = _
-            CSng(session_Summary.channelVolume(channelIndex)) / 127.0
-        session_ChannelPan(channelIndex) = _
-            (CSng(session_Summary.channelPan(channelIndex)) - 64.0) / 63.0
+        session_ChannelVolume(channelIndex) = CSng( _
+            CSng(session_Summary.channelVolume(channelIndex)) / 127.0)
+        session_ChannelPan(channelIndex) = CSng( _
+            (CSng(session_Summary.channelPan(channelIndex)) - 64.0) / 63.0)
         If session_ChannelPan(channelIndex) < -1.0 Then _
             session_ChannelPan(channelIndex) = -1.0
         If session_ChannelPan(channelIndex) > 1.0 Then _
             session_ChannelPan(channelIndex) = 1.0
-        session_ChannelChorus(channelIndex) = _
-            CSng(session_Summary.channelChorus(channelIndex)) / 127.0
-        session_ChannelReverb(channelIndex) = _
-            CSng(session_Summary.channelReverb(channelIndex)) / 127.0
+        session_ChannelChorus(channelIndex) = CSng( _
+            CSng(session_Summary.channelChorus(channelIndex)) / 127.0)
+        session_ChannelReverb(channelIndex) = CSng( _
+            CSng(session_Summary.channelReverb(channelIndex)) / 127.0)
     Next
 End Sub
 
@@ -631,11 +617,11 @@ Private Function session_InitialTempoBpm() As Integer
 
     Dim As Integer beatsPerMinute = session_RoundNonnegative( _
         60000000.0 / CDbl(tempoValue))
-    If beatsPerMinute < 20 Then
-        beatsPerMinute = 20
+    If beatsPerMinute < SESSION_TEMPO_MIN_BPM Then
+        beatsPerMinute = SESSION_TEMPO_MIN_BPM
     End If
-    If beatsPerMinute > 400 Then
-        beatsPerMinute = 400
+    If beatsPerMinute > SESSION_TEMPO_MAX_BPM Then
+        beatsPerMinute = SESSION_TEMPO_MAX_BPM
     End If
     Return beatsPerMinute
 End Function
@@ -659,11 +645,11 @@ Private Function session_TempoPointBpm(ByVal tempoIndex As Integer) As Integer
     End If
     Dim As Integer beatsPerMinute = session_RoundNonnegative( _
         60000000.0 / CDbl(tempoValue))
-    If beatsPerMinute < 20 Then
-        beatsPerMinute = 20
+    If beatsPerMinute < SESSION_TEMPO_MIN_BPM Then
+        beatsPerMinute = SESSION_TEMPO_MIN_BPM
     End If
-    If beatsPerMinute > 400 Then
-        beatsPerMinute = 400
+    If beatsPerMinute > SESSION_TEMPO_MAX_BPM Then
+        beatsPerMinute = SESSION_TEMPO_MAX_BPM
     End If
     Return beatsPerMinute
 End Function
@@ -672,11 +658,12 @@ End Function
 Private Function session_TempoDenominatorValue( _
     ByVal denominatorPower As Integer _
 ) As Integer
-    If denominatorPower < 0 OrElse denominatorPower > 7 Then
+    If denominatorPower < 0 OrElse _
+        denominatorPower > SESSION_MAX_TIME_SIGNATURE_POWER Then
         Return 4
     End If
     Dim As Integer denominatorValue = 1
-    For powerIndex As Integer = 1 To denominatorPower ' fblint: disable-line FBL311 REASON: The counter bounds the power-of-two denominator calculation.
+    For powerIndex As Integer = 1 To denominatorPower ' The counter bounds the power-of-two denominator calculation.
         denominatorValue *= 2
     Next
     Return denominatorValue
@@ -759,15 +746,15 @@ Private Function session_KeySignatureText( _
     ByVal sharpsFlats As Integer, _
     ByVal minor As Integer _
 ) As String
-    Dim As String majorNames(0 To 14) = _
+    Dim As String majorNames(0 To SESSION_KEY_SIGNATURE_NAME_MAX_INDEX) = _
         {"Cb", "Gb", "Db", "Ab", "Eb", "Bb", "F", "C", _
          "G", "D", "A", "E", "B", "F#", "C#"}
-    Dim As String minorNames(0 To 14) = _
+    Dim As String minorNames(0 To SESSION_KEY_SIGNATURE_NAME_MAX_INDEX) = _
         {"Abm", "Ebm", "Bbm", "Fm", "Cm", "Gm", "Dm", "Am", _
          "Em", "Bm", "F#m", "C#m", "G#m", "D#m", "A#m"}
     Dim As Integer nameIndex = sharpsFlats + 7
-    If nameIndex < 0 OrElse nameIndex > 14 Then
-        nameIndex = 7
+    If nameIndex < 0 OrElse nameIndex > SESSION_KEY_SIGNATURE_NAME_MAX_INDEX Then
+        nameIndex = SESSION_MAX_KEY_SIGNATURE_ALTERATION
     End If
     If minor <> 0 Then
         Return minorNames(nameIndex)
@@ -870,7 +857,8 @@ Private Sub session_RefreshTempoMapList()
     If session_TempoMapList->data <> 0 Then
         Dim As ListBoxData Ptr listData = Cast( _
             ListBoxData Ptr, session_TempoMapList->data)
-        listData->selected_index = session_TempoMapSelectedIndex
+        If listData <> 0 Then _
+            listData->selected_index = session_TempoMapSelectedIndex
     End If
     session_SetTempoMapFields session_TempoMapSelectedIndex
 End Sub
@@ -902,14 +890,14 @@ Private Function session_SyncChannelMix(ByVal channelIndex As Integer) As Intege
     If volumeValue < 0 Then
         volumeValue = 0
     End If
-    If volumeValue > 127 Then
-        volumeValue = 127
+    If volumeValue > OSE_MIDI_DATA_BYTE_MAX Then
+        volumeValue = OSE_MIDI_DATA_BYTE_MAX
     End If
     If panValue < 0 Then
         panValue = 0
     End If
-    If panValue > 127 Then
-        panValue = 127
+    If panValue > OSE_MIDI_DATA_BYTE_MAX Then
+        panValue = OSE_MIDI_DATA_BYTE_MAX
     End If
 
     If midi_SetChannelMix(session_Summary, channelIndex, _
@@ -937,14 +925,14 @@ Private Function session_SyncChannelEffects( _
     If chorusValue < 0 Then
         chorusValue = 0
     End If
-    If chorusValue > 127 Then
-        chorusValue = 127
+    If chorusValue > OSE_MIDI_DATA_BYTE_MAX Then
+        chorusValue = OSE_MIDI_DATA_BYTE_MAX
     End If
     If reverbValue < 0 Then
         reverbValue = 0
     End If
-    If reverbValue > 127 Then
-        reverbValue = 127
+    If reverbValue > OSE_MIDI_DATA_BYTE_MAX Then
+        reverbValue = OSE_MIDI_DATA_BYTE_MAX
     End If
 
     If midi_SetChannelEffects(session_Summary, channelIndex, _
@@ -980,12 +968,14 @@ Private Function session_ReadTempoMapFields( _
     tick = parsedValue
 
     If numericText_ParseUnsigned( _
-        textbox_GetText(session_TempoMapBpmBox), parsedValue, 400) = 0 OrElse _
-        parsedValue < 20 Then Return 0
+        textbox_GetText(session_TempoMapBpmBox), parsedValue, _
+        SESSION_TEMPO_MAX_BPM) = 0 OrElse _
+        parsedValue < SESSION_TEMPO_MIN_BPM Then Return 0
     beatsPerMinute = CInt(parsedValue)
 
     If numericText_ParseUnsigned( _
-        textbox_GetText(session_TempoMapNumeratorBox), parsedValue, 255) = 0 _
+        textbox_GetText(session_TempoMapNumeratorBox), parsedValue, _
+        OSE_MIDI_BYTE_MAX) = 0 _
         OrElse parsedValue = 0 Then Return 0
     numerator = CInt(parsedValue)
 
@@ -995,11 +985,13 @@ Private Function session_ReadTempoMapFields( _
     Dim As Integer denominator = CInt(parsedValue)
     denominatorPower = 0
     Dim As Integer denominatorCursor = 1
-    While denominatorCursor < denominator AndAlso denominatorPower < 8
+    While denominatorCursor < denominator AndAlso _
+        denominatorPower <= SESSION_MAX_TIME_SIGNATURE_POWER
         denominatorCursor *= 2
         denominatorPower += 1
     Wend
-    If denominatorCursor <> denominator OrElse denominatorPower > 7 Then _
+    If denominatorCursor <> denominator OrElse _
+        denominatorPower > SESSION_MAX_TIME_SIGNATURE_POWER Then _
         Return 0
 
     If numericText_ParseSigned( _
@@ -1014,16 +1006,16 @@ End Function
 
 
 Private Function session_ChannelMessageName(ByVal messageType As UByte) As String
-    Select Case messageType And &HF0
-        Case &HA0
+    Select Case messageType And OSE_MIDI_STATUS_TYPE_MASK
+        Case OSE_MIDI_STATUS_POLY_PRESSURE
             Return "Poly"
-        Case &HB0
+        Case OSE_MIDI_STATUS_CONTROL_CHANGE
             Return "CC"
-        Case &HC0
+        Case OSE_MIDI_STATUS_PROGRAM_CHANGE
             Return "Program"
-        Case &HD0
+        Case OSE_MIDI_STATUS_CHANNEL_PRESSURE
             Return "Pressure"
-        Case &HE0
+        Case OSE_MIDI_STATUS_PITCH_BEND
             Return "Pitch"
     End Select
     Return "Other"
@@ -1032,13 +1024,13 @@ End Function
 
 Private Function session_SystemMessageName(ByVal statusByte As UByte) As String
     Select Case statusByte
-        Case &HF1
+        Case OSE_MIDI_STATUS_TIME_CODE_QUARTER_FRAME
             Return "MTC"
-        Case &HF2
+        Case OSE_MIDI_STATUS_SONG_POSITION
             Return "Song Pos"
-        Case &HF3
+        Case OSE_MIDI_STATUS_SONG_SELECT
             Return "Song Sel"
-        Case &HF6
+        Case OSE_MIDI_STATUS_TUNE_REQUEST
             Return "Tune Req"
     End Select
     Return "System"
@@ -1115,22 +1107,27 @@ Private Function session_ReadAutomationFields( _
     channelEvent.channel = CUByte(parsedValue - 1)
 
     If numericText_ParseUnsigned( _
-        textbox_GetText(session_AutomationTypeBox), parsedValue, 255) = 0 _
+        textbox_GetText(session_AutomationTypeBox), parsedValue, _
+        OSE_MIDI_BYTE_MAX) = 0 _
         Then Return 0
     Select Case CInt(parsedValue)
-        Case &HA0, &HB0, &HC0, &HD0, &HE0
+        Case OSE_MIDI_STATUS_POLY_PRESSURE, OSE_MIDI_STATUS_CONTROL_CHANGE, _
+            OSE_MIDI_STATUS_PROGRAM_CHANGE, OSE_MIDI_STATUS_CHANNEL_PRESSURE, _
+            OSE_MIDI_STATUS_PITCH_BEND
             channelEvent.messageType = CUByte(parsedValue)
         Case Else
             Return 0
     End Select
 
     If numericText_ParseUnsigned( _
-        textbox_GetText(session_AutomationData1Box), parsedValue, 127) = 0 _
+        textbox_GetText(session_AutomationData1Box), parsedValue, _
+        OSE_MIDI_DATA_BYTE_MAX) = 0 _
         Then Return 0
     channelEvent.data1 = CUByte(parsedValue)
 
     If numericText_ParseUnsigned( _
-        textbox_GetText(session_AutomationData2Box), parsedValue, 127) = 0 _
+        textbox_GetText(session_AutomationData2Box), parsedValue, _
+        OSE_MIDI_DATA_BYTE_MAX) = 0 _
         Then Return 0
     channelEvent.data2 = CUByte(parsedValue)
     Return -1
@@ -1160,27 +1157,33 @@ Private Function session_ReadSystemAutomationFields( _
     systemEvent.trackIndex = CInt(parsedValue - 1)
 
     If numericText_ParseUnsigned( _
-        textbox_GetText(session_AutomationTypeBox), parsedValue, 255) = 0 _
+        textbox_GetText(session_AutomationTypeBox), parsedValue, _
+        OSE_MIDI_BYTE_MAX) = 0 _
         Then Return 0
     Dim As Integer statusByte = CInt(parsedValue)
-    If statusByte <> &HF1 AndAlso statusByte <> &HF2 AndAlso _
-        statusByte <> &HF3 AndAlso statusByte <> &HF6 Then Return 0
+    If statusByte <> OSE_MIDI_STATUS_TIME_CODE_QUARTER_FRAME AndAlso _
+        statusByte <> OSE_MIDI_STATUS_SONG_POSITION AndAlso _
+        statusByte <> OSE_MIDI_STATUS_SONG_SELECT AndAlso _
+        statusByte <> OSE_MIDI_STATUS_TUNE_REQUEST Then Return 0
     systemEvent.statusByte = CUByte(statusByte)
     systemEvent.dataLength = 0
-    If statusByte = &HF1 OrElse statusByte = &HF3 Then
+    If statusByte = OSE_MIDI_STATUS_TIME_CODE_QUARTER_FRAME OrElse _
+        statusByte = OSE_MIDI_STATUS_SONG_SELECT Then
         systemEvent.dataLength = 1
-    ElseIf statusByte = &HF2 Then
+    ElseIf statusByte = OSE_MIDI_STATUS_SONG_POSITION Then
         systemEvent.dataLength = 2
     End If
 
     systemEvent.data1 = 0
     systemEvent.data2 = 0
     If numericText_ParseUnsigned( _
-        textbox_GetText(session_AutomationData1Box), parsedValue, 127) = 0 _
+        textbox_GetText(session_AutomationData1Box), parsedValue, _
+        OSE_MIDI_DATA_BYTE_MAX) = 0 _
         Then Return 0
     systemEvent.data1 = CUByte(parsedValue)
     If numericText_ParseUnsigned( _
-        textbox_GetText(session_AutomationData2Box), parsedValue, 127) = 0 _
+        textbox_GetText(session_AutomationData2Box), parsedValue, _
+        OSE_MIDI_DATA_BYTE_MAX) = 0 _
         Then Return 0
     systemEvent.data2 = CUByte(parsedValue)
     Return -1
@@ -1275,7 +1278,7 @@ Private Sub session_RefreshAutomationList()
         End If
         Dim As ListBoxData Ptr listData = Cast( _
             ListBoxData Ptr, session_AutomationList->data)
-        listData->selected_index = selectedListIndex
+        If listData <> 0 Then listData->selected_index = selectedListIndex
         Dim As SessionAutomationEventReference selectedReference = _
             session_AutomationEventRefs(selectedListIndex)
         session_AutomationSelectedSource = selectedReference.sourceIndex
@@ -1373,8 +1376,8 @@ Private Function session_ChannelAutomationEqual( _
     If firstEvent.data1 <> secondEvent.data1 Then
         Return 0
     End If
-    If firstEvent.messageType <> &HC0 AndAlso _
-        firstEvent.messageType <> &HD0 AndAlso _
+    If firstEvent.messageType <> OSE_MIDI_STATUS_PROGRAM_CHANGE AndAlso _
+        firstEvent.messageType <> OSE_MIDI_STATUS_CHANNEL_PRESSURE AndAlso _
         firstEvent.data2 <> secondEvent.data2 Then Return 0
     Return -1
 End Function
@@ -1506,8 +1509,10 @@ Private Sub session_RefreshTrackList()
         previousTrack >= 0 AndAlso previousTrack < session_Summary.trackCount Then
         Dim As ListBoxData Ptr listData = Cast( _
             ListBoxData Ptr, session_TrackList->data)
-        If previousTrack < listData->item_count Then
-            listData->selected_index = previousTrack
+        If listData <> 0 Then
+            If previousTrack < listData->item_count Then
+                listData->selected_index = previousTrack
+            End If
         End If
     End If
 End Sub
@@ -1520,8 +1525,9 @@ Private Sub session_SelectTrack(ByVal trackIndex As Integer)
     If session_TrackList <> 0 AndAlso session_TrackList->data <> 0 Then
         Dim As ListBoxData Ptr trackData = Cast( _
             ListBoxData Ptr, session_TrackList->data)
-        If trackIndex < trackData->item_count Then
-            trackData->selected_index = trackIndex
+        If trackData <> 0 Then
+            If trackIndex < trackData->item_count Then _
+                trackData->selected_index = trackIndex
         End If
     End If
     session_SelectedTrack = trackIndex
@@ -1578,18 +1584,18 @@ Private Function session_LoadMidi( _
     session_RebuildScoreLayout()
     mixerState_Initialize session_MixerChannels
     For channelIndex As Integer = 0 To SESSION_CHANNEL_COUNT - 1
-        session_ChannelVolume(channelIndex) = _
-            CSng(session_Summary.channelVolume(channelIndex)) / 127.0
-        session_ChannelPan(channelIndex) = _
-            (CSng(session_Summary.channelPan(channelIndex)) - 64.0) / 63.0
+        session_ChannelVolume(channelIndex) = CSng( _
+            CSng(session_Summary.channelVolume(channelIndex)) / 127.0)
+        session_ChannelPan(channelIndex) = CSng( _
+            (CSng(session_Summary.channelPan(channelIndex)) - 64.0) / 63.0)
         If session_ChannelPan(channelIndex) < -1.0 Then _
             session_ChannelPan(channelIndex) = -1.0
         If session_ChannelPan(channelIndex) > 1.0 Then _
             session_ChannelPan(channelIndex) = 1.0
-        session_ChannelChorus(channelIndex) = _
-            CSng(session_Summary.channelChorus(channelIndex)) / 127.0
-        session_ChannelReverb(channelIndex) = _
-            CSng(session_Summary.channelReverb(channelIndex)) / 127.0
+        session_ChannelChorus(channelIndex) = CSng( _
+            CSng(session_Summary.channelChorus(channelIndex)) / 127.0)
+        session_ChannelReverb(channelIndex) = CSng( _
+            CSng(session_Summary.channelReverb(channelIndex)) / 127.0)
     Next
     session_StepEntryTick = session_Summary.durationTicks
     For keyIndex As Integer = 0 To 127
@@ -1645,8 +1651,9 @@ Private Sub session_RefreshAudioList()
             Continue For
         End If
         Dim As String displayName = clip.filename
-        If Len(displayName) > 72 Then
-            displayName = Left(displayName, 69) + "..."
+        If Len(displayName) > SESSION_TRACK_DISPLAY_NAME_MAX_CHARACTERS Then
+            displayName = Left( _
+                displayName, SESSION_TRACK_DISPLAY_NAME_MAX_CHARACTERS - 3) + "..."
         End If
         Dim As String availabilityText
         If audioSampleSlots_IsAvailable(clipIndex) = 0 Then _
@@ -1663,7 +1670,7 @@ Private Sub session_RefreshAudioList()
         End If
         If previousIndex >= audio_GetCount() Then _
             previousIndex = audio_GetCount() - 1
-        listData->selected_index = previousIndex
+        If listData <> 0 Then listData->selected_index = previousIndex
         session_AudioSelectedIndex = previousIndex
         Dim As OseAudioClip selectedClip
         If audio_GetClip(previousIndex, selectedClip) <> 0 Then _
@@ -1828,7 +1835,7 @@ Private Function session_RequireArrangementAudioSpeed() As Integer
     ' WAV clips retain their original sample rate and duration. A faster
     ' score clock would move their starts and cut their tails short.
     ' The menu assigns exact preset multipliers. 1.0 is the exact normal-speed preset.
-    If audio_GetCount() = 0 OrElse session_PlaybackSpeedScale = 1.0 Then ' fblint: disable-line FBL-NUM-013 REASON: This compares an exactly representable preset, not a computed measurement.
+    If audio_GetCount() = 0 OrElse session_PlaybackSpeedScale = 1.0 Then ' This compares an exactly representable preset, not a computed measurement.
         Return -1
     End If
     session_SetStatus "Full playback with WAV clips requires 1x. Press Stop, then Play."
@@ -1867,14 +1874,14 @@ Private Function session_CreateNewDocument() As Integer
     session_RebuildScoreLayout()
     mixerState_Initialize session_MixerChannels
     For channelIndex As Integer = 0 To SESSION_CHANNEL_COUNT - 1
-        session_ChannelVolume(channelIndex) = _
-            CSng(session_Summary.channelVolume(channelIndex)) / 127.0
-        session_ChannelPan(channelIndex) = _
-            (CSng(session_Summary.channelPan(channelIndex)) - 64.0) / 63.0
-        session_ChannelChorus(channelIndex) = _
-            CSng(session_Summary.channelChorus(channelIndex)) / 127.0
-        session_ChannelReverb(channelIndex) = _
-            CSng(session_Summary.channelReverb(channelIndex)) / 127.0
+        session_ChannelVolume(channelIndex) = CSng( _
+            CSng(session_Summary.channelVolume(channelIndex)) / 127.0)
+        session_ChannelPan(channelIndex) = CSng( _
+            (CSng(session_Summary.channelPan(channelIndex)) - 64.0) / 63.0)
+        session_ChannelChorus(channelIndex) = CSng( _
+            CSng(session_Summary.channelChorus(channelIndex)) / 127.0)
+        session_ChannelReverb(channelIndex) = CSng( _
+            CSng(session_Summary.channelReverb(channelIndex)) / 127.0)
     Next
     session_StepEntryTick = 0
     For keyIndex As Integer = 0 To 127

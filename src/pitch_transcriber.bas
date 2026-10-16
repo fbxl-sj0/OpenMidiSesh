@@ -71,10 +71,10 @@ Const PITCH_WAV_FMT_BYTE_RATE_OFFSET As ULongInt = 8
 Const PITCH_WAV_FMT_BLOCK_ALIGN_OFFSET As ULongInt = 12
 Const PITCH_WAV_FMT_BITS_OFFSET As ULongInt = 14
 
-' fblint: disable-next-line FBL301 REASON: one retained result list mirrors the MIDI model API.
+' one retained result list mirrors the MIDI model API.
 Dim Shared pitchTranscribe_Notes( _
     0 To PITCH_TRANSCRIBE_MAX_NOTES - 1) As PitchTranscribedNote
-' fblint: disable-next-line FBL301 REASON: retained count belongs to the bounded result list above.
+' retained count belongs to the bounded result list above.
 Dim Shared pitchTranscribe_NoteCount As Integer
 
 
@@ -322,10 +322,10 @@ Private Function pitchTranscribe_FramePitch( _
         Return 0
     End If
 
-    ' fblint: disable-next-line FBL404 REASON: Fix and CInt make truncation toward zero explicit.
+    ' Fix and CInt make truncation toward zero explicit.
     Dim As Integer minimumLag = CInt(Fix(CDbl(sampleRate) / _
         config.maximumFrequency))
-    ' fblint: disable-next-line FBL404 REASON: adding one half then Fix explicitly rounds the positive lag.
+    ' adding one half then Fix explicitly rounds the positive lag.
     Dim As Integer maximumLag = CInt(Fix(CDbl(sampleRate) / _
         config.minimumFrequency + 0.5))
     If minimumLag < 2 Then
@@ -380,7 +380,7 @@ Private Function pitchTranscribe_FramePitch( _
     Do
         periodReduced = 0
         For divisor As Integer = 3 To 2 Step -1
-            ' fblint: disable-next-line FBL404 REASON: adding one half then Fix explicitly rounds the positive lag.
+            ' adding one half then Fix explicitly rounds the positive lag.
             Dim As Integer dividedLag = CInt(Fix(CDbl(bestLag) / _
                 CDbl(divisor) + 0.5))
             If dividedLag < minimumLag OrElse dividedLag >= bestLag Then
@@ -721,7 +721,7 @@ Public Function pitchTranscribe_AnalyzeWave( _
             If confidenceCount > 0 Then
                 transcribedNote.confidence = CSng(confidenceTotal / _
                     CDbl(confidenceCount))
-                ' fblint: disable-next-line FBL404 REASON: Fix and CInt explicitly truncate the positive RMS scale.
+                ' Fix and CInt explicitly truncate the positive RMS scale.
                 Dim As Integer velocityValue = PITCH_VELOCITY_BASE + _
                     CInt(Fix((rmsTotal / CDbl(confidenceCount)) * _
                     PITCH_VELOCITY_RMS_SCALE))

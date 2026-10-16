@@ -98,7 +98,7 @@ Private Function test_WriteTone( _
             sampleValue = -TEST_AMPLITUDE
         Dim As ULong encodedSample = CULng(sampleValue And &HFFFF)
         ' The destination is allocated for every complete 16-bit sample.
-        ' fblint: disable-next-line FBL514 REASON: The destination is allocated for each complete 16-bit sample.
+        ' The destination is allocated for each complete 16-bit sample.
         Mid(sampleData, CInt(sampleIndex * 2 + 1), 2) = _
             test_Le16(encodedSample)
     Next
@@ -118,7 +118,7 @@ Private Function test_WriteTone( _
     End If
     Put #fileNumber, 1, waveData
     Dim As Integer closeResult = Close(#fileNumber)
-    ' fblint: disable-next-line FBL-IO-004 REASON: Close above releases the owned file handle.
+    ' Close above releases the owned file handle.
     Return IIf(closeResult = 0, -1, 0)
 End Function
 
@@ -134,7 +134,7 @@ Private Function test_CorruptWave(ByVal filename As String) As Integer
     Dim As String invalidData = "not a RIFF/WAVE file"
     Put #fileNumber, 1, invalidData
     Dim As Integer closeResult = Close(#fileNumber)
-    ' fblint: disable-next-line FBL-IO-004 REASON: Close above releases the owned file handle.
+    ' Close above releases the owned file handle.
     Return IIf(closeResult = 0, -1, 0)
 End Function
 
@@ -165,7 +165,7 @@ Private Function test_AnalyzeWave( _
     ' wav_export_sfx writes the canonical 44-byte PCM container.
     Seek #fileNumber, 45
     Dim As Integer previousSign
-    For frameIndex As ULongInt = 0 To waveInfo.sampleFrames - 1 ' fblint: disable-line FBL311 REASON: The counter bounds sequential reads of the validated sample frame count.
+    For frameIndex As ULongInt = 0 To waveInfo.sampleFrames - 1 ' The counter bounds sequential reads of the validated sample frame count.
         Dim As Short sampleValue
         Get #fileNumber, , sampleValue
         channelIndex = 1
@@ -197,7 +197,7 @@ Private Function test_AnalyzeWave( _
         End If
     Next
     Dim As Integer closeResult = Close(#fileNumber)
-    ' fblint: disable-next-line FBL-IO-004 REASON: Close above releases the owned file handle.
+    ' Close above releases the owned file handle.
     Return IIf(closeResult = 0, -1, 0)
 End Function
 

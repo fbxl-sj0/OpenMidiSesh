@@ -3,7 +3,10 @@
     File: fixed_width_safe.bas
     Purpose: distinguish fixed-width FreeBASIC types from native C ABI records.
     Responsibilities: verify target-stable widths and identifier token boundaries.
-    This file contains no external ABI declarations or raw record serialization.
+    Targets: FreeBASIC fb dialect, native fixed-width regression input.
+    Module API: Standalone width assertions; no reusable exported declarations.
+    This file intentionally does NOT contain:
+        external ABI declarations or raw record serialization.
 '/
 #assert SizeOf(Long) = 4
 #assert SizeOf(ULong) = 4

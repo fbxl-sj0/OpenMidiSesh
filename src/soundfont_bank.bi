@@ -38,7 +38,7 @@ Const OSE_SOUNDFONT_MAX_REGIONS_PER_NOTE As Integer = 32
 
 ' A resolved region contains no pointers into Hydra metadata. The synth may
 ' copy it into a voice while the bank's immutable PCM allocation stays loaded.
-' fblint: disable-next-line FBL911,FBL014 REASON: This is an in-memory record; its fields are not a raw on-disk UDT layout.
+' This is an in-memory record; its fields are not a raw on-disk UDT layout.
 Type OseSoundFontVoiceRegion
     As ULongInt leftStart
     As ULongInt leftEnd

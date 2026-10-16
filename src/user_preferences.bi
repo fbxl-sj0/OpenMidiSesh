@@ -41,7 +41,7 @@ Const OSE_PREFERENCES_LOAD_INVALID As Integer = -1
 Const OSE_PREFERENCES_LOAD_MISSING As Integer = 0
 Const OSE_PREFERENCES_LOAD_OK As Integer = 1
 
-' fblint: disable-next-line FBL911,FBL014 REASON: This is an in-memory record; its fields are not a raw on-disk UDT layout.
+' This is an in-memory record; its fields are not a raw on-disk UDT layout.
 Type OseUserPreferences
     As Integer themeMode
     As Integer interactionMode

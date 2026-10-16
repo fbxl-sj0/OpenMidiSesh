@@ -19,6 +19,12 @@
         - validate note-tool values before applying edits
         - keep displayed snap choices consistent with score coordinates
 
+    Resource ownership:
+
+        - edited-note batches use temporary heap storage and are released
+          after the MIDI model accepts or rejects the operation
+        - persistent note storage remains owned by the MIDI model
+
     This file intentionally does NOT contain:
 
         - an independently linked public module
@@ -168,10 +174,14 @@ Public Sub session_ApplySelectionTool(ByVal operation As Integer, ByVal amount A
 End Sub
 
 Private Sub session_RenderNoteToolButton(ByVal source As Widget Ptr)
-    If source = 0 OrElse source->data = 0 Then
+    If source = 0 Then
+        Exit Sub
+    End If
+    If source->data = 0 Then
         Exit Sub
     End If
     Dim As ButtonData Ptr buttonState = Cast(ButtonData Ptr, source->data)
+    If buttonState = 0 Then Exit Sub
     Dim As OseUiControlStyle controlStyle
     Dim As Integer activeButton
     If Left(buttonState->text, 3) = "[x]" Then

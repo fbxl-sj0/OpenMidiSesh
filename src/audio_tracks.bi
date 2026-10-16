@@ -38,6 +38,7 @@
 Const OSE_AUDIO_MAX_CLIPS As Integer = 64
 Const OSE_AUDIO_MAX_PATH_BYTES As Integer = 1024
 Const OSE_AUDIO_MAX_WAV_BYTES As LongInt = 67108864
+Const OSE_AUDIO_GAIN_PERMILLE_MAX As Integer = 1000
 Const OSE_AUDIO_MAX_PROJECT_BYTES As LongInt = 1048576
 Const OSE_AUDIO_MAX_DURATION_MILLISECONDS As ULongInt = 86400000
 Const OSE_AUDIO_HISTORY_DEPTH As Integer = 16
@@ -58,7 +59,7 @@ Type OseAudioClip
     As String filename
     As ULongInt startTick
     As ULongInt durationMilliseconds
-    ' 0..1000, where 1000 represents unity gain.
+    ' 0..OSE_AUDIO_GAIN_PERMILLE_MAX, where the maximum represents unity gain.
     As Integer gainPermille
     As OseWaveInfo waveInfo
 End Type

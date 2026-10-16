@@ -4,6 +4,9 @@
 
     File: layout.bi
 
+    Targets: FreeBASIC fb dialect; shared omaGUI widget layout profile.
+    Module API boundary: declares layout data, constants and procedures for widget code.
+
     Purpose:
 
         Define lightweight row, column, and grid containers for interfaces

@@ -203,12 +203,12 @@ Function midiInput_GetDeviceName(ByVal deviceIndex As Integer) As String
         Return ""
 
     Dim As MIDIINCAPSA capabilities
-    ' UINT_PTR is declared by the WinMM include on the selected Windows target. FB-LINTER: DISABLE-NEXT-LINE FBL310 REASON: UINT_PTR is declared by the WinMM include on the selected Windows target.
+    ' UINT_PTR is declared by the WinMM include on the selected Windows target.
     If midiInGetDevCapsA( _
         Cast(UINT_PTR, deviceIndex), _
         @capabilities, _
         SizeOf(capabilities) _
-    ) <> MMSYSERR_NOERROR Then Return "" ' WinMM result constant. FB-LINTER: DISABLE-LINE FBL310 REASON: MMSYSERR_NOERROR is declared by the selected WinMM include.
+    ) <> MMSYSERR_NOERROR Then Return "" ' WinMM result constant. MMSYSERR_NOERROR is declared by the selected WinMM include.
 
     Return capabilities.szPname
 End Function
@@ -234,7 +234,7 @@ Function midiInput_Open(ByVal deviceIndex As Integer) As Integer
         0, _
         CALLBACK_FUNCTION _
     )
-    If result <> MMSYSERR_NOERROR Then Return 0 ' WinMM result constant. FB-LINTER: DISABLE-LINE FBL310 REASON: MMSYSERR_NOERROR is declared by the selected WinMM include.
+    If result <> MMSYSERR_NOERROR Then Return 0 ' WinMM result constant. MMSYSERR_NOERROR is declared by the selected WinMM include.
 
     midiInput_Handle = openedHandle
     midiInput_DeviceIndex = deviceIndex
@@ -249,7 +249,7 @@ Function midiInput_Open(ByVal deviceIndex As Integer) As Integer
     ' timeGetTime so a later Record command can sample it before any note.
     midiInput_TimestampOrigin = timeGetTime()
     result = midiInStart(midiInput_Handle)
-    If result = MMSYSERR_NOERROR Then Return -1 ' WinMM result constant. FB-LINTER: DISABLE-LINE FBL310 REASON: MMSYSERR_NOERROR is declared by the selected WinMM include.
+    If result = MMSYSERR_NOERROR Then Return -1 ' WinMM result constant. MMSYSERR_NOERROR is declared by the selected WinMM include.
 
     midiInput_Close()
     Return 0

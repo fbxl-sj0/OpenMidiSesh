@@ -871,6 +871,118 @@ Sub menu_ClearItems(ByVal m As Widget Ptr)
 End Sub
 
 
+Function menu_RemoveItem( _
+    ByVal m As Widget Ptr, ByVal itemIndex As Integer _
+) As Integer
+    If m = 0 OrElse m->data = 0 OrElse m->render <> @menu_Render Then Return 0
+
+    Dim As MenuData Ptr menu_data = m->data
+    If menu_data->count < 0 OrElse _
+       menu_data->count > MENU_MAX_ITEMS OrElse _
+       itemIndex < 0 OrElse itemIndex >= menu_data->count Then Return 0
+
+    Dim As Widget Ptr root_menu = menu_GetRoot(m)
+    If root_menu = 0 OrElse root_menu->data = 0 OrElse _
+       root_menu->render <> @menu_Render Then _
+        Return 0
+    Dim As MenuData Ptr root_data = root_menu->data
+
+    Dim As Widget Ptr submenu = menu_data->submenus(itemIndex)
+    If submenu <> 0 Then
+        If gui_IsWidgetRegistered(submenu) = 0 OrElse _
+           submenu->data = 0 OrElse submenu->render <> @menu_Render Then _
+            Return 0
+        If Cast(MenuData Ptr, submenu->data)->parent_menu <> m Then Return 0
+    End If
+
+    ' The root records pointer ownership for every branch. Clear it before
+    ' moving row indexes or removing a nested widget tree.
+    menu_CancelInput(root_menu)
+    root_data->hover_menu = 0
+    root_data->hover_index = -1
+    root_data->hover_clock = Timer
+
+    If menu_data->open_submenu = itemIndex Then
+        menu_data->open_submenu = -1
+    ElseIf menu_data->open_submenu > itemIndex Then
+        menu_data->open_submenu -= 1
+    End If
+    If menu_data->selected = itemIndex Then
+        menu_data->selected = -1
+    ElseIf menu_data->selected > itemIndex Then
+        menu_data->selected -= 1
+    End If
+    If menu_data->hover_index = itemIndex Then
+        menu_data->hover_index = -1
+    ElseIf menu_data->hover_index > itemIndex Then
+        menu_data->hover_index -= 1
+    End If
+
+    If submenu <> 0 Then
+        menu_HideBranch(submenu)
+        menu_data->submenus(itemIndex) = 0
+        If gui_RemoveWidgetPtr(submenu) = 0 Then
+            menu_data->submenus(itemIndex) = submenu
+            menu_data->item_submenu(itemIndex) = -1
+            Return 0
+        End If
+    End If
+
+    For source_index As Integer = itemIndex To menu_data->count - 2
+        menu_data->items(source_index) = menu_data->items(source_index + 1)
+        menu_data->callbacks(source_index) = _
+            menu_data->callbacks(source_index + 1)
+        menu_data->item_kinds(source_index) = _
+            menu_data->item_kinds(source_index + 1)
+        menu_data->shortcuts(source_index) = _
+            menu_data->shortcuts(source_index + 1)
+        menu_data->shortcut_scan_codes(source_index) = _
+            menu_data->shortcut_scan_codes(source_index + 1)
+        menu_data->shortcut_modifiers(source_index) = _
+            menu_data->shortcut_modifiers(source_index + 1)
+        menu_data->item_enabled(source_index) = _
+            menu_data->item_enabled(source_index + 1)
+        menu_data->item_visible(source_index) = _
+            menu_data->item_visible(source_index + 1)
+        menu_data->item_checked(source_index) = _
+            menu_data->item_checked(source_index + 1)
+        menu_data->item_submenu(source_index) = _
+            menu_data->item_submenu(source_index + 1)
+        menu_data->command_ids(source_index) = _
+            menu_data->command_ids(source_index + 1)
+        menu_data->submenus(source_index) = _
+            menu_data->submenus(source_index + 1)
+    Next source_index
+
+    Dim As Integer last_index = menu_data->count - 1
+    menu_data->items(last_index) = ""
+    menu_data->callbacks(last_index) = 0
+    menu_data->item_kinds(last_index) = MENU_ITEM_KIND_NORMAL
+    menu_data->shortcuts(last_index) = ""
+    menu_data->shortcut_scan_codes(last_index) = 0
+    menu_data->shortcut_modifiers(last_index) = INPUT_MODIFIER_NONE
+    menu_data->item_enabled(last_index) = -1
+    menu_data->item_visible(last_index) = -1
+    menu_data->item_checked(last_index) = 0
+    menu_data->item_submenu(last_index) = 0
+    menu_data->command_ids(last_index) = 0
+    menu_data->submenus(last_index) = 0
+    menu_data->count -= 1
+
+    If menu_data->selected >= menu_data->count Then _
+        menu_data->selected = menu_data->count - 1
+    If menu_data->open_submenu >= menu_data->count Then _
+        menu_data->open_submenu = -1
+    If menu_data->visible_rows > 0 Then
+        menu_ConfigureViewport(m)
+    Else
+        menu_UpdateHeight(m)
+    End If
+    menu_UpdateWidth(m)
+    Return -1
+End Function
+
+
 Sub menu_SetSelectionHandler( _
     ByVal m As Widget Ptr, _
     ByVal selection_handler As Any Ptr, _
@@ -1098,7 +1210,7 @@ End Sub
 Private Sub menu_MoveSelection(ByVal m As Widget Ptr, ByVal direction As Integer)
     Dim As MenuData Ptr d = m->data
     Dim As Integer candidate = d->selected
-    ' fblint: disable-next-line FBL311 REASON: The loop counter bounds repeated work; the cursor or stream state supplies each value.
+    ' The loop counter bounds repeated work; the cursor or stream state supplies each value.
     For attempt As Integer = 0 To d->count - 1
         candidate += direction
         If candidate < 0 Then candidate = d->count - 1
@@ -1374,7 +1486,7 @@ Sub menu_Destroy(ByVal w As Widget Ptr)
     w->data = 0
 End Sub
 
-' fblint: disable-next-line FBL950 FBL-INC-002 -- Menu's companion shares its private node helpers in the implementation assembly.
+' Menu's companion shares its private node helpers in the implementation assembly.
 #include once "src/widgets/menu_retained.bas"
 
 ' end of menu.bas

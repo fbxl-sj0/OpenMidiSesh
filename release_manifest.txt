@@ -23,11 +23,9 @@ build_editor.ps1
 build_editor.sh
 build_editor_android.ps1
 docs/ARCHITECTURE.md
+docs/BUILDING.md
 docs/CI.md
-docs/CLEAN_ROOM.md
-docs/CODE_REVIEW.md
 docs/DEPENDENCIES.md
-docs/FRONTIER_REVIEW_2026-10-02.md
 docs/LINTING.md
 docs/RELEASE_CHECKLIST.md
 docs/USER_GUIDE.md

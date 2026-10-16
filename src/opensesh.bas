@@ -125,14 +125,14 @@
 
 session_MasterVolume = 1.0
 session_MasterEchoWet = 0.0
-session_MasterEchoFeedback = 0.30
+session_MasterEchoFeedback = CSng(0.30)
 mixerMeter_Initialize session_MixerMeter
 mixerState_Initialize session_MixerChannels
 For channelIndex As Integer = 0 To SESSION_CHANNEL_COUNT - 1
-    session_ChannelVolume(channelIndex) = 0.82
+    session_ChannelVolume(channelIndex) = CSng(0.82)
     session_ChannelPan(channelIndex) = 0.0
     session_ChannelChorus(channelIndex) = 0.0
-    session_ChannelReverb(channelIndex) = 40.0 / 127.0
+    session_ChannelReverb(channelIndex) = CSng(40.0 / 127.0)
     session_AuditionPitchForChannel(channelIndex) = -1
 Next
 For pitch As Integer = 0 To 127
@@ -156,9 +156,9 @@ session_PlaybackSpeedScale = 1.0
     fixture, preventing test runs from changing the operator's chosen theme.
 '/
 Dim As String session_TestPreferencesFilename = Left( _
-    Trim(Environ("OSE_TEST_PREFERENCES_FILE")), 4096) ' fblint: disable-line FBL750 REASON: This optional test/profile override treats an absent value as the documented normal default.
+    Trim(Environ("OSE_TEST_PREFERENCES_FILE")), 4096) ' This optional test/profile override treats an absent value as the documented normal default.
 Dim As String session_TestSmoothnessReport = Left( _
-    Trim(Environ("OSE_TEST_SMOOTHNESS_REPORT")), 4096) ' fblint: disable-line FBL750 REASON: This optional test/profile override treats an absent value as the documented normal default.
+    Trim(Environ("OSE_TEST_SMOOTHNESS_REPORT")), 4096) ' This optional test/profile override treats an absent value as the documented normal default.
 Dim As Integer session_AutomatedPreferencesRun = _
     Trim(Environ("OSE_TEST_SNAPSHOT")) <> "" OrElse _ ' fblint: disable-line FBL750 REASON: This optional test/profile override treats an absent value as the documented normal default.
     Trim(Environ("OSE_TEST_CONTROL_REPORT")) <> "" OrElse _ ' fblint: disable-line FBL750 REASON: This optional test/profile override treats an absent value as the documented normal default.
@@ -179,7 +179,7 @@ End If
     honor the operator's selection from the Options menu after a restart.
 '/
 Dim As String session_DefaultInteractionText = Left( _
-    Trim(Environ("OSE_DEFAULT_INTERACTION_MODE")), 32) ' fblint: disable-line FBL750 REASON: This optional test/profile override treats an absent value as the documented normal default.
+    Trim(Environ("OSE_DEFAULT_INTERACTION_MODE")), 32) ' This optional test/profile override treats an absent value as the documented normal default.
 If session_DefaultInteractionText <> "" Then
     Dim As Integer defaultInteractionMode
     If uiInteraction_Parse(session_DefaultInteractionText, _
@@ -201,7 +201,7 @@ End If
 session_StartupThemeMode = session_ThemeMode
 
 Dim As String session_InteractionOverride = Left( _
-    Trim(Environ("OSE_INTERACTION_MODE")), 32) ' fblint: disable-line FBL750 REASON: This optional test/profile override treats an absent value as the documented normal default.
+    Trim(Environ("OSE_INTERACTION_MODE")), 32) ' This optional test/profile override treats an absent value as the documented normal default.
 If session_InteractionOverride <> "" Then
     Dim As Integer overriddenInteractionMode
     If uiInteraction_Parse(session_InteractionOverride, _
@@ -221,7 +221,7 @@ touchGesture_Reset session_TouchGestureState
     changing visual-regression evidence.
 '/
 Dim As String session_TestSnapshotFilename = Left( _
-    Trim(Environ("OSE_TEST_SNAPSHOT")), 4096) ' fblint: disable-line FBL750 REASON: This optional test/profile override treats an absent value as the documented normal default.
+    Trim(Environ("OSE_TEST_SNAPSHOT")), 4096) ' This optional test/profile override treats an absent value as the documented normal default.
 Dim As Integer session_TestSnapshotFrame = session_TestEnvironmentInteger( _
     "OSE_TEST_SNAPSHOT_FRAME", 1, 600, 12)
 Dim As Integer session_TestWindowWidth = SESSION_INITIAL_WIDTH
@@ -257,7 +257,7 @@ If session_AutomatedRenderRun <> 0 Then
         order. Ordinary editor windows remain resizable.
     '/
     session_TestWindowFlags = BACKEND_WINDOW_FIXED
-    Select Case LCase(Left(Trim(Environ("OSE_TEST_THEME")), 16)) ' fblint: disable-line FBL750 REASON: This optional test/profile override treats an absent value as the documented normal default.
+    Select Case LCase(Left(Trim(Environ("OSE_TEST_THEME")), 16)) ' This optional test/profile override treats an absent value as the documented normal default.
         Case "dark"
             session_ThemeMode = OSE_UI_THEME_DARK
         Case "black"
@@ -273,7 +273,7 @@ If session_TestSnapshotFilename <> "" AndAlso _
     session_AddPaletteVisible = -1
 End If
 If session_TestSnapshotFilename <> "" AndAlso _
-    Environ("OSE_TEST_MIXER_PAGE_ANCHOR") <> "" Then ' fblint: disable-line FBL750 REASON: This optional test/profile override treats an absent value as the documented normal default.
+    Environ("OSE_TEST_MIXER_PAGE_ANCHOR") <> "" Then ' This optional test/profile override treats an absent value as the documented normal default.
     session_MixerPageAnchor = session_TestEnvironmentInteger( _
         "OSE_TEST_MIXER_PAGE_ANCHOR", 0, SESSION_CHANNEL_COUNT - 1, 0)
 End If
@@ -329,7 +329,7 @@ If session_SoundFontPath <> "" AndAlso session_AutomatedRenderRun = 0 Then
 End If
 
 Dim As String session_TestSmoothnessMode = LCase(Left( _
-    Trim(Environ("OSE_TEST_SMOOTHNESS_MODE")), 16)) ' fblint: disable-line FBL750 REASON: This optional test/profile override treats an absent value as the documented normal default.
+    Trim(Environ("OSE_TEST_SMOOTHNESS_MODE")), 16)) ' This optional test/profile override treats an absent value as the documented normal default.
 Dim As Integer session_TestSmoothnessTargetFrames = _
     session_TestEnvironmentInteger("OSE_TEST_SMOOTHNESS_FRAMES", _
     OSE_UI_SMOOTHNESS_MINIMUM_SAMPLES, OSE_UI_TIMING_SAMPLE_CAPACITY, _
@@ -352,7 +352,7 @@ If session_TestSmoothnessReport <> "" Then
 End If
 
 If session_TestSnapshotFilename <> "" AndAlso _
-    Environ("OSE_TEST_AUDITION_PITCH") <> "" Then ' fblint: disable-line FBL750 REASON: This optional test/profile override treats an absent value as the documented normal default.
+    Environ("OSE_TEST_AUDITION_PITCH") <> "" Then ' This optional test/profile override treats an absent value as the documented normal default.
     /'
         Visual regression can hold one production audition voice long enough
         to capture the channel and master meter attack. The normal application
@@ -367,7 +367,7 @@ End If
 If session_TestSnapshotFilename <> "" Then
     ' Modal snapshots use the real construction paths after the document and
     ' widget tree exist. Unknown names intentionally leave the main view open.
-    Select Case LCase(Left(Trim(Environ("OSE_TEST_MODAL")), 32)) ' fblint: disable-line FBL750 REASON: This optional test/profile override treats an absent value as the documented normal default.
+    Select Case LCase(Left(Trim(Environ("OSE_TEST_MODAL")), 32)) ' This optional test/profile override treats an absent value as the documented normal default.
         Case "audio"
             session_OnAudio 0
         Case "automation"
@@ -426,7 +426,7 @@ If session_TestSnapshotFilename <> "" Then
 End If
 
 Dim As String session_TestControlReport = Left( _
-    Trim(Environ("OSE_TEST_CONTROL_REPORT")), 4096) ' fblint: disable-line FBL750 REASON: This optional test/profile override treats an absent value as the documented normal default.
+    Trim(Environ("OSE_TEST_CONTROL_REPORT")), 4096) ' This optional test/profile override treats an absent value as the documented normal default.
 If session_TestControlReport <> "" Then
     session_WriteControlAudit session_TestControlReport
     session_QuitRequested = -1

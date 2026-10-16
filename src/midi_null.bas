@@ -55,6 +55,8 @@ Public Function midiInput_Open(ByVal deviceIndex As Integer) As Integer
 End Function
 
 
+' This backend retains no input endpoint.
+' FBLINT: DISABLE-NEXT-LINE FBL-METH-001 REASON: This backend has no input endpoint state to close.
 Public Sub midiInput_Close()
 End Sub
 
@@ -69,6 +71,8 @@ Public Function midiInput_GetOpenDeviceIndex() As Integer
 End Function
 
 
+' This backend has no input queue to clear.
+' FBLINT: DISABLE-NEXT-LINE FBL-METH-001 REASON: This backend owns no pending-input queue.
 Public Sub midiInput_ClearPending()
 End Sub
 
@@ -117,6 +121,8 @@ Public Function midiOutput_Open(ByVal deviceIndex As Integer) As Integer
 End Function
 
 
+' This backend retains no output endpoint.
+' FBLINT: DISABLE-NEXT-LINE FBL-METH-001 REASON: This backend has no output endpoint state to close.
 Public Sub midiOutput_Close()
 End Sub
 
@@ -128,13 +134,15 @@ End Function
 
 Public Function midiOutput_Send( _
     ByVal statusByte As Integer, _
-    ByVal data1 As Integer, _
-    ByVal data2 As Integer _
+    ByVal firstDataByte As Integer, _
+    ByVal secondDataByte As Integer _
 ) As Integer
     Return 0
 End Function
 
 
+' No external output endpoint exists here.
+' FBLINT: DISABLE-NEXT-LINE FBL-METH-001 REASON: This backend has no output endpoint for notes off.
 Public Sub midiOutput_AllNotesOff()
 End Sub
 

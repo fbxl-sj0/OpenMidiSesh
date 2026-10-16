@@ -354,7 +354,7 @@ Private Function chmarchive_LoadResetTable( _
     )
     systemText = ""
 
-    ' fblint: disable-next-line FBL310 REASON: resetTableName is a named CHM stream constant declared in this module.
+    ' resetTableName is a named CHM stream constant declared in this module.
     resetEntryIndex = chmarchive_FindRawSystemEntry(archive, resetTableName)
     If resetEntryIndex >= 0 Then
         tableLength = archive->entries(resetEntryIndex).length
@@ -572,7 +572,7 @@ Private Function chmarchive_ReadCompressedMember( _
 End Function
 
 
-' fblint: disable-next-line FBL111 REASON: Container records are checked in stream order and share one rollback path.
+' Container records are checked in stream order and share one rollback path.
 Function chmarchive_Open( _
     ByRef filePath As Const String, ByRef errorText As String _
 ) As ChmArchive Ptr
@@ -744,7 +744,7 @@ Function chmarchive_Open( _
 
             encintPosition = CHMARCHIVE_PMGL_HEADER_BYTES
             entryEnd = CInt(chunkSize) - 2
-        ' fblint: disable-next-line FBL311 REASON: The loop counter bounds repeated work; the cursor or stream state supplies each value.
+        ' The loop counter bounds repeated work; the cursor or stream state supplies each value.
             For localEntry As Integer = 0 To numberOfEntries - 1
                 If chmarchive_ReadEncInt( _
                     chunkText, encintPosition, entryEnd, encodedValue _

@@ -24,6 +24,7 @@
         - application-specific layout rules
 '/
 
+#pragma once
 #ifndef __BACKEND_BI__
 #define __BACKEND_BI__
 
@@ -170,9 +171,10 @@ Declare Sub backend_Line(ByVal x1 As Integer, ByVal y1 As Integer, ByVal x2 As I
     Return zero when the caller should use its ordinary software fallback.
     The gfxlib3 path queues one bounded packet for each call.
 '/
+' The span endpoints are inclusive, matching the pixels queued by the renderer.
 Declare Function backend_DrawHorizontalSpans( _
-    ByVal spanCount As Integer, ByVal spanX1 As Integer Ptr, _
-    ByVal spanX2 As Integer Ptr, ByVal spanY As Integer Ptr, _
+    ByVal spanCount As Integer, ByVal spanStartX As Integer Ptr, _
+    ByVal spanEndX As Integer Ptr, ByVal spanY As Integer Ptr, _
     ByVal clr As ULong, ByVal alpha As Integer _
 ) As Integer
 Declare Function backend_DrawAlphaMask( _

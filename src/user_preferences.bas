@@ -297,7 +297,7 @@ Public Function userPreferences_Load( _
 
     Dim As Integer fileNumber = FreeFile()
     If Open(filename For Binary Access Read As #fileNumber) <> 0 Then
-        ' fblint: disable-next-line FBL-IO-004 REASON: a failed Open does not own a file handle.
+        ' a failed Open does not own a file handle.
         Return OSE_PREFERENCES_LOAD_INVALID
     End If
     Dim As LongInt fileBytes = Lof(fileNumber)
@@ -364,9 +364,9 @@ Public Function userPreferences_DefaultFilename( _
     Dim As String legacyApplicationDirectory
 
 #If Defined(__FB_WIN32__)
-    baseDirectory = Trim(Environ("LOCALAPPDATA")) ' fblint: disable-line FBL750 REASON: Each config-directory candidate is validated; no valid candidate disables persistence.
+    baseDirectory = Trim(Environ("LOCALAPPDATA")) ' Each config-directory candidate is validated; no valid candidate disables persistence.
     If userPreferences_ValidPathText(baseDirectory) = 0 Then
-        baseDirectory = Trim(Environ("APPDATA")) ' fblint: disable-line FBL750 REASON: Each config-directory candidate is validated; no valid candidate disables persistence.
+        baseDirectory = Trim(Environ("APPDATA")) ' Each config-directory candidate is validated; no valid candidate disables persistence.
     End If
     If userPreferences_ValidPathText(baseDirectory) = 0 Then
         Return ""
@@ -381,9 +381,9 @@ Public Function userPreferences_DefaultFilename( _
     legacyApplicationDirectory = userPreferences_JoinPath( _
         baseDirectory, "Open Session Editor")
 #Else
-    baseDirectory = Trim(Environ("XDG_CONFIG_HOME")) ' fblint: disable-line FBL750 REASON: Each config-directory candidate is validated; no valid candidate disables persistence.
+    baseDirectory = Trim(Environ("XDG_CONFIG_HOME")) ' Each config-directory candidate is validated; no valid candidate disables persistence.
     If userPreferences_ValidPathText(baseDirectory) = 0 Then
-        Dim As String homeDirectory = Trim(Environ("HOME")) ' fblint: disable-line FBL750 REASON: Each config-directory candidate is validated; no valid candidate disables persistence.
+        Dim As String homeDirectory = Trim(Environ("HOME")) ' Each config-directory candidate is validated; no valid candidate disables persistence.
         If userPreferences_ValidPathText(homeDirectory) = 0 Then
             Return ""
         End If
