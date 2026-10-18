@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Project: OpenSesh
+# Project: OpenMidiSesh
 # ----------------------------
 #
 # File: tests/fbc_sanitized.sh

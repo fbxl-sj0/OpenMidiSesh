@@ -1,5 +1,5 @@
 <#
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: tests/verify_dependency_snapshot.ps1
@@ -58,11 +58,11 @@ foreach ($line in Get-Content -LiteralPath $snapshotFile) {
         continue
     }
 
-    $match = [regex]::Match($line, '^([0-9a-f]{64})  ([ -~]+)$')
+    $match = [regex]::Match($line, '^([0-9a-fA-F]{64})  ([ -~]+)$')
     if (-not $match.Success) {
         throw "Malformed snapshot line $lineNumber."
     }
-    $expectedHash = $match.Groups[1].Value
+    $expectedHash = $match.Groups[1].Value.ToLowerInvariant()
     $relativePath = $match.Groups[2].Value
     if ($relativePath.Contains('\') -or $relativePath.StartsWith('/') -or
         $relativePath.Contains('//') -or
@@ -109,7 +109,7 @@ if (Test-Path -LiteralPath $treeFile -PathType Leaf) {
         if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith('#')) {
             continue
         }
-        $match = [regex]::Match($line, '^([0-9a-f]{64})  ([ -~]+)$')
+        $match = [regex]::Match($line, '^([0-9a-fA-F]{64})  ([ -~]+)$')
         if (-not $match.Success) {
             throw "Malformed tree line $treeLineNumber."
         }
@@ -133,7 +133,7 @@ if (Test-Path -LiteralPath $treeFile -PathType Leaf) {
         }
         $actualHash = (Get-FileHash -LiteralPath $treePayloadFile `
             -Algorithm SHA256).Hash.ToLowerInvariant()
-        if ($actualHash -ne $match.Groups[1].Value) {
+        if ($actualHash -ne $match.Groups[1].Value.ToLowerInvariant()) {
             throw "Tree hash differs: $relativePath"
         }
     }

@@ -1,5 +1,5 @@
 <#
-    Project: OpenSesh
+    Project: OpenMidiSesh
     File: tests/android_package_metadata_smoke.ps1
     Purpose: Verify Android package metadata staging without an Android SDK.
     Responsibilities:
@@ -78,7 +78,7 @@ function New-TestTemplate {
 }
 
 $temporaryParent = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
-$testName = 'opensesh-android-metadata-' + [Guid]::NewGuid().ToString('N')
+$testName = 'openmidisesh-android-metadata-' + [Guid]::NewGuid().ToString('N')
 $testRoot = Join-Path $temporaryParent $testName
 $savedEnvironment = @{}
 foreach ($name in @('FBANDROID_TEMPLATE', 'OSE_ANDROID_METADATA_CAPTURE', 'OSE_ANDROID_METADATA_MODE')) {

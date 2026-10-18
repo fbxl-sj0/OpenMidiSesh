@@ -1,10 +1,10 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: tests/midi_model_malformed_smoke.bas
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; Windows/Linux host test runners.

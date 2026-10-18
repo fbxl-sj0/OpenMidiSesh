@@ -1,10 +1,10 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: project_transaction.bas
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; shared Windows/Linux x64 and Android editor builds.
@@ -555,17 +555,15 @@ Function projectTransaction_SavePair( _
     End If
 
     If journal.midiExisted <> 0 Then
-        If atomicFile_TemporaryName(midiFilename, journal.midiBackup) = 0 OrElse _
-            atomicFile_WriteVerified(journal.midiBackup, midiOriginal) = 0 Then
+        If atomicFile_WriteTemporaryVerified( _
+            midiFilename, midiOriginal, journal.midiBackup) = 0 Then
             errorText = "MIDI rollback backup could not be created"
             Return 0
         End If
     End If
     If journal.projectExisted <> 0 Then
-        If atomicFile_TemporaryName(projectFilename, _
-            journal.projectBackup) = 0 OrElse _
-            atomicFile_WriteVerified(journal.projectBackup, _
-                projectOriginal) = 0 Then
+        If atomicFile_WriteTemporaryVerified( _
+            projectFilename, projectOriginal, journal.projectBackup) = 0 Then
             projectTransaction_RemoveFile journal.midiBackup
             errorText = "project rollback backup could not be created"
             Return 0

@@ -1,10 +1,10 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: midi_input_protocol.bi
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; shared Windows/Linux x64 and Android editor builds.
@@ -51,6 +51,9 @@ Declare Function midiInputProtocol_ElapsedMilliseconds( _
 ) As Integer
 
 Declare Sub midiInputProtocol_Initialize(ByVal deviceIndex As Integer)
+
+' Returns nonzero after the protocol queue has initialized successfully.
+Declare Function midiInputProtocol_IsReady() As Integer
 
 Declare Sub midiInputProtocol_SetClosing(ByVal closing As Integer)
 

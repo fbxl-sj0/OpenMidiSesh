@@ -1,8 +1,8 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     File: drum_phrase.bas
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; shared Windows/Linux x64 and Android editor builds.
@@ -99,7 +99,7 @@ End Function
 ' -------------------------------------------------------------------------
 
 Private Function drumPhrase_Prefix(ByVal slot As Integer) As String
-    Return "OpenSesh:DrumPhrase:1:" + LTrim(Str(slot)) + "|"
+    Return "OpenMidiSesh:DrumPhrase:1:" + LTrim(Str(slot)) + "|"
 End Function
 
 Private Function drumPhrase_Find(ByVal slot As Integer, ByRef textPoint As MidiTextEventPoint) As Integer

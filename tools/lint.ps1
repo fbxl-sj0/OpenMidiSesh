@@ -1,5 +1,5 @@
 <#
-    Project: OpenSesh
+    Project: OpenMidiSesh
     File: tools/lint.ps1
 
     Purpose:
@@ -183,7 +183,7 @@ if ($LASTEXITCODE -ne 0) {
 $lintExit = 0
 $reports = New-Object 'System.Collections.Generic.List[string]'
 $temporaryRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
-$batchRoot = Join-Path $temporaryRoot ('opensesh-lint-' + [guid]::NewGuid().ToString('N'))
+$batchRoot = Join-Path $temporaryRoot ('openmidisesh-lint-' + [guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($batchRoot) | Out-Null
 Push-Location $projectRoot
 try {
@@ -220,7 +220,7 @@ finally {
     Pop-Location
     $resolvedBatchRoot = [IO.Path]::GetFullPath($batchRoot)
     if (-not $resolvedBatchRoot.StartsWith($temporaryRoot, [StringComparison]::OrdinalIgnoreCase) -or
-        (Split-Path -Leaf $resolvedBatchRoot) -notmatch '^opensesh-lint-[0-9a-f]{32}$') {
+        (Split-Path -Leaf $resolvedBatchRoot) -notmatch '^openmidisesh-lint-[0-9a-f]{32}$') {
         throw 'Unsafe lint report cleanup path.'
     }
     Remove-Item -LiteralPath $resolvedBatchRoot -Recurse -Force

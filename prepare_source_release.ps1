@@ -1,5 +1,5 @@
 <#
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: prepare_source_release.ps1
@@ -63,7 +63,7 @@ foreach ($vendorLine in Get-Content -LiteralPath $vendorSnapshotFile) {
     }
     $vendorMatch = [regex]::Match(
         $vendorLine,
-        '^[0-9a-f]{64}  ([ -~]+)$')
+        '^[0-9a-fA-F]{64}  ([ -~]+)$')
     if (-not $vendorMatch.Success) {
         throw "Malformed omaGui snapshot line $vendorLineNumber."
     }
@@ -150,7 +150,7 @@ if (Test-Path -LiteralPath $archivePath) {
 }
 
 $temporaryArchive = Join-Path $parentDirectory `
-    ('.opensesh-source-' + [System.Guid]::NewGuid().ToString('N') +
+    ('.openmidisesh-source-' + [System.Guid]::NewGuid().ToString('N') +
         '.tmp.zip')
 $zipArchive = $null
 
@@ -169,7 +169,7 @@ try {
     foreach ($relativeFile in @($releaseFiles | Sort-Object)) {
         $sourceFile = [System.IO.Path]::GetFullPath(
             (Join-Path $projectRoot $relativeFile))
-        $entryName = 'opensesh/' + $relativeFile.Replace('\', '/')
+        $entryName = 'openmidisesh/' + $relativeFile.Replace('\', '/')
         $entry = $zipArchive.CreateEntry(
             $entryName, [System.IO.Compression.CompressionLevel]::Optimal)
         # Create mode requires setting metadata before opening the entry. One
@@ -213,7 +213,7 @@ finally {
         if (-not [System.StringComparer]::OrdinalIgnoreCase.Equals(
                 $temporaryParent,
                 [System.IO.Path]::GetFullPath($parentDirectory)) -or
-            $temporaryLeaf -notmatch '^\.opensesh-source-[0-9a-f]{32}\.tmp\.zip$') {
+            $temporaryLeaf -notmatch '^\.openmidisesh-source-[0-9a-f]{32}\.tmp\.zip$') {
             throw "Refusing to remove an unexpected temporary archive: $resolvedTemporaryArchive"
         }
         Remove-Item -LiteralPath $resolvedTemporaryArchive -Force

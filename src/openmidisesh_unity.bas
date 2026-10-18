@@ -1,10 +1,10 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
-    File: opensesh_unity.bas
+    File: openmidisesh_unity.bas
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; single-source Android ARM/AArch64/x86_64 builds.
@@ -133,6 +133,6 @@
 ' This single-source packaging entry point includes each selected implementation once.
 #include once "music_symbols.bas"
 ' This single-source packaging entry point includes each selected implementation once.
-#include once "opensesh.bas"
+#include once "openmidisesh.bas"
 
-/' end of opensesh_unity.bas '/
+/' end of openmidisesh_unity.bas '/

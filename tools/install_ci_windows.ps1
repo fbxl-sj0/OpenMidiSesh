@@ -1,5 +1,5 @@
 <#
-    Project: OpenSesh
+    Project: OpenMidiSesh
     File: tools/install_ci_windows.ps1
     Purpose: install the pinned public compiler in an ephemeral Windows runner.
     Responsibilities: verify the archive, discover its root, lock linked inputs.
@@ -11,7 +11,7 @@ if ($env:GITHUB_ACTIONS -ne 'true' -or -not $env:RUNNER_TEMP) {
     throw 'This provisioner is restricted to ephemeral GitHub Actions jobs.'
 }
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$taskRoot = Join-Path $env:RUNNER_TEMP 'opensesh-ci-toolchain'
+$taskRoot = Join-Path $env:RUNNER_TEMP 'openmidisesh-ci-toolchain'
 if (Test-Path -LiteralPath $taskRoot) { throw 'Compiler staging directory already exists.' }
 New-Item -ItemType Directory -Path $taskRoot | Out-Null
 & python (Join-Path $PSScriptRoot 'fetch_ci_toolchain.py') windows $taskRoot

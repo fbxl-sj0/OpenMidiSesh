@@ -1,10 +1,10 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: generated_voice_stop_internal.bi
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; desktop, Android, and DOS sfxlib runtimes.
@@ -43,11 +43,13 @@
 #ifndef __OSE_GENERATED_VOICE_STOP_INTERNAL_BI__
 #define __OSE_GENERATED_VOICE_STOP_INTERNAL_BI__
 
+#include once "sfx_runtime.bi"
+
 #If Not Defined(__FB_WIN32__) And Not Defined(__FB_LINUX__) And Not Defined(__FB_ANDROID__) And _
     Not Defined(__FB_FREEBSD__) And Not Defined(__FB_NETBSD__) And _
     Not Defined(__FB_OPENBSD__) And Not Defined(__FB_HAIKU__) And _
     Not Defined(__FB_DOS__)
-    #Error OpenSesh generated-voice stopping requires a supported native sfxlib runtime
+    #Error OpenMidiSesh generated-voice stopping requires a supported native sfxlib runtime
 #EndIf
 
 ' Modern FB on both 32- and 64-bit targets: the C ABI uses a 32-bit int.

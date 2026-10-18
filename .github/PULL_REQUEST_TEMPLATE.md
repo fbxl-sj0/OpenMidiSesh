@@ -1,4 +1,4 @@
-<!-- Project: OpenSesh; File: .github/PULL_REQUEST_TEMPLATE.md; Purpose: review context. -->
+<!-- Project: OpenMidiSesh; File: .github/PULL_REQUEST_TEMPLATE.md; Purpose: review context. -->
 
 Describe the problem and the resulting behavior.
 

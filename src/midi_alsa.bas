@@ -1,10 +1,10 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: midi_alsa.bas
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; Linux ALSA implementation guarded by __FB_LINUX__.
@@ -42,9 +42,10 @@
 
     Threading:
 
-        The editor polls this nonblocking backend on its main thread. ALSA does
-        not call application code from a worker callback, so protocol queue
-        publication and consumption remain serialized on Linux.
+        A dedicated worker polls the nonblocking input handle, timestamps each
+        decoded event, and publishes it to the shared protocol queue. The
+        editor remains the sole consumer and the sole owner of recording-model
+        changes. The worker is joined before any input handle or parser closes.
 
     This file intentionally does NOT contain:
 
@@ -79,6 +80,7 @@ Const OSE_ALSA_PORT_CAP_WRITE As ULong = 1 Shl 1
 Const OSE_ALSA_PORT_CAP_SUBS_READ As ULong = 1 Shl 5
 Const OSE_ALSA_PORT_CAP_SUBS_WRITE As ULong = 1 Shl 6
 Const OSE_ALSA_PORT_TYPE_MIDI_GENERIC As ULong = 1 Shl 1
+Const OSE_ALSA_PORT_TYPE_HARDWARE As ULong = 1 Shl 16
 Const OSE_ALSA_PORT_TYPE_APPLICATION As ULong = 1 Shl 20
 
 Const OSE_ALSA_ADDRESS_UNKNOWN As UByte = 253
@@ -140,7 +142,12 @@ Type OseAlsaSeqEvent
 End Type
 
 Type OseAlsaTimespec
-    ' Linux time_t and long both follow the target's native integer width.
+    /'
+        FreeBASIC links the unversioned clock_gettime compatibility symbol.
+        On 32-bit glibc this keeps the two-word ABI even when C headers map
+        clock_gettime to __clock_gettime64 for their widened time_t type.
+        Integer follows the native word width expected by that linked symbol.
+    '/
     As Integer secondsValue
     As Integer nanosecondsValue
 End Type
@@ -148,6 +155,7 @@ End Type
 Type OseAlsaMidiEndpoint
     As Long clientId
     As Long portId
+    As Integer isHardware
     As String displayName
 End Type
 
@@ -334,6 +342,12 @@ Private Dim Shared midiAlsa_InputTargetClient As Long = -1
 Private Dim Shared midiAlsa_InputTargetPort As Long = -1
 Private Dim Shared midiAlsa_InputDeviceIndex As Integer = -1
 Private Dim Shared midiAlsa_InputOpened As Integer
+Private Dim Shared midiAlsa_InputWorker As Any Ptr
+Private Dim Shared midiAlsa_InputWorkerStop As Integer
+Private Dim Shared midiAlsa_InputClearRequest As Integer
+Private Dim Shared midiAlsa_InputClearComplete As Integer
+' This lock protects only worker control flags; the protocol owns its queue lock.
+Private Dim Shared midiAlsa_InputControlMutex As Any Ptr
 
 Private Dim Shared midiAlsa_OutputHandle As Any Ptr
 Private Dim Shared midiAlsa_OutputParser As Any Ptr
@@ -341,6 +355,8 @@ Private Dim Shared midiAlsa_OutputPort As Long = -1
 Private Dim Shared midiAlsa_OutputTargetClient As Long = -1
 Private Dim Shared midiAlsa_OutputTargetPort As Long = -1
 Private Dim Shared midiAlsa_OutputOpened As Integer
+
+Declare Sub midiAlsa_InputWorkerMain(ByVal unusedParameter As Any Ptr)
 
 #If Defined(OSE_MIDI_OUTPUT_TESTING)
 Declare Function midiOutput_TestBackendOpen CDecl Alias "midiOutput_TestBackendOpen" (ByVal deviceIndex As Long) As Long
@@ -438,9 +454,34 @@ Private Function midiAlsa_RefreshEndpoints( _
             Dim As Long portId = snd_seq_port_info_get_port(portInfo)
             Dim As String portName = midiAlsa_ReadName( _
                 snd_seq_port_info_get_name(portInfo))
-            With midiAlsa_Endpoints(midiAlsa_EndpointCount)
+            Dim As Integer insertIndex = midiAlsa_EndpointCount
+            Dim As Integer isHardware = IIf( _
+                (portType And OSE_ALSA_PORT_TYPE_HARDWARE) <> 0, -1, 0)
+
+            ' Live recording opens index zero by default. Keep hardware MIDI
+            ' sources ahead of virtual ports such as ALSA's silent Midi Through.
+            If endpointDirection = OSE_ALSA_ENDPOINT_INPUT AndAlso _
+                isHardware <> 0 Then
+                For existingIndex As Integer = 0 To _
+                    midiAlsa_EndpointCount - 1
+                    If midiAlsa_Endpoints(existingIndex).isHardware = 0 Then
+                        insertIndex = existingIndex
+                        Exit For
+                    End If
+                Next existingIndex
+            End If
+
+            Dim As Integer shiftIndex = midiAlsa_EndpointCount
+            While shiftIndex > insertIndex
+                midiAlsa_Endpoints(shiftIndex) = _
+                    midiAlsa_Endpoints(shiftIndex - 1)
+                shiftIndex -= 1
+            Wend
+
+            With midiAlsa_Endpoints(insertIndex)
                 .clientId = clientId
                 .portId = portId
+                .isHardware = isHardware
                 .displayName = midiAlsa_EndpointDisplayName( _
                     clientName, portName, clientId, portId)
             End With
@@ -474,6 +515,14 @@ Private Function midiAlsa_TimestampMilliseconds() As ULong
     Return CULng(fallbackMilliseconds And &HFFFFFFFFULL)
 End Function
 
+
+Private Function midiAlsa_EnsureInputControlMutex() As Integer
+    If midiAlsa_InputControlMutex <> 0 Then Return -1
+    midiAlsa_InputControlMutex = MutexCreate()
+    If midiAlsa_InputControlMutex = 0 Then Return 0
+    Return -1
+End Function
+
 ' -------------------------------------------------------------------------
 ' ALSA MIDI input backend
 ' -------------------------------------------------------------------------
@@ -495,6 +544,7 @@ Function midiInput_Open(ByVal deviceIndex As Integer) As Integer
     If midiAlsa_RefreshEndpoints(OSE_ALSA_ENDPOINT_INPUT) <= 0 OrElse _
         deviceIndex < 0 OrElse deviceIndex >= midiAlsa_EndpointCount Then _
         Return 0
+    If midiAlsa_EnsureInputControlMutex() = 0 Then Return 0
 
     Dim As Long targetClient = midiAlsa_Endpoints(deviceIndex).clientId
     Dim As Long targetPort = midiAlsa_Endpoints(deviceIndex).portId
@@ -509,7 +559,7 @@ Function midiInput_Open(ByVal deviceIndex As Integer) As Integer
         OSE_ALSA_OPEN_INPUT, OSE_ALSA_NONBLOCK) < 0 OrElse _
         openedHandle = 0 Then Return 0
 
-    Dim As ZString * 32 clientName = "OpenSesh Input"
+    Dim As ZString * 32 clientName = "OpenMidiSesh Input"
     Dim As ZString * 16 portName = "MIDI Input"
     If snd_seq_set_client_name(openedHandle, @clientName) < 0 Then
         snd_seq_close openedHandle
@@ -550,13 +600,39 @@ Function midiInput_Open(ByVal deviceIndex As Integer) As Integer
     midiAlsa_InputDeviceIndex = deviceIndex
     midiAlsa_InputOpened = -1
     midiInputProtocol_Initialize deviceIndex
+    If midiInputProtocol_IsReady() = 0 Then
+        midiInput_Close()
+        Return 0
+    End If
     midiInputProtocol_SetClosing 0
+
+    MutexLock midiAlsa_InputControlMutex
+    midiAlsa_InputWorkerStop = 0
+    midiAlsa_InputClearRequest = 0
+    midiAlsa_InputClearComplete = 0
+    MutexUnlock midiAlsa_InputControlMutex
+    midiAlsa_InputWorker = ThreadCreate(@midiAlsa_InputWorkerMain, 0)
+    If midiAlsa_InputWorker = 0 Then
+        midiInput_Close()
+        Return 0
+    End If
     Return -1
 End Function
 
 
 Sub midiInput_Close()
     midiInputProtocol_SetClosing -1
+    If midiAlsa_InputControlMutex <> 0 Then
+        MutexLock midiAlsa_InputControlMutex
+        midiAlsa_InputWorkerStop = -1
+        midiAlsa_InputClearRequest = 0
+        MutexUnlock midiAlsa_InputControlMutex
+    End If
+    If midiAlsa_InputWorker <> 0 Then
+        ThreadWait midiAlsa_InputWorker
+        midiAlsa_InputWorker = 0
+    End If
+
     If midiAlsa_InputHandle <> 0 Then
         If midiAlsa_InputPort >= 0 AndAlso _
             midiAlsa_InputTargetClient >= 0 AndAlso _
@@ -580,6 +656,13 @@ Sub midiInput_Close()
     midiAlsa_InputDeviceIndex = -1
     midiAlsa_InputOpened = 0
     midiInputProtocol_Initialize -1
+    If midiAlsa_InputControlMutex <> 0 Then
+        MutexLock midiAlsa_InputControlMutex
+        midiAlsa_InputWorkerStop = 0
+        midiAlsa_InputClearRequest = 0
+        midiAlsa_InputClearComplete = 0
+        MutexUnlock midiAlsa_InputControlMutex
+    End If
 End Sub
 
 
@@ -594,13 +677,39 @@ End Function
 
 
 Sub midiInput_ClearPending()
-    If midiAlsa_InputHandle <> 0 Then
+    If midiAlsa_InputWorker <> 0 AndAlso _
+        midiAlsa_InputControlMutex <> 0 Then
+        ' The worker owns the ALSA handle and parser. Pause it long enough to
+        ' discard backend input before the editor establishes a new clock origin.
+        MutexLock midiAlsa_InputControlMutex
+        midiAlsa_InputClearComplete = 0
+        midiAlsa_InputClearRequest = 1
+        MutexUnlock midiAlsa_InputControlMutex
+
+        Do
+            MutexLock midiAlsa_InputControlMutex
+            Dim As Integer clearComplete = midiAlsa_InputClearComplete
+            Dim As Integer workerStopping = midiAlsa_InputWorkerStop
+            MutexUnlock midiAlsa_InputControlMutex
+            If clearComplete <> 0 OrElse workerStopping <> 0 Then Exit Do
+            Sleep 1, 1
+        Loop
+    ElseIf midiAlsa_InputHandle <> 0 Then
+        ' Keep cleanup valid if an input handle has no active worker.
         snd_seq_drop_input midiAlsa_InputHandle
         snd_seq_drop_input_buffer midiAlsa_InputHandle
+        If midiAlsa_InputParser <> 0 Then _
+            snd_midi_event_reset_decode midiAlsa_InputParser
     End If
-    If midiAlsa_InputParser <> 0 Then _
-        snd_midi_event_reset_decode midiAlsa_InputParser
+
     midiInputProtocol_ClearPending()
+    If midiAlsa_InputWorker <> 0 AndAlso _
+        midiAlsa_InputControlMutex <> 0 Then
+        MutexLock midiAlsa_InputControlMutex
+        midiAlsa_InputClearComplete = 0
+        midiAlsa_InputClearRequest = 0
+        MutexUnlock midiAlsa_InputControlMutex
+    End If
 End Sub
 
 
@@ -650,9 +759,48 @@ Private Sub midiAlsa_PumpInput()
 End Sub
 
 
+Sub midiAlsa_InputWorkerMain(ByVal unusedParameter As Any Ptr)
+    Do
+        MutexLock midiAlsa_InputControlMutex
+        Dim As Integer workerStopping = midiAlsa_InputWorkerStop
+        Dim As Integer clearRequested = midiAlsa_InputClearRequest
+        If clearRequested = 1 Then midiAlsa_InputClearRequest = 2
+        MutexUnlock midiAlsa_InputControlMutex
+
+        If workerStopping <> 0 Then Exit Do
+
+        If clearRequested = 1 Then
+            If midiAlsa_InputHandle <> 0 Then
+                snd_seq_drop_input midiAlsa_InputHandle
+                snd_seq_drop_input_buffer midiAlsa_InputHandle
+            End If
+            If midiAlsa_InputParser <> 0 Then _
+                snd_midi_event_reset_decode midiAlsa_InputParser
+
+            MutexLock midiAlsa_InputControlMutex
+            midiAlsa_InputClearComplete = -1
+            MutexUnlock midiAlsa_InputControlMutex
+
+            ' Keep the input queue quiet until the editor has cleared its side.
+            Do
+                MutexLock midiAlsa_InputControlMutex
+                workerStopping = midiAlsa_InputWorkerStop
+                clearRequested = midiAlsa_InputClearRequest
+                MutexUnlock midiAlsa_InputControlMutex
+                If workerStopping <> 0 OrElse clearRequested <> 2 Then _
+                    Exit Do
+                Sleep 1, 1
+            Loop
+            If workerStopping <> 0 Then Exit Do
+        Else
+            midiAlsa_PumpInput()
+            Sleep 1, 1
+        End If
+    Loop
+End Sub
+
+
 Function midiInput_Poll(ByRef message As OseMidiInputMessage) As Integer
-    If midiInputProtocol_Poll(message) <> 0 Then Return -1
-    midiAlsa_PumpInput()
     Return midiInputProtocol_Poll(message)
 End Function
 
@@ -712,7 +860,7 @@ Function midiOutput_Open(ByVal deviceIndex As Integer) As Integer
         OSE_ALSA_OPEN_OUTPUT, OSE_ALSA_NONBLOCK) < 0 OrElse _
         openedHandle = 0 Then Return 0
 
-    Dim As ZString * 32 clientName = "OpenSesh Output"
+    Dim As ZString * 32 clientName = "OpenMidiSesh Output"
     Dim As ZString * 16 portName = "MIDI Output"
     If snd_seq_set_client_name(openedHandle, @clientName) < 0 Then
         snd_seq_close openedHandle

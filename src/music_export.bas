@@ -1,10 +1,10 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: music_export.bas
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; shared Windows/Linux x64 and Android editor builds.
@@ -695,7 +695,7 @@ Function musicExport_SaveMod( _
 
     Dim As String titleText = Trim(summary.documentTitle)
     If titleText = "" Then
-        titleText = "OpenSesh"
+        titleText = "OpenMidiSesh"
     End If
     Dim As String outputData = mod_FixedAscii(titleText, MOD_TITLE_BYTES)
 

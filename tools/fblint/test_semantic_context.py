@@ -1,5 +1,5 @@
 """
-Project: OpenSesh validator regression checks
+Project: OpenMidiSesh validator regression checks
 File: tools/fblint/test_semantic_context.py
 Purpose: Require real compiler facts for included implementation files.
 Responsibilities: Exercise active and absent sources, build flags and spaces.

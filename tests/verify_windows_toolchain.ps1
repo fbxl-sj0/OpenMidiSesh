@@ -1,5 +1,5 @@
 <#
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: tests/verify_windows_toolchain.ps1

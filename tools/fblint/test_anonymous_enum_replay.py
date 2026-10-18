@@ -1,5 +1,5 @@
 """
-Project: OpenSesh validator regression checks
+Project: OpenMidiSesh validator regression checks
 File: tools/fblint/test_anonymous_enum_replay.py
 Purpose: Test anonymous enum identity with three genuine compiler exports.
 Responsibilities: Check generated-name independence and changed subtype rejection.

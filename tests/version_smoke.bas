@@ -1,12 +1,12 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: tests/version_smoke.bas
 
     Module API: Test executable; process status reports failed behavioral assertions.
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; Windows/Linux host test runners.
@@ -48,7 +48,7 @@ Dim As String numericVersion = Str(OSE_VERSION_MAJOR) + "." + _
     Str(OSE_VERSION_MINOR) + "." + Str(OSE_VERSION_PATCH)
 If Left(OSE_VERSION_TEXT, Len(numericVersion)) <> numericVersion Then _
     test_Fail "display version does not begin with its numeric components"
-If OSE_PRODUCT_NAME <> "OpenSesh" Then _
+If OSE_PRODUCT_NAME <> "OpenMidiSesh" Then _
     test_Fail "unexpected product name"
 If InStr(OSE_COPYRIGHT_TEXT, "2026") = 0 Then _
     test_Fail "copyright string does not identify the release year"

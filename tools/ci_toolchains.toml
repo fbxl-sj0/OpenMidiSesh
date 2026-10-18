@@ -1,4 +1,4 @@
-# Project: OpenSesh
+# Project: OpenMidiSesh
 # File: tools/ci_toolchains.toml
 # Purpose: lock public native compiler downloads before CI executes them.
 # Responsibilities: record exact names, byte lengths and SHA-256 identities.

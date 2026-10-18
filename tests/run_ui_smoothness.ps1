@@ -1,5 +1,5 @@
 <#
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ----------------------------
 
     File: tests/run_ui_smoothness.ps1
@@ -46,7 +46,7 @@ if (-not (Test-Path -LiteralPath $editorFile -PathType Leaf)) {
 $ownsBuildDirectory = [string]::IsNullOrWhiteSpace($BuildDirectory)
 if ($ownsBuildDirectory) {
     $buildRoot = Join-Path ([System.IO.Path]::GetTempPath()) `
-        ('opensesh-smoothness-' + [System.Guid]::NewGuid().ToString('N'))
+        ('openmidisesh-smoothness-' + [System.Guid]::NewGuid().ToString('N'))
 }
 else {
     $buildRoot = [System.IO.Path]::GetFullPath($BuildDirectory)
@@ -262,7 +262,7 @@ try {
         }
 
         $expected = @{
-            format = 'OpenSeshUiSmoothness'
+            format = 'OpenMidiSeshUiSmoothness'
             version = '1'
             status = 'pass'
             scenario = $case.Mode
@@ -345,7 +345,7 @@ finally {
         if (-not $resolvedBuildRoot.StartsWith(
                 $temporaryRoot,
                 [System.StringComparison]::OrdinalIgnoreCase) -or
-            -not $buildLeaf.StartsWith('opensesh-smoothness-')) {
+            -not $buildLeaf.StartsWith('openmidisesh-smoothness-')) {
             throw "Refusing to remove unexpected smoothness path: $resolvedBuildRoot"
         }
         Remove-Item -LiteralPath $resolvedBuildRoot -Recurse -Force

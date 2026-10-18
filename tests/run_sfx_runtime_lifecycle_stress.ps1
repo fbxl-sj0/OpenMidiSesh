@@ -1,5 +1,5 @@
 <#
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ----------------------------
 
     File: tests/run_sfx_runtime_lifecycle_stress.ps1

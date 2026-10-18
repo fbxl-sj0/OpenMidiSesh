@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Project: OpenSesh
+# Project: OpenMidiSesh
 # ----------------------------
 #
 # File: tests/run_linux_sanitizers.sh
@@ -97,7 +97,7 @@ if [ -n "$xauthority_path" ] && [ ! -f "$xauthority_path" ]; then
     exit 1
 fi
 
-build_root=$(mktemp -d "${TMPDIR:-/tmp}/opensesh-sanitizers.XXXXXX")
+build_root=$(mktemp -d "${TMPDIR:-/tmp}/openmidisesh-sanitizers.XXXXXX")
 compiler_wrapper="$build_root/fbc-sanitized.sh"
 cp -- "$compiler_wrapper_source" "$compiler_wrapper"
 chmod 700 "$compiler_wrapper"
@@ -107,7 +107,7 @@ cleanup()
         return
     fi
     case "$build_root" in
-        "${TMPDIR:-/tmp}"/opensesh-sanitizers.*)
+        "${TMPDIR:-/tmp}"/openmidisesh-sanitizers.*)
             rm -rf -- "$build_root"
             ;;
         *)
@@ -147,7 +147,7 @@ if [ -n "$midi_input_index" ]; then
     fi
 fi
 
-editor_path="$build_root/opensesh-sanitized"
+editor_path="$build_root/openmidisesh-sanitized"
 FREEBASIC_PATH="$compiler_wrapper" OUTPUT_PATH="$editor_path" \
     bash "$project_root/build_editor.sh"
 build_exit=$?
@@ -159,7 +159,7 @@ fi
 control_report="$build_root/control-report.txt"
 preferences_file="$build_root/preferences.conf"
 printf '%s\n' \
-    'format=OpenSeshPreferences' \
+    'format=OpenMidiSeshPreferences' \
     'version=1' \
     'theme=dark' > "$preferences_file"
 

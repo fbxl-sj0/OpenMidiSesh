@@ -1,13 +1,13 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: src/editor/document_commands.bi
 
     Targets: FreeBASIC fb dialect; the including application selects the native backend.
-    Module API: Private implementation include for opensesh.bas; state.bi owns shared storage.
+    Module API: Private implementation include for openmidisesh.bas; state.bi owns shared storage.
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Purpose:
@@ -24,7 +24,7 @@
         - an independently linked public module
         - application startup or resource shutdown
 
-    Included once by opensesh.bas in the editor translation unit.
+    Included once by openmidisesh.bas in the editor translation unit.
     Shared editor storage and forward declarations live in state.bi.
 '/
 
@@ -147,7 +147,7 @@ Private Function session_CaptureDirectory() As String
 #EndIf
     If session_DirectoryExists(userDirectory) <> 0 Then
         Dim As String captureDirectory = capturePaths_Join( _
-            userDirectory, "OpenSesh Captures")
+            userDirectory, "OpenMidiSesh Captures")
         If session_DirectoryExists(captureDirectory) = 0 Then _
             MkDir captureDirectory
         If session_DirectoryExists(captureDirectory) <> 0 Then _
@@ -326,7 +326,7 @@ Private Function session_CreateEditorMenu( _
     ByVal menuName As String, ByVal menuX As Integer, _
     ByVal menuY As Integer _
 ) As Widget Ptr
-    ' Keep caption placement from OpenSesh's reviewed popup geometry.
+    ' Keep caption placement from OpenMidiSesh's reviewed popup geometry.
     Dim As Widget Ptr editorMenu = menu_Create(menuName, menuX, menuY)
     If editorMenu = 0 Then Return 0
 
@@ -1777,7 +1777,7 @@ Private Function session_LoadProjectFile(ByVal projectFilename As String) As Int
     session_LoadAudioSamples()
     session_RefreshAudioList()
     session_Dirty = 0
-    session_SetStatus "Loaded OpenSesh project: " + projectFilename + _
+    session_SetStatus "Loaded OpenMidiSesh project: " + projectFilename + _
         session_AudioAvailabilitySuffix()
     Return -1
 End Function

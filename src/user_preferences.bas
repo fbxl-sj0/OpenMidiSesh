@@ -1,10 +1,10 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: user_preferences.bas
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; shared Windows/Linux x64 and Android editor builds.
@@ -223,8 +223,10 @@ Private Function userPreferences_Parse( _
         Select Case keyText
             Case "format"
                 formatCount += 1
+                ' Keep earlier product markers readable for existing settings files.
                 If formatCount <> 1 OrElse _
-                    (valueText <> "OpenSeshPreferences" AndAlso _
+                    (valueText <> "OpenMidiSeshPreferences" AndAlso _
+                    valueText <> "OpenSeshPreferences" AndAlso _
                     valueText <> "OpenSessionEditorPreferences") Then
                     Return 0
                 End If
@@ -347,7 +349,7 @@ Public Function userPreferences_Save( _
 
     Dim As String lineBreak = Chr(10)
     Dim As String fileData = _
-        "format=OpenSeshPreferences" + lineBreak + _
+        "format=OpenMidiSeshPreferences" + lineBreak + _
         "version=1" + lineBreak + _
         "theme=" + themeText + lineBreak + _
         "interaction=" + interactionText + lineBreak + _
@@ -362,6 +364,7 @@ Public Function userPreferences_DefaultFilename( _
     Dim As String baseDirectory
     Dim As String applicationDirectory
     Dim As String legacyApplicationDirectory
+    Dim As String previousApplicationDirectory
 
 #If Defined(__FB_WIN32__)
     baseDirectory = Trim(Environ("LOCALAPPDATA")) ' Each config-directory candidate is validated; no valid candidate disables persistence.
@@ -371,14 +374,11 @@ Public Function userPreferences_DefaultFilename( _
     If userPreferences_ValidPathText(baseDirectory) = 0 Then
         Return ""
     End If
-    If createDirectories <> 0 Then
-        applicationDirectory = userPreferences_EnsureChildDirectory( _
-            baseDirectory, "OpenSesh")
-    Else
-        applicationDirectory = userPreferences_JoinPath( _
-            baseDirectory, "OpenSesh")
-    End If
+    applicationDirectory = userPreferences_JoinPath( _
+        baseDirectory, "OpenMidiSesh")
     legacyApplicationDirectory = userPreferences_JoinPath( _
+        baseDirectory, "OpenSesh")
+    previousApplicationDirectory = userPreferences_JoinPath( _
         baseDirectory, "Open Session Editor")
 #Else
     baseDirectory = Trim(Environ("XDG_CONFIG_HOME")) ' Each config-directory candidate is validated; no valid candidate disables persistence.
@@ -401,14 +401,11 @@ Public Function userPreferences_DefaultFilename( _
             Return ""
         End If
     End If
-    If createDirectories <> 0 Then
-        applicationDirectory = userPreferences_EnsureChildDirectory( _
-            baseDirectory, "opensesh")
-    Else
-        applicationDirectory = userPreferences_JoinPath( _
-            baseDirectory, "opensesh")
-    End If
+    applicationDirectory = userPreferences_JoinPath( _
+        baseDirectory, "openmidisesh")
     legacyApplicationDirectory = userPreferences_JoinPath( _
+        baseDirectory, "opensesh")
+    previousApplicationDirectory = userPreferences_JoinPath( _
         baseDirectory, "open-session-editor")
 #EndIf
 
@@ -422,16 +419,40 @@ Public Function userPreferences_DefaultFilename( _
     End If
 
     /'
-        Read-only startup lookup retains the old product path as a migration
-        bridge. Saving requests directory creation and therefore always writes
-        the canonical OpenSesh path.
+        Keep using an existing preference file after the product rename. This
+        avoids silently starting with defaults and writing a second settings
+        file when users upgrade from either earlier product name.
     '/
-    If createDirectories = 0 AndAlso Dir(preferenceFilename) = "" AndAlso _
-        legacyApplicationDirectory <> "" Then
+    If Dir(preferenceFilename) <> "" Then
+        Return preferenceFilename
+    End If
+    If legacyApplicationDirectory <> "" Then
         Dim As String legacyFilename = userPreferences_JoinPath( _
             legacyApplicationDirectory, "settings.conf")
         If legacyFilename <> "" AndAlso Dir(legacyFilename) <> "" Then
             Return legacyFilename
+        End If
+    End If
+    If previousApplicationDirectory <> "" Then
+        Dim As String previousFilename = userPreferences_JoinPath( _
+            previousApplicationDirectory, "settings.conf")
+        If previousFilename <> "" AndAlso Dir(previousFilename) <> "" Then
+            Return previousFilename
+        End If
+    End If
+
+    If createDirectories <> 0 Then
+#If Defined(__FB_WIN32__)
+        applicationDirectory = userPreferences_EnsureChildDirectory( _
+            baseDirectory, "OpenMidiSesh")
+#Else
+        applicationDirectory = userPreferences_EnsureChildDirectory( _
+            baseDirectory, "openmidisesh")
+#EndIf
+        preferenceFilename = userPreferences_JoinPath( _
+            applicationDirectory, "settings.conf")
+        If preferenceFilename = "" Then
+            Return ""
         End If
     End If
     Return preferenceFilename

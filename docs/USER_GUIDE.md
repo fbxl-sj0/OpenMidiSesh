@@ -1,5 +1,5 @@
 <!--
-    Project: OpenSesh
+    Project: OpenMidiSesh
     File: docs/USER_GUIDE.md
     Purpose: Help musicians use the editor's visible controls and workflows.
     Responsibilities: describe the score, mixer, transport, sound and file tasks.
@@ -8,26 +8,26 @@
 
 # User Guide
 
-OpenSesh edits Standard MIDI Files and OpenSesh projects. Its score is a
+OpenMidiSesh edits Standard MIDI Files and OpenMidiSesh projects. Its score is a
 practical note-editing view paired with a channel mixer. You can start with an
 empty song, work from an existing MIDI file, or keep external WAV clips in a
 project.
 
 ## Start a song
 
-Launch OpenSesh with no argument to create an empty song. To open a file from
+Launch OpenMidiSesh with no argument to create an empty song. To open a file from
 the command line, pass its path:
 
 ~~~powershell
-./opensesh.exe "C:/Music/song.mid"
+./openmidisesh.exe "C:/Music/song.mid"
 ~~~
 
-Use **File > Open** to select a Standard MIDI File or an OpenSesh project.
+Use **File > Open** to select a Standard MIDI File or an OpenMidiSesh project.
 **File > New** creates a fresh song. If there are unsaved edits, Open and New
 ask before discarding them.
 
 Use **File > Save** after editing. A standalone MIDI file is saved as a
-Standard MIDI File. An OpenSesh project keeps its project file, companion MIDI
+Standard MIDI File. An OpenMidiSesh project keeps its project file, companion MIDI
 file, and WAV clip references together. Project saves do not copy the WAV files;
 keep those files available at their saved paths.
 
@@ -39,7 +39,7 @@ keep those files available at their saved paths.
 | --- | --- |
 | Menus and shortcut buttons | Open common commands, choose a song meter, open Note tools, and launch the drum phrase editor. |
 | Transport and tempo | Stop, pause, rewind, play, change playback speed, record, step, set the starting tempo, and open the tempo or meter map. |
-| Score View | See tracks as labeled staff rows, navigate time and tracks, and select or edit notes. The playhead follows playback. |
+| Score View | See tracks as labeled staff rows, navigate time and tracks, and select or edit notes. The view follows the playhead during playback and live recording. |
 | Score tool rail | Select, add, delete, cut, or paste notes. The Note tool opens a palette of durations and accidentals. |
 | Mixer View | Select a channel and adjust its level, pan, chorus, reverb, mute, solo, and record arm. The master section controls overall level and echo. |
 
@@ -66,9 +66,13 @@ grid also controls where new notes are placed and how far notes move.
 ![Note tools panel](../tests/visual_baselines/note-tools-dark-1280x720.png)
 
 Use **Track > Add Track** or **Track > Remove Track** to change the track list.
-Select a track in either the score or mixer to make it the active track. The
-track properties and event editors provide more focused controls for track
-names, note properties, tempo and meter changes, and MIDI controller events.
+Select a track in either the score or mixer to make it the active track. Open
+**Track > Properties** to rename it or choose from the scrollable list of 128
+named General MIDI instruments. Program numbers are shown from 001 to 128.
+The program change applies to the selected track's MIDI channel;
+tracks that share a channel also share its instrument. Event editors provide
+controls for note properties, tempo and meter changes, and MIDI controller
+events.
 
 ## Play, record, and mix
 
@@ -78,6 +82,10 @@ The transport buttons at the top of the window control playback and recording.
 **F6** records, **F7** pauses, **F8** starts step recording, and **F9** plays
 the current step. The **Map** command opens tempo, meter, and key-signature
 changes across a song.
+
+During live recording, **F7** pauses note capture and the recording clock.
+Incoming MIDI remains monitored through the built-in synth and any open MIDI
+output. Press **F7** again to resume; paused time is not added to the take.
 
 Each mixer strip represents a MIDI channel. The channel controls shape the
 software-synth mix. **M** mutes, **S** solos, and **R** arms the channel for

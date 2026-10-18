@@ -1,5 +1,5 @@
 <!--
-    Project: OpenSesh
+    Project: OpenMidiSesh
     File: docs/DEPENDENCIES.md
     Purpose: Identify components used by the editor and packaged builds.
     Responsibilities: distinguish bundled source from host-provided tools and media.
@@ -15,7 +15,7 @@ The repository includes the reviewed omaGUI runtime under
 identifies the exact source files used by the editor and source packages. You
 normally do not need another omaGUI checkout.
 
-OpenSesh is licensed under GPL-3.0-or-later. The vendored GUI and other
+OpenMidiSesh is licensed under GPL-3.0-or-later. The vendored GUI and other
 components retain their own license terms. See
 <code>THIRD_PARTY_NOTICES.md</code> and the license files in the repository
 before redistributing a combined package.
@@ -30,12 +30,12 @@ before redistributing a combined package.
 | ALSA Sequencer library | Native MIDI input and output in Linux builds. |
 | Android FreeBASIC wrapper and Android SDK/NDK | Build and sign a development APK. |
 
-Build instructions are in [Building OpenSesh](BUILDING.md).
+Build instructions are in [Building OpenMidiSesh](BUILDING.md).
 
 ## User-provided media and devices
 
 SoundFonts and WAV clips are selected by the user and are not included in
-packages. OpenSesh project files store WAV paths rather than embedding the
+packages. OpenMidiSesh project files store WAV paths rather than embedding the
 recordings. A system audio output is used for software playback.
 
 Native MIDI input and output are available on Windows and Linux. The current

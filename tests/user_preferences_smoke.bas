@@ -1,12 +1,12 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: tests/user_preferences_smoke.bas
 
     Module API: Test executable; process status reports failed behavioral assertions.
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; Windows/Linux host test runners.
@@ -128,7 +128,7 @@ Next
 
 Dim As String lineBreak = Chr(10)
 Dim As String canonicalBlack = _
-    "format=OpenSeshPreferences" + lineBreak + _
+    "format=OpenMidiSeshPreferences" + lineBreak + _
     "version=1" + lineBreak + _
     "theme=black" + lineBreak + _
     "interaction=touch" + lineBreak
@@ -171,66 +171,76 @@ If userPreferences_Load(filename, legacyPreferences) <> _
     legacyPreferences.interactionMode <> OSE_UI_INTERACTION_FINE Then _
     test_Fail "legacy product preference did not load with precise-pointer UI"
 
+legacyData = _
+    "format=OpenSeshPreferences" + lineBreak + _
+    "version=1" + lineBreak + _
+    "theme=light" + lineBreak
+test_WriteData filename, legacyData
+If userPreferences_Load(filename, legacyPreferences) <> _
+    OSE_PREFERENCES_LOAD_OK OrElse _
+    legacyPreferences.themeMode <> OSE_UI_THEME_LIGHT Then _
+    test_Fail "previous product preference format was not retained"
+
 Dim As Integer rejectedCount
 Dim As String invalidData
 invalidData = "": test_ExpectInvalid filename, invalidData, _
     "empty file", rejectedCount
 invalidData = Space(8193): test_ExpectInvalid filename, invalidData, _
     "oversized file", rejectedCount
-invalidData = "format=OpenSeshPreferences" + Chr(0) + lineBreak + _
+invalidData = "format=OpenMidiSeshPreferences" + Chr(0) + lineBreak + _
     "version=1" + lineBreak + "theme=light" + lineBreak
 test_ExpectInvalid filename, invalidData, "NUL byte", rejectedCount
 invalidData = "malformed" + lineBreak
 test_ExpectInvalid filename, invalidData, "line without equals", rejectedCount
 invalidData = "version=1" + lineBreak + "theme=light" + lineBreak
 test_ExpectInvalid filename, invalidData, "missing format", rejectedCount
-invalidData = "format=OpenSeshPreferences" + lineBreak + _
+invalidData = "format=OpenMidiSeshPreferences" + lineBreak + _
     "theme=light" + lineBreak
 test_ExpectInvalid filename, invalidData, "missing version", rejectedCount
-invalidData = "format=OpenSeshPreferences" + lineBreak + _
+invalidData = "format=OpenMidiSeshPreferences" + lineBreak + _
     "version=1" + lineBreak
 test_ExpectInvalid filename, invalidData, "missing theme", rejectedCount
-invalidData = "format=OpenSeshPreferences" + lineBreak + _
-    "format=OpenSeshPreferences" + lineBreak + _
+invalidData = "format=OpenMidiSeshPreferences" + lineBreak + _
+    "format=OpenMidiSeshPreferences" + lineBreak + _
     "version=1" + lineBreak + "theme=light" + lineBreak
 test_ExpectInvalid filename, invalidData, "duplicate format", rejectedCount
-invalidData = "format=OpenSeshPreferences" + lineBreak + _
+invalidData = "format=OpenMidiSeshPreferences" + lineBreak + _
     "version=1" + lineBreak + "version=1" + lineBreak + _
     "theme=light" + lineBreak
 test_ExpectInvalid filename, invalidData, "duplicate version", rejectedCount
-invalidData = "format=OpenSeshPreferences" + lineBreak + _
+invalidData = "format=OpenMidiSeshPreferences" + lineBreak + _
     "version=1" + lineBreak + "theme=light" + lineBreak + _
     "theme=dark" + lineBreak
 test_ExpectInvalid filename, invalidData, "duplicate theme", rejectedCount
-invalidData = "format=OpenSeshPreferences" + lineBreak + _
+invalidData = "format=OpenMidiSeshPreferences" + lineBreak + _
     "version=2" + lineBreak + "theme=light" + lineBreak
 test_ExpectInvalid filename, invalidData, "unsupported version", rejectedCount
-invalidData = "format=OpenSeshPreferences" + lineBreak + _
+invalidData = "format=OpenMidiSeshPreferences" + lineBreak + _
     "version=1" + lineBreak + "theme=sepia" + lineBreak
 test_ExpectInvalid filename, invalidData, "unknown theme", rejectedCount
-invalidData = "format=OpenSeshPreferences" + lineBreak + _
+invalidData = "format=OpenMidiSeshPreferences" + lineBreak + _
     "version=1" + lineBreak + "theme=light" + lineBreak + _
     "interaction=joystick" + lineBreak
 test_ExpectInvalid filename, invalidData, "unknown interaction", rejectedCount
-invalidData = "format=OpenSeshPreferences" + lineBreak + _
+invalidData = "format=OpenMidiSeshPreferences" + lineBreak + _
     "version=1" + lineBreak + "theme=light" + lineBreak + _
     "interaction=fine" + lineBreak + "interaction=touch" + lineBreak
 test_ExpectInvalid filename, invalidData, "duplicate interaction", rejectedCount
-invalidData = "format=OpenSeshPreferences" + lineBreak + _
+invalidData = "format=OpenMidiSeshPreferences" + lineBreak + _
     "version=1" + lineBreak + "theme=light" + lineBreak + _
     "soundfont=first.sf2" + lineBreak + "soundfont=second.sf2" + lineBreak
 test_ExpectInvalid filename, invalidData, "duplicate SoundFont", rejectedCount
-invalidData = "format=OpenSeshPreferences" + lineBreak + _
+invalidData = "format=OpenMidiSeshPreferences" + lineBreak + _
     "version=1" + lineBreak + "future=" + Space(4353) + lineBreak + _
     "theme=light" + lineBreak
 test_ExpectInvalid filename, invalidData, "overlong line", rejectedCount
-invalidData = "format=OpenSeshPreferences" + Chr(13) + _
+invalidData = "format=OpenMidiSeshPreferences" + Chr(13) + _
     "version=1" + lineBreak + "theme=light" + lineBreak
 test_ExpectInvalid filename, invalidData, "bare carriage return", rejectedCount
 
 ' Unknown keys are retained for forward-compatible readers. They are ignored
 ' only after the line itself has passed the same size and syntax checks.
-Dim As String futureData = "format=OpenSeshPreferences" + lineBreak + _
+Dim As String futureData = "format=OpenMidiSeshPreferences" + lineBreak + _
     "version=1" + lineBreak + "future_feature=enabled" + lineBreak + _
     "theme=dark" + lineBreak
 test_WriteData filename, futureData

@@ -1,10 +1,10 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: software_synth.bas
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; shared Windows/Linux x64 and Android editor builds.
@@ -75,11 +75,12 @@ Public Sub softwareSynth_Configure()
     Dim As Single attack(0 To 15) = _
         {.005, .002, .020, .005, .005, .080, .060, .025, _
          .020, .030, .005, .120, .080, .010, .002, .001}
+    ' The organ and accordion fallback family holds its level while notes play.
     Dim As Single decay(0 To 15) = _
-        {.180, .120, .080, .120, .080, .250, .220, .120, _
+        {.180, .120, 0.0, .120, .080, .250, .220, .120, _
          .120, .100, .080, .350, .300, .180, .100, .080}
     Dim As Single sustain(0 To 15) = _
-        {.35, .15, .80, .40, .50, .65, .60, .65, _
+        {.35, .15, 1.0, .40, .50, .65, .60, .65, _
          .55, .75, .65, .65, .40, .45, .20, .05}
     Dim As Single releaseTime(0 To 15) = _
         {.12, .08, .12, .10, .08, .30, .35, .18, _

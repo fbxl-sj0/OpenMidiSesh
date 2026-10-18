@@ -1,5 +1,5 @@
 <!--
-    Project: OpenSesh
+    Project: OpenMidiSesh
     File: docs/ARCHITECTURE.md
     Purpose: Explain how the editor's main components work together.
     Responsibilities: describe module boundaries, data flow and platform adapters.
@@ -8,7 +8,7 @@
 
 # Architecture
 
-OpenSesh is a single MIDI editor with a shared document model, score and mixer
+OpenMidiSesh is a single MIDI editor with a shared document model, score and mixer
 interface, playback engine, and file workflows. The desktop build compiles
 separate modules. Android packages the same editor sources through a unity
 translation unit and selects the Touch profile on first launch.
@@ -32,7 +32,7 @@ flowchart TD
     Runtime --> Output[Host audio output]
     Timing --> NativeMIDI[Platform MIDI output]
     MIDI --> Save[MIDI save and export]
-    Audio --> Project[OpenSesh project files]
+    Audio --> Project[OpenMidiSesh project files]
     MIDI --> Project
 ~~~
 
@@ -40,7 +40,7 @@ flowchart TD
 
 | Component | Main source | Responsibility |
 | --- | --- | --- |
-| Application and UI | <code>src/opensesh.bas</code>, <code>src/omagui_runtime.bas</code>, <code>vendor/omaGui/</code> | Build the windows and controls, route user commands, manage the editor session and shut down owned resources. |
+| Application and UI | <code>src/openmidisesh.bas</code>, <code>src/omagui_runtime.bas</code>, <code>vendor/omaGui/</code> | Build the windows and controls, route user commands, manage the editor session and shut down owned resources. |
 | MIDI document | <code>src/midi_model.bas</code>, <code>src/note_selection.bas</code>, <code>src/score_tools.bas</code> | Read and write Standard MIDI Files, expose editable tracks, notes and events, and apply score operations. |
 | Score and mixer | <code>src/score_layout.bas</code>, <code>src/score_controls.bas</code>, <code>src/mixer_controls.bas</code>, <code>src/mixer_state.bas</code> | Map document state to score and mixer views and convert pointer input into edits. |
 | History and projects | <code>src/document_history.bas</code>, <code>src/history_timeline.bas</code>, <code>src/project_transaction.bas</code> | Keep MIDI and clip edits in one undo/redo order and save project data consistently. |
@@ -64,7 +64,7 @@ the software synth and audio runtime. MIDI device input is validated at the
 platform boundary before it can become a document edit. Device output is a
 separate path from the software mix.
 
-A Standard MIDI File contains the song's MIDI data. An OpenSesh project keeps a
+A Standard MIDI File contains the song's MIDI data. An OpenMidiSesh project keeps a
 MIDI file with references to external WAV clips and project-specific data.
 Project saves stage the related files before replacing them, so a failed write
 does not leave a partially updated project.

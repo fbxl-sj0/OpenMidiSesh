@@ -1,8 +1,8 @@
 /*
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
-    File: opensesh.rc
+    File: openmidisesh.rc
 
     Purpose:
 
@@ -24,7 +24,7 @@
 
 #define RT_MANIFEST 24
 
-1 RT_MANIFEST "opensesh.manifest"
+1 RT_MANIFEST "openmidisesh.manifest"
 
 1 VERSIONINFO
  FILEVERSION 0,9,0,0
@@ -39,13 +39,13 @@ BEGIN
     BEGIN
         BLOCK "040904b0"
         BEGIN
-            VALUE "CompanyName", "OpenSesh contributors\0"
-            VALUE "FileDescription", "OpenSesh\0"
+            VALUE "CompanyName", "OpenMidiSesh contributors\0"
+            VALUE "FileDescription", "OpenMidiSesh\0"
             VALUE "FileVersion", "0.9.0-dev\0"
-            VALUE "InternalName", "opensesh\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 OpenSesh contributors\0"
-            VALUE "OriginalFilename", "opensesh.exe\0"
-            VALUE "ProductName", "OpenSesh\0"
+            VALUE "InternalName", "openmidisesh\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 OpenMidiSesh contributors\0"
+            VALUE "OriginalFilename", "openmidisesh.exe\0"
+            VALUE "ProductName", "OpenMidiSesh\0"
             VALUE "ProductVersion", "0.9.0-dev\0"
         END
     END
@@ -55,4 +55,4 @@ BEGIN
     END
 END
 
-/* end of opensesh.rc */
+/* end of openmidisesh.rc */

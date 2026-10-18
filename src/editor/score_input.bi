@@ -1,13 +1,13 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: src/editor/score_input.bi
 
     Targets: FreeBASIC fb dialect; the including application selects the native backend.
-    Module API: Private implementation include for opensesh.bas; state.bi owns shared storage.
+    Module API: Private implementation include for openmidisesh.bas; state.bi owns shared storage.
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Purpose:
@@ -24,7 +24,7 @@
         - an independently linked public module
         - application startup or resource shutdown
 
-    Included once by opensesh.bas in the editor translation unit.
+    Included once by openmidisesh.bas in the editor translation unit.
     Shared editor storage and forward declarations live in state.bi.
 '/
 
@@ -534,7 +534,8 @@ Private Function session_StartLiveKeyboardNote( _
     ByVal pitch As Integer, _
     ByVal currentTick As ULongInt _
 ) As Integer
-    If session_LiveRecording = 0 OrElse pitch < 0 OrElse _
+    If session_LiveRecording = 0 OrElse session_LiveRecordingPaused <> 0 OrElse _
+        pitch < 0 OrElse _
         pitch > SESSION_MIDI_MAX_KEY OrElse _
         session_LiveNoteIndex(pitch) >= 0 OrElse _
         currentTick >= OSE_MAX_MIDI_TICK Then Return 0
@@ -626,6 +627,9 @@ End Sub
 
 
 Private Function session_LiveRecordingTick() As ULongInt
+    If session_LiveRecordingPaused <> 0 Then _
+        Return session_LiveRecordingPauseTick
+
     Dim As Double currentClock = Timer
     Dim As Double elapsedSeconds = currentClock - _
         session_LiveRecordingStartClock
@@ -752,7 +756,8 @@ Public Sub session_EndLiveRecording()
     Dim As ULongInt currentTick = session_LiveRecordingTick()
     Dim As ULongInt midiCurrentTick = currentTick
     Dim As ULong midiStopTimestamp
-    If session_LiveRecordingHasMidiTimestamp <> 0 AndAlso _
+    If session_LiveRecordingPaused = 0 AndAlso _
+        session_LiveRecordingHasMidiTimestamp <> 0 AndAlso _
         midiInput_GetClockMilliseconds(midiStopTimestamp) <> 0 Then
         If session_LiveRecordingTickForMidiTimestamp( _
             midiStopTimestamp, midiCurrentTick) = 0 Then midiCurrentTick = currentTick
@@ -784,9 +789,77 @@ Public Sub session_EndLiveRecording()
     session_LiveRecordingKeyboardOnly = 0
     session_LiveRecording = 0
     session_LiveRecordingHasMidiTimestamp = 0
+    session_LiveRecordingPaused = 0
+    session_LiveRecordingPauseTick = 0
     If changedNotes > 0 Then
         session_Dirty = -1
     End If
+End Sub
+
+
+Private Sub session_PauseLiveRecording()
+    If session_LiveRecording = 0 OrElse session_LiveRecordingPaused <> 0 Then _
+        Exit Sub
+
+    If session_LiveRecordingKeyboardOnly = 0 Then _
+        session_ProcessMidiInput()
+
+    Dim As ULongInt currentTick = session_LiveRecordingTick()
+    Dim As ULongInt midiCurrentTick = currentTick
+    Dim As ULong pauseTimestamp
+    If session_LiveRecordingHasMidiTimestamp <> 0 AndAlso _
+        midiInput_IsOpen() <> 0 AndAlso _
+        midiInput_GetClockMilliseconds(pauseTimestamp) <> 0 Then
+        If session_LiveRecordingTickForMidiTimestamp( _
+            pauseTimestamp, midiCurrentTick) = 0 Then _
+            midiCurrentTick = currentTick
+    End If
+
+    Dim As Integer changedNotes = 0
+    For keyNumber As Integer = 0 To 127
+        If session_CloseLiveKeyboardNote(keyNumber, currentTick) <> 0 Then _
+            changedNotes += 1
+    Next
+    For channelIndex As Integer = 0 To SESSION_CHANNEL_COUNT - 1
+        For keyNumber As Integer = 0 To 127
+            If session_CloseLiveMidiNote( _
+                channelIndex, keyNumber, midiCurrentTick) <> 0 Then _
+                changedNotes += 1
+        Next
+    Next
+    session_ResetLiveKeyboardState()
+    session_ResetLiveMidiState()
+    session_KeyboardMousePitch = -1
+    If changedNotes > 0 Then session_Dirty = -1
+
+    session_LiveRecordingPauseTick = currentTick
+    If midiCurrentTick > session_LiveRecordingPauseTick Then _
+        session_LiveRecordingPauseTick = midiCurrentTick
+    session_LiveRecordingPaused = -1
+    session_SetStatus "Recording paused. MIDI input monitoring remains active."
+End Sub
+
+
+Private Sub session_ResumeLiveRecording()
+    If session_LiveRecording = 0 OrElse session_LiveRecordingPaused = 0 Then _
+        Exit Sub
+
+    ' Rebase both clocks at the frozen take position. This prevents the paused
+    ' interval from appearing in later notes and keeps MIDI and keyboard input
+    ' aligned after any number of pauses.
+    session_LiveRecordingStartTick = session_LiveRecordingPauseTick
+    session_LiveRecordingStartClock = Timer
+    session_LiveRecordingStartMidiTimestamp = 0
+    session_LiveRecordingHasMidiTimestamp = 0
+    If midiInput_IsOpen() <> 0 Then
+        session_LiveRecordingHasMidiTimestamp = midiInput_GetClockMilliseconds( _
+            session_LiveRecordingStartMidiTimestamp)
+        midiInput_ClearPending()
+    End If
+
+    session_LiveRecordingPaused = 0
+    session_LiveRecordingPauseTick = 0
+    session_SetStatus "Recording resumed. MIDI input monitoring remains active."
 End Sub
 
 
@@ -842,10 +915,63 @@ Private Function session_RecordIncomingSystemCommon( _
 End Function
 
 
+Private Sub session_MonitorMidiInput(ByRef message As OseMidiInputMessage)
+    If message.status < OSE_MIDI_STATUS_CHANNEL_MIN OrElse _
+        message.status > OSE_MIDI_STATUS_CHANNEL_MAX Then Exit Sub
+
+    Dim As Integer messageType = message.status And OSE_MIDI_STATUS_TYPE_MASK
+    Dim As Integer channelIndex = message.status And &H0F
+    Dim As Integer keyNumber = message.data1
+    Dim As Integer velocity = message.data2
+    If channelIndex < 0 OrElse channelIndex >= SESSION_CHANNEL_COUNT OrElse _
+        keyNumber > OSE_MIDI_DATA_BYTE_MAX OrElse _
+        velocity > OSE_MIDI_DATA_BYTE_MAX Then Exit Sub
+
+    If midiOutput_IsOpen() <> 0 Then
+        Dim As Integer thruData2 = velocity
+        If messageType = OSE_MIDI_STATUS_PROGRAM_CHANGE OrElse _
+            messageType = OSE_MIDI_STATUS_CHANNEL_PRESSURE Then
+            thruData2 = 0
+        End If
+        midiOutput_Send message.status, keyNumber, thruData2
+    End If
+
+    If messageType = OSE_MIDI_STATUS_PROGRAM_CHANGE Then _
+        session_LiveInputProgram(channelIndex) = keyNumber
+
+    If messageType = OSE_MIDI_STATUS_NOTE_ON AndAlso velocity > 0 Then
+        ' The preview remains available while recording is paused. MIDI output
+        ' and the local synth are independent, so either route may be absent.
+        Dim As OsePlaybackMixValues liveInputMix
+        playbackMix_Calculate liveInputMix, _
+            session_Summary.channelVolume(channelIndex), _
+            session_Summary.channelExpression(channelIndex), _
+            session_Summary.channelPan(channelIndex), velocity, _
+            session_MasterVolume, session_ChannelIsAudible(channelIndex)
+        Dim As OseSoftwareSynthPlayOptions liveInputOptions
+        liveInputOptions.bankNumber = IIf( _
+            channelIndex = OSE_MIDI_CHANNEL_DRUMS, _
+            OSE_MIDI_DRUM_BANK_NUMBER, 0)
+        liveInputOptions.fallbackVoiceChannel = -1
+        softwareSynth_PlayMidiNote channelIndex, keyNumber, _
+            session_LiveInputProgram(channelIndex), _
+            session_Summary.channelPitchBend(channelIndex), _
+            0.18, liveInputMix, liveInputOptions
+        mixerMeter_Trigger session_MixerMeter, channelIndex, _
+            CSng(velocity) / 127.0, 0.18
+    End If
+End Sub
+
+
 Private Function session_ProcessRecordedMidiMessage( _
     ByRef message As OseMidiInputMessage, _
     ByVal monitorInput As Integer _
 ) As Integer
+    ' Monitoring is separate from capture. It must continue while the take is
+    ' paused, and it does not depend on the event's recording timestamp.
+    If monitorInput <> 0 Then session_MonitorMidiInput message
+    If session_LiveRecordingPaused <> 0 Then Return 0
+
     Dim As ULongInt currentTick
     If session_LiveRecordingTickForMidiTimestamp( _
         message.timestampMilliseconds, currentTick) = 0 Then Return 0
@@ -863,19 +989,10 @@ Private Function session_ProcessRecordedMidiMessage( _
     Dim As Integer keyNumber = message.data1
     Dim As Integer velocity = message.data2
 
-    ' Monitoring is separate from recording. The audit feeds complete messages
-    ' through this dispatcher with monitoring disabled, without native devices.
-    If monitorInput <> 0 AndAlso _
-        message.status >= OSE_MIDI_STATUS_CHANNEL_MIN AndAlso _
-        message.status <= OSE_MIDI_STATUS_CHANNEL_MAX AndAlso _
-        midiOutput_IsOpen() <> 0 Then
-        Dim As Integer thruData2 = velocity
-        If messageType = OSE_MIDI_STATUS_PROGRAM_CHANGE OrElse _
-            messageType = OSE_MIDI_STATUS_CHANNEL_PRESSURE Then
-            thruData2 = 0
-        End If
-        midiOutput_Send message.status, keyNumber, thruData2
-    End If
+    If message.status < OSE_MIDI_STATUS_CHANNEL_MIN OrElse _
+        message.status > OSE_MIDI_STATUS_CHANNEL_MAX Then Return 0
+    If keyNumber > OSE_MIDI_DATA_BYTE_MAX OrElse _
+        velocity > OSE_MIDI_DATA_BYTE_MAX Then Return 0
 
     If messageType = OSE_MIDI_STATUS_NOTE_ON AndAlso velocity > 0 Then
         If currentTick >= OSE_MAX_MIDI_TICK Then
@@ -911,25 +1028,6 @@ Private Function session_ProcessRecordedMidiMessage( _
         session_LiveMidiNoteIndex(slotIndex) = addedNote
         session_LiveMidiNoteStartTick(slotIndex) = currentTick
         session_LiveMidiNoteReleased(slotIndex) = 0
-        If monitorInput <> 0 Then
-            Dim As OsePlaybackMixValues liveInputMix
-            playbackMix_Calculate liveInputMix, _
-                session_Summary.channelVolume(channelIndex), _
-                session_Summary.channelExpression(channelIndex), _
-                session_Summary.channelPan(channelIndex), velocity, _
-                session_MasterVolume, session_ChannelIsAudible(channelIndex)
-            Dim As OseSoftwareSynthPlayOptions liveInputOptions
-            liveInputOptions.bankNumber = IIf( _
-                channelIndex = OSE_MIDI_CHANNEL_DRUMS, _
-                OSE_MIDI_DRUM_BANK_NUMBER, 0)
-            liveInputOptions.fallbackVoiceChannel = -1
-            softwareSynth_PlayMidiNote channelIndex, keyNumber, _
-                session_Summary.channelProgram(channelIndex), _
-                session_Summary.channelPitchBend(channelIndex), _
-                0.18, liveInputMix, liveInputOptions
-            mixerMeter_Trigger session_MixerMeter, channelIndex, _
-                CSng(velocity) / 127.0, 0.18
-        End If
         Return -1
     ElseIf messageType = OSE_MIDI_STATUS_NOTE_OFF OrElse _
         (messageType = OSE_MIDI_STATUS_NOTE_ON AndAlso velocity = 0) Then
@@ -1034,8 +1132,52 @@ Private Sub session_ProcessLiveRecording()
         session_ProcessMidiInput()
     End If
     If session_KeyboardWindow <> 0 Then
-        session_ProcessPcPerformanceKeys -1
+        If session_LiveRecordingPaused <> 0 Then
+            session_ProcessPcPerformanceKeys 0
+        Else
+            session_ProcessPcPerformanceKeys -1
+        End If
     End If
+End Sub
+
+
+Private Sub session_UpdateScoreFollow()
+    Dim As ULongInt activeTick
+    If session_Playing <> 0 AndAlso session_Paused = 0 Then
+        activeTick = midi_SecondsToTicks( _
+            session_Summary, session_PlaybackElapsed)
+        If session_SelectedNotePlaybackActive <> 0 AndAlso _
+            activeTick < session_SelectedNotePlayback.startTick Then
+            activeTick = session_SelectedNotePlayback.startTick
+        End If
+    ElseIf session_LiveRecording <> 0 AndAlso _
+        session_LiveRecordingPaused = 0 Then
+        activeTick = session_LiveRecordingTick()
+    Else
+        Exit Sub
+    End If
+
+    If session_Summary.division <= 0 Then Exit Sub
+    Dim As ULongInt ticksInView = session_ViewTicks()
+    If ticksInView = 0 Then Exit Sub
+    Dim As ULongInt viewEndTick = session_ViewStartTick + ticksInView
+    If viewEndTick < session_ViewStartTick Then _
+        viewEndTick = OSE_MAX_MIDI_TICK
+    If activeTick >= session_ViewStartTick AndAlso _
+        activeTick <= viewEndTick Then Exit Sub
+
+    ' Keep the moving tick left of center so the next section enters the view
+    ' before the current measure has completely passed.
+    Dim As ULongInt leadTicks = (ticksInView * 3) \ 4
+    Dim As ULongInt requestedStart = 0
+    If activeTick > leadTicks Then requestedStart = activeTick - leadTicks
+
+    Dim As ULongInt timelineEnd = session_TimelineDurationTicks()
+    If activeTick > timelineEnd Then timelineEnd = activeTick
+    Dim As ULongInt maximumStart = scoreScroll_MaximumStart( _
+        timelineEnd, ticksInView)
+    If requestedStart > maximumStart Then requestedStart = maximumStart
+    session_ViewStartTick = requestedStart
 End Sub
 
 

@@ -1,12 +1,12 @@
 # Third-party notices
 
-OpenSesh is built with the components below. These notices apply to
-their respective components and do not replace the OpenSesh license
+OpenMidiSesh is built with the components below. These notices apply to
+their respective components and do not replace the OpenMidiSesh license
 in `LICENSE` and `COPYING`.
 
 ## omaGUI
 
-OpenSesh incorporates omaGUI source through the FreeBASIC include
+OpenMidiSesh incorporates omaGUI source through the FreeBASIC include
 tree. The exact runtime subset is vendored under `vendor/omaGui` and verified
 against `vendor/omaGui/SNAPSHOT.sha256`.
 
@@ -47,13 +47,13 @@ Open Font License 1.1. The complete copyright notice and license are included
 in `vendor/omaGui/assets/fonts/OFL-1.1.txt`.
 
 No bitmap-font conversion made from Windows Arial files is compiled or
-included in the OpenSesh release source. Those historical omaGui
+included in the OpenMidiSesh release source. Those historical omaGui
 development files are outside the vendored payload.
 
 ## FreeBASIC runtime, gfxlib, and sfxlib
 
 The audited builds use FreeBASIC 1.20.x. The compiler is a build dependency
-and is not included in the OpenSesh source archive. Native
+and is not included in the OpenMidiSesh source archive. Native
 executables statically link FreeBASIC runtime, graphics, and sound code. The
 audited Win64 compiler and critical linked archives have exact identities in
 `windows_toolchain_lock.json`.
@@ -82,7 +82,7 @@ toolchain notices.
 ## dr_libs: dr_wav and dr_mp3
 
 The FreeBASIC sfxlib archive linked into the audited executable contains
-dr_wav and dr_mp3 from David Reid's dr_libs. OpenSesh records the
+dr_wav and dr_mp3 from David Reid's dr_libs. OpenMidiSesh records the
 MIT No Attribution alternative offered by that project.
 
 Copyright 2020 David Reid
@@ -107,7 +107,7 @@ Upstream: <https://github.com/mackron/dr_libs>
 ## stb_vorbis
 
 The FreeBASIC sfxlib archive linked into the audited executable contains
-stb_vorbis. OpenSesh records the MIT alternative offered by the stb
+stb_vorbis. OpenMidiSesh records the MIT alternative offered by the stb
 project.
 
 Copyright (c) 2017 Sean Barrett

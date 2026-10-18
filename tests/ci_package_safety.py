@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Project: OpenSesh
+Project: OpenMidiSesh
 File: tests/ci_package_safety.py
 Purpose: reject corrupted packages and unsafe compiler-download failure cleanup.
 Responsibilities: exercise ownership boundaries, integrity checks and link rejection.
@@ -52,23 +52,23 @@ class PackageSafety(unittest.TestCase):
             self.assertEqual((Path(folder) / "compiler.hpkg").read_bytes(), b"compiler")
 
     def test_archive_detects_corruption_and_extra_files(self):
-        files = {"opensesh/opensesh": b"executable", "opensesh/LICENSE": b"license"}
+        files = {"openmidisesh/openmidisesh": b"executable", "openmidisesh/LICENSE": b"license"}
         for windows in (True, False):
             with self.subTest(windows=windows):
-                data = archive_bytes(files, "opensesh/opensesh", windows)
+                data = archive_bytes(files, "openmidisesh/openmidisesh", windows)
                 self.assertEqual(verify_archive(data, files, windows), files)
-                changed = dict(files, **{"opensesh/LICENSE": b"changed"})
+                changed = dict(files, **{"openmidisesh/LICENSE": b"changed"})
                 with self.assertRaises(ValueError):
                     verify_archive(data, changed, windows)
                 extra = dict(files, **{"../outside": b"unreviewed"})
                 with self.assertRaises(ValueError):
-                    verify_archive(archive_bytes(extra, "opensesh/opensesh", windows), files, windows)
+                    verify_archive(archive_bytes(extra, "openmidisesh/openmidisesh", windows), files, windows)
 
     def test_archive_rejects_links(self):
-        files = {"opensesh/opensesh": b"target"}
+        files = {"openmidisesh/openmidisesh": b"target"}
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w") as archive:
-            entry = zipfile.ZipInfo("opensesh/opensesh")
+            entry = zipfile.ZipInfo("openmidisesh/openmidisesh")
             entry.create_system = 3
             entry.external_attr = 0o120777 << 16
             archive.writestr(entry, b"target")
@@ -76,7 +76,7 @@ class PackageSafety(unittest.TestCase):
             verify_archive(buffer.getvalue(), files, True)
         buffer = io.BytesIO()
         with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
-            entry = tarfile.TarInfo("opensesh/opensesh")
+            entry = tarfile.TarInfo("openmidisesh/openmidisesh")
             entry.type = tarfile.SYMTYPE
             entry.linkname = "../../outside"
             archive.addfile(entry)

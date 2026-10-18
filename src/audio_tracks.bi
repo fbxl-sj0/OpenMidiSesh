@@ -1,10 +1,10 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: audio_tracks.bi
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; shared Windows/Linux x64 and Android editor builds.
@@ -23,7 +23,7 @@
         - expose safe WAV inspection and clip editing
         - expose sixteen-step bounded audio undo and redo snapshots
         - prepare, commit, or cancel snapshots without losing redo on failure
-        - expose the small OpenSesh project-file reader and writer
+        - expose the small OpenMidiSesh project-file reader and writer
 
     This file intentionally does NOT contain:
 

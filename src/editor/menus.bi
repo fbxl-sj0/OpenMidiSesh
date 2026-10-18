@@ -1,13 +1,13 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: src/editor/menus.bi
 
     Targets: FreeBASIC fb dialect; the including application selects the native backend.
-    Module API: Private implementation include for opensesh.bas; state.bi owns shared storage.
+    Module API: Private implementation include for openmidisesh.bas; state.bi owns shared storage.
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Purpose:
@@ -24,7 +24,7 @@
         - an independently linked public module
         - application startup or resource shutdown
 
-    Included once by opensesh.bas in the editor translation unit.
+    Included once by openmidisesh.bas in the editor translation unit.
     Shared editor storage and forward declarations live in state.bi.
 '/
 
@@ -563,7 +563,7 @@ Public Sub session_OnHelpMenu(ByVal selectedIndex As Integer)
     End If
 
     session_AboutWindow = session_CreateEditorWindow( _
-        "about_window", "About OpenSesh", windowX, windowY, _
+        "about_window", "About OpenMidiSesh", windowX, windowY, _
         SESSION_ABOUT_WINDOW_WIDTH, SESSION_ABOUT_WINDOW_HEIGHT)
     If session_AboutWindow = 0 Then
         session_SetStatus "Could not create the About window."

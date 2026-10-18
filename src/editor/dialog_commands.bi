@@ -1,13 +1,13 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: src/editor/dialog_commands.bi
 
     Targets: FreeBASIC fb dialect; the including application selects the native backend.
-    Module API: Private implementation include for opensesh.bas; state.bi owns shared storage.
+    Module API: Private implementation include for openmidisesh.bas; state.bi owns shared storage.
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Purpose:
@@ -24,7 +24,7 @@
         - an independently linked public module
         - application startup or resource shutdown
 
-    Included once by opensesh.bas in the editor translation unit.
+    Included once by openmidisesh.bas in the editor translation unit.
     Shared editor storage and forward declarations live in state.bi.
 '/
 
@@ -1255,9 +1255,117 @@ Public Sub session_OnTrackPropertiesClose(ByVal source As Widget Ptr)
 End Sub
 
 
+Private Function session_TrackPropertiesMidiChannel( _
+    ByVal trackIndex As Integer _
+) As Integer
+    If trackIndex < 0 OrElse trackIndex >= session_Summary.trackCount Then _
+        Return -1
+
+    For noteIndex As Integer = 0 To midi_GetEditableNoteCount() - 1
+        Dim As MidiEditableNote editableNote
+        If midi_GetEditableNote(noteIndex, editableNote) <> 0 AndAlso _
+            editableNote.trackIndex = trackIndex AndAlso _
+            editableNote.channel < SESSION_CHANNEL_COUNT Then
+            Return editableNote.channel
+        End If
+    Next
+
+    For eventIndex As Integer = 0 To midi_GetChannelEventCount() - 1
+        Dim As MidiChannelEventPoint channelEvent
+        If midi_GetChannelEvent(eventIndex, channelEvent) <> 0 AndAlso _
+            channelEvent.trackIndex = trackIndex AndAlso _
+            channelEvent.messageType = OSE_MIDI_STATUS_PROGRAM_CHANGE AndAlso _
+            channelEvent.channel < SESSION_CHANNEL_COUNT Then
+            Return channelEvent.channel
+        End If
+    Next
+
+    For eventIndex As Integer = 0 To midi_GetChannelEventCount() - 1
+        Dim As MidiChannelEventPoint channelEvent
+        If midi_GetChannelEvent(eventIndex, channelEvent) <> 0 AndAlso _
+            channelEvent.trackIndex = trackIndex AndAlso _
+            channelEvent.channel < SESSION_CHANNEL_COUNT Then
+            Return channelEvent.channel
+        End If
+    Next
+    Return trackIndex Mod SESSION_CHANNEL_COUNT
+End Function
+
+
+Private Function session_TrackPropertiesProgramAtStart( _
+    ByVal channelIndex As Integer _
+) As Integer
+    If channelIndex < 0 OrElse channelIndex >= SESSION_CHANNEL_COUNT Then _
+        Return 0
+
+    Dim As Integer programNumber = 0
+    Dim As Integer latestTrackIndex = -1
+    Dim As Integer latestSourceIndex = -1
+    For eventIndex As Integer = 0 To midi_GetChannelEventCount() - 1
+        Dim As MidiChannelEventPoint channelEvent
+        If midi_GetChannelEvent(eventIndex, channelEvent) = 0 Then _
+            Continue For
+        If channelEvent.tick <> 0 OrElse _
+            channelEvent.channel <> channelIndex OrElse _
+            channelEvent.messageType <> OSE_MIDI_STATUS_PROGRAM_CHANGE Then _
+            Continue For
+        If channelEvent.trackIndex > latestTrackIndex OrElse _
+            (channelEvent.trackIndex = latestTrackIndex AndAlso _
+                channelEvent.sourceIndex > latestSourceIndex) Then
+            programNumber = channelEvent.data1
+            latestTrackIndex = channelEvent.trackIndex
+            latestSourceIndex = channelEvent.sourceIndex
+        End If
+    Next
+    Return programNumber
+End Function
+
+
+Private Function session_SetTrackInstrument( _
+    ByVal trackIndex As Integer, _
+    ByVal channelIndex As Integer, _
+    ByVal programNumber As Integer _
+) As Integer
+    If trackIndex < 0 OrElse trackIndex >= session_Summary.trackCount OrElse _
+        channelIndex < 0 OrElse channelIndex >= SESSION_CHANNEL_COUNT OrElse _
+        programNumber < 0 OrElse _
+        programNumber >= SESSION_GENERAL_MIDI_PROGRAM_COUNT Then Return 0
+
+    ' MIDI program state belongs to a channel, so same-tick setup events on
+    ' that channel must agree even when a file placed them on several tracks.
+    Dim As Integer foundProgramEvent = 0
+    For eventIndex As Integer = 0 To midi_GetChannelEventCount() - 1
+        Dim As MidiChannelEventPoint channelEvent
+        If midi_GetChannelEvent(eventIndex, channelEvent) = 0 Then _
+            Continue For
+        If channelEvent.tick <> 0 OrElse _
+            channelEvent.channel <> channelIndex OrElse _
+            channelEvent.messageType <> OSE_MIDI_STATUS_PROGRAM_CHANGE Then _
+            Continue For
+        channelEvent.data1 = programNumber
+        If midi_SetChannelEvent(session_Summary, channelEvent.sourceIndex, _
+            channelEvent) = 0 Then Return 0
+        foundProgramEvent = -1
+    Next
+
+    If foundProgramEvent <> 0 Then Return -1
+    If midi_AddChannelEvent(session_Summary, trackIndex, 0, channelIndex, _
+        OSE_MIDI_STATUS_PROGRAM_CHANGE, programNumber, 0) < 0 Then Return 0
+    Return -1
+End Function
+
+
 Private Sub session_CloseTrackPropertiesWindow()
     If session_TrackWindow = 0 Then
         Exit Sub
+    End If
+
+    If session_TrackInstrumentPickerWindow <> 0 Then
+        Dim As String pickerName = session_TrackInstrumentPickerWindow->name
+        gui_RemoveWidget pickerName
+        session_TrackInstrumentPickerWindow = 0
+        session_TrackInstrumentPickerList = 0
+        session_TrackInstrumentPickerCloseRequested = 0
     End If
 
     Dim As String windowName = session_TrackWindow->name
@@ -1265,6 +1373,10 @@ Private Sub session_CloseTrackPropertiesWindow()
     gui_ClearModalRoot()
     session_TrackWindow = 0
     session_TrackNameBox = 0
+    session_TrackInstrumentNameLabel = 0
+    session_TrackInstrumentChannel = 0
+    session_TrackInstrumentInitialProgram = 0
+    session_TrackInstrumentSelectedProgram = 0
     session_DocumentTitleBox = 0
     session_CopyrightBox = 0
     session_LyricBox = 0
@@ -1283,6 +1395,169 @@ Private Sub session_ProcessTrackPropertiesWindow()
 
     session_CloseTrackPropertiesWindow()
     session_SetStatus "Track properties closed."
+End Sub
+
+
+Private Sub session_TrackInstrumentPickerAddChild(ByVal child As Widget Ptr)
+    If child = 0 OrElse session_TrackInstrumentPickerWindow = 0 Then Exit Sub
+    gui_AddGeneratedWidget child
+    gui_SetParent child, session_TrackInstrumentPickerWindow
+End Sub
+
+
+Public Sub session_OnTrackInstrumentPickerClose(ByVal source As Widget Ptr)
+    ' The manager records close_requested before the editor loop removes the
+    ' picker window and restores the Track Properties modal root.
+    If source = 0 Then Exit Sub
+End Sub
+
+
+Private Sub session_CloseTrackInstrumentPickerWindow()
+    If session_TrackInstrumentPickerWindow = 0 Then Exit Sub
+
+    Dim As String windowName = session_TrackInstrumentPickerWindow->name
+    gui_RemoveWidget windowName
+    session_TrackInstrumentPickerWindow = 0
+    session_TrackInstrumentPickerList = 0
+    session_TrackInstrumentPickerCloseRequested = 0
+    If session_TrackWindow <> 0 Then
+        gui_SetModalRoot session_TrackWindow
+    Else
+        gui_ClearModalRoot()
+    End If
+End Sub
+
+
+Public Sub session_ProcessTrackInstrumentPickerWindow()
+    If session_TrackInstrumentPickerWindow = 0 Then Exit Sub
+    If session_TrackWindow = 0 OrElse _
+        session_TrackInstrumentPickerCloseRequested <> 0 OrElse _
+        subwindow_CloseRequested(session_TrackInstrumentPickerWindow) <> 0 Then
+        session_CloseTrackInstrumentPickerWindow()
+    End If
+End Sub
+
+
+Public Sub session_OnChooseTrackInstrument(ByVal source As Widget Ptr)
+    If session_TrackWindow = 0 OrElse _
+        session_TrackInstrumentSelectedProgram < 0 OrElse _
+        session_TrackInstrumentSelectedProgram >= _
+            SESSION_GENERAL_MIDI_PROGRAM_COUNT Then Exit Sub
+    If session_TrackInstrumentPickerWindow <> 0 Then
+        gui_BringToFront session_TrackInstrumentPickerWindow
+        Exit Sub
+    End If
+
+    Dim As Integer screenWidth
+    Dim As Integer screenHeight
+    backend_GetSize screenWidth, screenHeight
+    Dim As Integer windowX = _
+        (screenWidth - SESSION_GM_INSTRUMENT_PICKER_WIDTH) \ 2
+    Dim As Integer windowY = _
+        (screenHeight - SESSION_GM_INSTRUMENT_PICKER_HEIGHT) \ 2
+    If windowX < 0 Then windowX = 0
+    If windowY < 0 Then windowY = 0
+
+    session_TrackInstrumentPickerWindow = session_CreateEditorWindow( _
+        "gm_instrument_picker_window", "Choose General MIDI Instrument", _
+        windowX, windowY, SESSION_GM_INSTRUMENT_PICKER_WIDTH, _
+        SESSION_GM_INSTRUMENT_PICKER_HEIGHT)
+    If session_TrackInstrumentPickerWindow = 0 Then
+        session_SetStatus "Could not create the General MIDI instrument selector."
+        Exit Sub
+    End If
+    session_TrackInstrumentPickerCloseRequested = 0
+    gui_AddWidget session_TrackInstrumentPickerWindow
+    subwindow_SetCloseHandler session_TrackInstrumentPickerWindow, _
+        @session_OnTrackInstrumentPickerClose
+
+    Dim As Widget Ptr child = session_CreateEditorLabel( _
+        "gm_instrument_picker_hint", _
+        "Choose by name. GM program numbers run from 001 to 128.", _
+        12, 28)
+    If child = 0 Then
+        session_CloseTrackInstrumentPickerWindow()
+        session_SetStatus "Could not create the instrument selector label."
+        Exit Sub
+    End If
+    session_TrackInstrumentPickerAddChild child
+    session_TrackInstrumentPickerList = listbox_Create( _
+        "gm_instrument_picker_list", 12, 50, 536, 470)
+    If session_TrackInstrumentPickerList = 0 Then
+        session_CloseTrackInstrumentPickerWindow()
+        session_SetStatus "Could not create the General MIDI instrument list."
+        Exit Sub
+    End If
+    session_TrackInstrumentPickerAddChild session_TrackInstrumentPickerList
+
+    For programNumber As Integer = 0 To _
+        SESSION_GENERAL_MIDI_PROGRAM_COUNT - 1
+        Dim As String displayName = _
+            generalMidiInstrument_GetDisplayName(programNumber)
+        If listbox_InsertItem(session_TrackInstrumentPickerList, _
+            displayName) = 0 Then
+            session_CloseTrackInstrumentPickerWindow()
+            session_SetStatus "Could not fill the General MIDI instrument list."
+            Exit Sub
+        End If
+    Next
+    If listbox_SetSelectedIndex(session_TrackInstrumentPickerList, _
+        session_TrackInstrumentSelectedProgram) = 0 Then
+        session_CloseTrackInstrumentPickerWindow()
+        session_SetStatus "Could not select the current MIDI instrument."
+        Exit Sub
+    End If
+
+    child = button_Create("gm_instrument_picker_use", "Use selected", _
+        12, 530, 94, 26, @session_OnUseTrackInstrument)
+    If child = 0 Then
+        session_CloseTrackInstrumentPickerWindow()
+        session_SetStatus "Could not create the instrument selector controls."
+        Exit Sub
+    End If
+    session_TrackInstrumentPickerAddChild child
+    child = button_Create("gm_instrument_picker_cancel", "Cancel", _
+        116, 530, 78, 26, @session_OnCancelTrackInstrumentPicker)
+    If child = 0 Then
+        session_CloseTrackInstrumentPickerWindow()
+        session_SetStatus "Could not create the instrument selector controls."
+        Exit Sub
+    End If
+    session_TrackInstrumentPickerAddChild child
+
+    gui_SetModalRoot session_TrackInstrumentPickerWindow
+    gui_SetFocus session_TrackInstrumentPickerList
+    session_SetStatus "Choose a General MIDI instrument by name."
+End Sub
+
+
+Public Sub session_OnUseTrackInstrument(ByVal source As Widget Ptr)
+    If session_TrackInstrumentPickerList = 0 OrElse _
+        session_TrackInstrumentNameLabel = 0 Then Exit Sub
+
+    Dim As Integer programNumber = listbox_GetSelectedIndex( _
+        session_TrackInstrumentPickerList)
+    If programNumber < 0 OrElse _
+        programNumber >= SESSION_GENERAL_MIDI_PROGRAM_COUNT Then
+        session_SetStatus "Select one of the 128 General MIDI instruments."
+        Exit Sub
+    End If
+
+    Dim As String displayName = _
+        generalMidiInstrument_GetDisplayName(programNumber)
+    If label_SetText(session_TrackInstrumentNameLabel, displayName) = 0 Then
+        session_SetStatus "Could not update the selected instrument name."
+        Exit Sub
+    End If
+    session_TrackInstrumentSelectedProgram = programNumber
+    session_TrackInstrumentPickerCloseRequested = -1
+    session_SetStatus "Selected " + displayName + ". Apply Track Properties to store it."
+End Sub
+
+
+Public Sub session_OnCancelTrackInstrumentPicker(ByVal source As Widget Ptr)
+    session_TrackInstrumentPickerCloseRequested = -1
+    session_SetStatus "Instrument selection cancelled."
 End Sub
 
 
@@ -1376,6 +1651,12 @@ Public Sub session_OnTrackProperties(ByVal source As Widget Ptr)
     subwindow_SetCloseHandler session_TrackWindow, _
         @session_OnTrackPropertiesClose
 
+    session_TrackInstrumentChannel = session_TrackPropertiesMidiChannel( _
+        session_SelectedTrack)
+    session_TrackInstrumentInitialProgram = _
+        session_TrackPropertiesProgramAtStart(session_TrackInstrumentChannel)
+    session_TrackInstrumentSelectedProgram = _
+        session_TrackInstrumentInitialProgram
     Dim As Widget Ptr child
     child = session_CreateEditorLabel("track_properties_label", "Track name", 12, 32)
     session_TrackPropertiesAddChild child
@@ -1412,30 +1693,48 @@ Public Sub session_OnTrackProperties(ByVal source As Widget Ptr)
         24, 0, 0, TEXTBOX_SCROLLBAR_NONE)
     session_TrackPropertiesAddChild session_MarkerBox
 
+    child = session_CreateEditorLabel("track_properties_instrument_label", _
+        "General MIDI instrument, channel " + _
+            LTrim(Str(session_TrackInstrumentChannel + 1)), 12, 290)
+    session_TrackPropertiesAddChild child
+    session_TrackInstrumentNameLabel = session_CreateEditorLabel( _
+        "track_instrument_name", _
+        generalMidiInstrument_GetDisplayName( _
+            session_TrackInstrumentSelectedProgram), _
+        12, 309)
+    If session_TrackInstrumentNameLabel <> 0 Then
+        label_SetClipToBounds session_TrackInstrumentNameLabel, -1
+        session_TrackInstrumentNameLabel->w = 352
+        session_TrackInstrumentNameLabel->h = 20
+    End If
+    session_TrackPropertiesAddChild session_TrackInstrumentNameLabel
+    child = button_Create("track_instrument_choose", "Choose...", _
+        382, 306, 126, 26, @session_OnChooseTrackInstrument)
+    session_TrackPropertiesAddChild child
+
     child = session_CreateEditorLabel("track_properties_quantize_label", _
-        "Quantize grid (ticks)", 12, 290)
+        "Quantize grid (ticks)", 12, 340)
     session_TrackPropertiesAddChild child
     Dim As ULongInt defaultGrid = CULngInt(session_Summary.division) \ 4
     If defaultGrid = 0 Then
         defaultGrid = 1
     End If
     session_QuantizeGridBox = session_CreateEditorTextBox( _
-        "quantize_grid", Str(defaultGrid), 12, 308, 220, 24, 0, 0, _
+        "quantize_grid", Str(defaultGrid), 12, 358, 220, 24, 0, 0, _
         TEXTBOX_SCROLLBAR_NONE)
     session_TrackPropertiesAddChild session_QuantizeGridBox
 
-    child = button_Create("track_properties_apply", "Apply", 12, 342, 78, 26, _
+    child = button_Create("track_properties_apply", "Apply", 12, 392, 78, 26, _
         @session_OnApplyTrackProperties)
     session_TrackPropertiesAddChild child
-    child = button_Create("track_properties_quantize", "Quantize", 98, 342, _
+    child = button_Create("track_properties_quantize", "Quantize", 98, 392, _
         86, 26, @session_OnQuantizeTrack)
     session_TrackPropertiesAddChild child
     child = session_CreateEditorLabel("track_properties_hint", _
-        "Track names: 63 characters. Text metadata: 1024 characters.", _
-        12, 378)
+        "Track names: 63 characters; document text: 1024 bytes.", 12, 428)
     session_TrackPropertiesAddChild child
     child = session_CreateEditorLabel("track_properties_empty_hint", _
-        "Empty metadata fields remove the stored value.", 12, 398)
+        "MIDI programs are shared by tracks using the same channel.", 12, 448)
     session_TrackPropertiesAddChild child
 
     gui_SetModalRoot session_TrackWindow
@@ -1488,6 +1787,7 @@ End Sub
 
 Public Sub session_OnApplyTrackProperties(ByVal source As Widget Ptr)
     If session_TrackWindow = 0 OrElse session_TrackNameBox = 0 OrElse _
+        session_TrackInstrumentNameLabel = 0 OrElse _
         session_DocumentTitleBox = 0 OrElse session_CopyrightBox = 0 OrElse _
         session_LyricBox = 0 OrElse session_MarkerBox = 0 Then Exit Sub
     If session_SelectedTrack < 0 OrElse _
@@ -1498,6 +1798,15 @@ Public Sub session_OnApplyTrackProperties(ByVal source As Widget Ptr)
     Dim As String copyrightText = Trim(textbox_GetText(session_CopyrightBox))
     Dim As String lyricText = Trim(textbox_GetText(session_LyricBox))
     Dim As String markerText = Trim(textbox_GetText(session_MarkerBox))
+    If session_TrackInstrumentSelectedProgram < 0 OrElse _
+        session_TrackInstrumentSelectedProgram >= _
+            SESSION_GENERAL_MIDI_PROGRAM_COUNT Then
+        session_SetStatus "Choose one of the 128 General MIDI instruments."
+        Exit Sub
+    End If
+    Dim As Integer programNumber = session_TrackInstrumentSelectedProgram
+    Dim As Integer instrumentChanged = _
+        programNumber <> session_TrackInstrumentInitialProgram
     If Len(trackName) > OSE_MAX_TRACK_NAME OrElse _
         Len(documentTitle) > OSE_MAX_TEXT_EVENT_BYTES OrElse _
         Len(copyrightText) > OSE_MAX_TEXT_EVENT_BYTES OrElse _
@@ -1510,8 +1819,9 @@ Public Sub session_OnApplyTrackProperties(ByVal source As Widget Ptr)
         documentTitle = session_DocumentTextValue(&H01) AndAlso _
         copyrightText = session_DocumentTextValue(&H02) AndAlso _
         lyricText = session_DocumentTextValue(&H05) AndAlso _
-        markerText = session_DocumentTextValue(&H06) Then
-        session_SetStatus "Track and document information are unchanged."
+        markerText = session_DocumentTextValue(&H06) AndAlso _
+        instrumentChanged = 0 Then
+        session_SetStatus "Track, document, and instrument values are unchanged."
         Exit Sub
     End If
 
@@ -1531,13 +1841,25 @@ Public Sub session_OnApplyTrackProperties(ByVal source As Widget Ptr)
         session_SetStatus "Document text could not be stored."
         Exit Sub
     End If
+    If instrumentChanged <> 0 AndAlso session_SetTrackInstrument( _
+        session_SelectedTrack, session_TrackInstrumentChannel, _
+        programNumber) = 0 Then
+        session_CancelMidiEdit()
+        session_SetStatus "MIDI instrument could not be stored on the selected channel."
+        Exit Sub
+    End If
     If session_CommitMidiEdit() = 0 Then
         Exit Sub
     End If
 
     session_RefreshTrackList()
     session_Dirty = -1
-    session_SetStatus "Updated track and document information."
+    session_TrackInstrumentInitialProgram = programNumber
+    If instrumentChanged <> 0 Then
+        session_SetStatus "Updated track information and MIDI instrument."
+    Else
+        session_SetStatus "Updated track and document information."
+    End If
 End Sub
 
 
@@ -1562,7 +1884,7 @@ Private Sub session_OpenFileDialog()
     session_FileDialogMode = SESSION_DIALOG_OPEN
     gui_AddWidget session_FileDialog
     gui_SetModalRoot session_FileDialog
-    session_SetStatus "Choose a Standard MIDI file or OpenSesh project."
+    session_SetStatus "Choose a Standard MIDI file or OpenMidiSesh project."
 End Sub
 
 
@@ -1585,7 +1907,7 @@ Private Sub session_OpenProjectSaveDialog()
     session_FileDialogMode = SESSION_DIALOG_PROJECT_SAVE
     gui_AddWidget session_FileDialog
     gui_SetModalRoot session_FileDialog
-    session_SetStatus "Choose an OpenSesh project filename."
+    session_SetStatus "Choose an OpenMidiSesh project filename."
 End Sub
 
 
@@ -1764,7 +2086,7 @@ Private Function session_SaveProjectTo(ByVal projectFilename As String) As Integ
     session_Filename = midiFilename
     session_ProjectFilename = projectFilename
     session_Dirty = 0
-    session_SetStatus "Saved OpenSesh project: " + projectFilename
+    session_SetStatus "Saved OpenMidiSesh project: " + projectFilename
     Return -1
 End Function
 
@@ -2092,9 +2414,15 @@ Private Function session_BeginLiveRecording( _
     session_LiveRecordingStartClock = Timer
     session_LiveRecordingStartMidiTimestamp = 0
     session_LiveRecordingHasMidiTimestamp = 0
+    session_LiveRecordingPaused = 0
+    session_LiveRecordingPauseTick = 0
     If includeMidiInput <> 0 AndAlso midiInput_IsOpen() <> 0 Then _
         session_LiveRecordingHasMidiTimestamp = midiInput_GetClockMilliseconds( _
             session_LiveRecordingStartMidiTimestamp)
+    For channelIndex As Integer = 0 To SESSION_CHANNEL_COUNT - 1
+        session_LiveInputProgram(channelIndex) = _
+            session_Summary.channelProgram(channelIndex)
+    Next
     session_ResetLiveKeyboardState()
     session_ResetLiveMidiState()
     session_LastMidiInputDroppedCount = midiInput_GetDroppedCount()
@@ -2585,6 +2913,14 @@ End Sub
 Public Sub session_OnPause(ByVal source As Widget Ptr)
     If session_WavExport.active <> 0 Then
         session_SetStatus "WAV export cannot be paused. Press Stop to cancel it."
+        Exit Sub
+    End If
+    If session_LiveRecording <> 0 Then
+        If session_LiveRecordingPaused <> 0 Then
+            session_ResumeLiveRecording()
+        Else
+            session_PauseLiveRecording()
+        End If
         Exit Sub
     End If
     If session_Playing = 0 Then

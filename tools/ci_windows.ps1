@@ -1,5 +1,5 @@
 <#
-    Project: OpenSesh
+    Project: OpenMidiSesh
     File: tools/ci_windows.ps1
     Purpose: gate portable Windows packages on native build and execution.
     Responsibilities: verify source/toolchain, run core tests and editor launches.
@@ -26,20 +26,20 @@ $env:SFXLIB_DRIVER = 'null'
     Tee-Object -FilePath 'build/ci/logs/tests.log'
 if ($LASTEXITCODE -ne 0) { throw 'Native Windows tests failed.' }
 & powershell -NoProfile -File build_editor.ps1 -FreeBasicPath $env:FREEBASIC_PATH `
-    -OutputPath (Join-Path $projectRoot 'build/ci/opensesh.exe') 2>&1 |
+    -OutputPath (Join-Path $projectRoot 'build/ci/openmidisesh.exe') 2>&1 |
     Tee-Object -FilePath 'build/ci/logs/build.log'
 if ($LASTEXITCODE -ne 0) { throw 'Native Windows build failed.' }
 & powershell -NoProfile -File tests/verify_windows_binary.ps1 `
-    -ExecutablePath build/ci/opensesh.exe -RequireUnsignedDevelopmentBuild 2>&1 |
+    -ExecutablePath build/ci/openmidisesh.exe -RequireUnsignedDevelopmentBuild 2>&1 |
     Tee-Object -FilePath 'build/ci/logs/pe.log'
 if ($LASTEXITCODE -ne 0) { throw 'Windows binary or system DLL boundary failed.' }
 & powershell -NoProfile -File tests/verify_windows_manifest.ps1 `
-    -ExecutablePath build/ci/opensesh.exe 2>&1 |
+    -ExecutablePath build/ci/openmidisesh.exe 2>&1 |
     Tee-Object -FilePath 'build/ci/logs/manifest.log'
 if ($LASTEXITCODE -ne 0) { throw 'Windows manifest checks failed.' }
-& python tools/ci_editor_smoke.py build/ci/opensesh.exe build/ci/editor
+& python tools/ci_editor_smoke.py build/ci/openmidisesh.exe build/ci/editor
 if ($LASTEXITCODE -ne 0) { throw 'Native Windows editor launch checks failed.' }
-& python tools/package_platform.py build/ci/opensesh.exe build/ci/logs/tests.log build/packages
+& python tools/package_platform.py build/ci/openmidisesh.exe build/ci/logs/tests.log build/packages
 if ($LASTEXITCODE -ne 0) { throw 'Extracted Windows package checks failed.' }
 Write-Output 'native_package_gate=pass'
 

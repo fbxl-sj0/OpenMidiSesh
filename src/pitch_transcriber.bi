@@ -1,10 +1,10 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: pitch_transcriber.bi
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; shared Windows/Linux x64 and Android editor builds.
@@ -28,8 +28,8 @@
         - polyphonic source separation
 '/
 
-#ifndef OPENSESH_PITCH_TRANSCRIBER_BI
-#define OPENSESH_PITCH_TRANSCRIBER_BI
+#ifndef OPENMIDISESH_PITCH_TRANSCRIBER_BI
+#define OPENMIDISESH_PITCH_TRANSCRIBER_BI
 
 Const PITCH_TRANSCRIBE_MAX_NOTES As Integer = 4096
 Const PITCH_TRANSCRIBE_MAX_FILE_BYTES As ULongInt = 67108864

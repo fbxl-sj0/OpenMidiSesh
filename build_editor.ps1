@@ -1,5 +1,5 @@
 <#
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ----------------------------
 
     File: build_editor.ps1
@@ -37,7 +37,7 @@ if ([string]::IsNullOrWhiteSpace($OmaGuiPath)) {
     $OmaGuiPath = Join-Path $projectRoot 'vendor\omaGui'
 }
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
-    $OutputPath = Join-Path $projectRoot 'opensesh.exe'
+    $OutputPath = Join-Path $projectRoot 'openmidisesh.exe'
 }
 
 $compilerPath = [System.IO.Path]::GetFullPath($FreeBasicPath)
@@ -47,8 +47,8 @@ $outputDirectory = Split-Path -Parent $outputFile
 if (-not (Test-Path -LiteralPath $outputDirectory -PathType Container)) {
     [System.IO.Directory]::CreateDirectory($outputDirectory) | Out-Null
 }
-$resourceFile = Join-Path $projectRoot 'src\opensesh.rc'
-$manifestFile = Join-Path $projectRoot 'src\opensesh.manifest'
+$resourceFile = Join-Path $projectRoot 'src\openmidisesh.rc'
+$manifestFile = Join-Path $projectRoot 'src\openmidisesh.manifest'
 
 if (-not (Test-Path -LiteralPath $compilerPath -PathType Leaf)) {
     throw "FreeBASIC compiler was not found: $compilerPath"
@@ -80,7 +80,7 @@ if ([string]::IsNullOrWhiteSpace($ResourceCompilerPath) -or
 $resourceCompiler = [System.IO.Path]::GetFullPath($ResourceCompilerPath)
 
 $sourceFiles = @(
-    'src\opensesh.bas',
+    'src\openmidisesh.bas',
     'src\omagui_runtime.bas',
     'src\midi_model.bas',
     'src\history_timeline.bas',
@@ -134,10 +134,10 @@ foreach ($relativeFile in $sourceFiles) {
 
 $temporaryRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
 $objectRoot = Join-Path $temporaryRoot `
-    ('opensesh-build-' + [System.Guid]::NewGuid().ToString('N'))
+    ('openmidisesh-build-' + [System.Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $objectRoot | Out-Null
-$resourceObject = Join-Path $objectRoot 'opensesh_resource.o'
-$linkedExecutable = Join-Path $objectRoot 'opensesh.exe'
+$resourceObject = Join-Path $objectRoot 'openmidisesh_resource.o'
+$linkedExecutable = Join-Path $objectRoot 'openmidisesh.exe'
 $objectFiles = [System.Collections.Generic.List[string]]::new()
 $compileExit = 1
 try {
@@ -167,8 +167,8 @@ try {
             # therefore use FreeBASIC's thread-safe runtime, including objects
             # which do not call the threading API directly.
             $sourceArguments = @('-i', $omaGuiRoot, '-O', '2', '-mt', '-w', 'all', '-c')
-            If ($relativeFile -eq 'src\opensesh.bas') {
-                $sourceArguments += @('-m', 'opensesh', '-s', 'gui')
+            If ($relativeFile -eq 'src\openmidisesh.bas') {
+                $sourceArguments += @('-m', 'openmidisesh', '-s', 'gui')
             }
             $sourceArguments += @($sourceFile, '-o', $objectFile)
             $compilerOutput = @(& $compilerPath @sourceArguments 2>&1)
@@ -232,7 +232,7 @@ finally {
     if (-not $resolvedObjectRoot.StartsWith(
             $temporaryBoundary,
             [System.StringComparison]::OrdinalIgnoreCase) -or
-        -not $objectLeaf.StartsWith('opensesh-build-')) {
+        -not $objectLeaf.StartsWith('openmidisesh-build-')) {
         throw "Refusing to remove an unexpected build directory: $resolvedObjectRoot"
     }
     if (Test-Path -LiteralPath $resolvedObjectRoot -PathType Container) {

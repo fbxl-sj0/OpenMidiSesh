@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Project: OpenSesh
+# Project: OpenMidiSesh
 # ----------------------------
 #
 # File: verify_linux_release_archive.sh
@@ -112,7 +112,7 @@ cleanup_verification_directory()
     # mktemp owns the six-character suffix.  Refuse cleanup if the returned
     # path ever falls outside that exact private naming boundary.
     case "$work_root" in
-        "$temporary_parent"/opensesh-release-??????)
+        "$temporary_parent"/openmidisesh-release-??????)
             rm -rf -- "$work_root"
             ;;
         *)
@@ -126,7 +126,7 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 work_root=$(mktemp -d \
-    "$temporary_parent/opensesh-release-XXXXXX")
+    "$temporary_parent/openmidisesh-release-XXXXXX")
 entry_list="$work_root/archive-entries.txt"
 extract_root="$work_root/extracted"
 
@@ -170,7 +170,7 @@ while IFS= read -r archive_entry; do
             ;;
     esac
     case "$archive_entry" in
-        opensesh/*) ;;
+        openmidisesh/*) ;;
         *)
             echo "Unexpected source archive root: $archive_entry" >&2
             exit 1
@@ -185,7 +185,7 @@ if ! unzip -q "$archive_path" -d "$extract_root"; then
     exit 1
 fi
 
-project_root="$extract_root/opensesh"
+project_root="$extract_root/openmidisesh"
 if [ ! -f "$project_root/tests/run_tests.sh" ] || \
    [ ! -f "$project_root/build_editor.sh" ] || \
    [ ! -d "$project_root/vendor/omaGui" ]; then
@@ -231,7 +231,7 @@ else
     echo 'linux_midi_loopback_status=skipped'
 fi
 
-editor_path="$work_root/opensesh-linux"
+editor_path="$work_root/openmidisesh-linux"
 if ! OUTPUT_PATH="$editor_path" bash "$project_root/build_editor.sh"; then
     echo 'Extracted Linux editor build failed.' >&2
     exit 1

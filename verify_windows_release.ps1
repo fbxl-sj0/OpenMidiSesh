@@ -1,5 +1,5 @@
 <#
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ----------------------------
 
     File: verify_windows_release.ps1
@@ -76,12 +76,12 @@ $compilerPath = [System.IO.Path]::GetFullPath($FreeBasicPath)
 $omaGuiRoot = [System.IO.Path]::GetFullPath($OmaGuiPath)
 $strictLinter = [System.IO.Path]::GetFullPath($LinterPath)
 $workingRoot = Join-Path ([System.IO.Path]::GetTempPath()) `
-    ('opensesh-release-verify-' + [System.Guid]::NewGuid().ToString('N'))
+    ('openmidisesh-release-verify-' + [System.Guid]::NewGuid().ToString('N'))
 $failureMessage = ''
 
 $evidence = [ordered]@{
     schema_version = 1
-    product = 'OpenSesh'
+    product = 'OpenMidiSesh'
     started_utc = [DateTime]::UtcNow.ToString('o')
     completed_utc = $null
     host = $env:COMPUTERNAME
@@ -440,7 +440,7 @@ try {
         $productName = Get-DeclaredStringConstant `
             -SourceText $versionTextSource -ConstantName 'OSE_PRODUCT_NAME'
         $releaseExecutable = Join-Path $evidenceRoot `
-            ('OpenSesh-' + $releaseVersion + '-windows.exe')
+            ('OpenMidiSesh-' + $releaseVersion + '-windows.exe')
         $buildLog = Join-Path $evidenceRoot 'build-editor.log'
         $buildArguments = @(
             '-NoProfile',
@@ -518,7 +518,7 @@ try {
         }
 
         $reproducibilityExecutable = Join-Path $workingRoot `
-            'OpenSesh-reproducibility.exe'
+            'OpenMidiSesh-reproducibility.exe'
         $reproducibilityBuildLog = Join-Path $evidenceRoot `
             'build-editor-reproducibility.log'
         $reproducibilityBuildArguments = @(
@@ -543,7 +543,7 @@ try {
         }
 
         $sourceArchive = Join-Path $evidenceRoot `
-            ('OpenSesh-source-' + $releaseVersion + '.zip')
+            ('OpenMidiSesh-source-' + $releaseVersion + '.zip')
         $archiveLog = Join-Path $evidenceRoot 'prepare-source-archive.log'
         $archiveArguments = @(
             '-NoProfile',
@@ -588,10 +588,10 @@ try {
                 if ($entryName.EndsWith('/')) {
                     continue
                 }
-                if (-not $entryName.StartsWith('opensesh/')) {
+                if (-not $entryName.StartsWith('openmidisesh/')) {
                     throw "Unexpected source archive root: $entryName"
                 }
-                $relativeEntry = $entryName.Substring('opensesh/'.Length)
+                $relativeEntry = $entryName.Substring('openmidisesh/'.Length)
                 if ($relativeEntry -eq '' -or
                     -not $archivePathSet.Add($relativeEntry)) {
                     throw "Duplicate or empty source archive path: $relativeEntry"
@@ -649,11 +649,11 @@ try {
         }
         foreach ($requiredArchiveFile in @(
                 'build_editor_android.ps1',
-                'src\opensesh_unity.bas',
+                'src\openmidisesh_unity.bas',
                 'src\midi_null.bas',
                 'src\touch_gesture.bas',
                 'src\touch_gesture.bi',
-                'src\opensesh.manifest',
+                'src\openmidisesh.manifest',
                 'PORTABLE_README.txt',
                 'docs\DEPENDENCIES.md',
                 'src\midi_alsa.bas',
@@ -698,7 +698,7 @@ try {
                 [Environment]::NewLine)
 
         $portablePackage = Join-Path $evidenceRoot `
-            ('OpenSesh-' + $releaseVersion +
+            ('OpenMidiSesh-' + $releaseVersion +
                 '-windows-portable.zip')
         $portableLog = Join-Path $evidenceRoot `
             'prepare-windows-portable-package.log'
@@ -717,7 +717,7 @@ try {
             -Description 'deterministic Windows portable package'
 
         $reproducibilityPackage = Join-Path $workingRoot `
-            'OpenSesh-portable-reproducibility.zip'
+            'OpenMidiSesh-portable-reproducibility.zip'
         $reproducibilityPackageLog = Join-Path $evidenceRoot `
             'prepare-windows-portable-package-reproducibility.log'
         $reproducibilityPackageArguments = @(
@@ -852,7 +852,7 @@ finally {
             if (-not $resolvedWorkingRoot.StartsWith(
                     $temporaryBoundary,
                     [System.StringComparison]::OrdinalIgnoreCase) -or
-                -not $workingLeaf.StartsWith('opensesh-release-verify-')) {
+                -not $workingLeaf.StartsWith('openmidisesh-release-verify-')) {
                 throw "Refusing to remove an unexpected work directory: $resolvedWorkingRoot"
             }
             Remove-Item -LiteralPath $resolvedWorkingRoot -Recurse -Force

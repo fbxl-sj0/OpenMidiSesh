@@ -1,4 +1,4 @@
-' Project: OpenSesh validator regression checks
+' Project: OpenMidiSesh validator regression checks
 ' File: tools/fblint/test_expression_provenance_cache.bas
 ' Purpose: Compare cached provenance with the original production traversal.
 ' Responsibilities: Real model validation, copied arrays, budgets and index lifetime.

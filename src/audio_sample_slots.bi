@@ -1,10 +1,10 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: audio_sample_slots.bi
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; shared Windows/Linux x64 and Android editor builds.
@@ -35,12 +35,12 @@
 #define __OSE_AUDIO_SAMPLE_SLOTS_BI__
 
 #include once "audio_tracks.bi"
+#include once "sfx_runtime.bi"
 
 ' sfxlib's public sound-effect table contains IDs 0 through 63. The editor
 ' does not load unrelated effects, so document clips own the complete table.
 Const OSE_AUDIO_SAMPLE_SLOT_BASE As Integer = 0
 Const OSE_SFX_SAMPLE_SLOT_COUNT As Integer = 64
-Const OSE_SFX_MIXER_CHANNEL_COUNT As Integer = 16
 #assert OSE_AUDIO_SAMPLE_SLOT_BASE + OSE_AUDIO_MAX_CLIPS <= _
     OSE_SFX_SAMPLE_SLOT_COUNT
 

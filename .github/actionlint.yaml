@@ -1,4 +1,4 @@
-# Project: OpenSesh
+# Project: OpenMidiSesh
 # File: .github/actionlint.yaml
 # Purpose: declare the trusted desktop runner label used by release CI.
 # Responsibilities: keep workflow validation aware of the repository's label.

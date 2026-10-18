@@ -1,10 +1,10 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: omagui_runtime.bas
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; shared Windows/Linux x64 and Android editor builds.
@@ -19,11 +19,11 @@
 
         - instantiate the shared omaGui widget, input, and gfxlib backends once
         - keep GUI implementation storage outside the application entry module
-        - select the redistributable OpenSesh font tables
+        - select the redistributable OpenMidiSesh font tables
 
     This file intentionally does NOT contain:
 
-        - OpenSesh document or editor behavior
+        - OpenMidiSesh document or editor behavior
         - platform-specific MIDI selection
         - application startup or shutdown policy
 '/

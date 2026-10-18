@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Project: OpenSesh
+# Project: OpenMidiSesh
 # ----------------------------
 #
 # File: tests/run_ui_smoothness.sh
@@ -27,7 +27,7 @@
 set -u
 
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-editor_path=${EDITOR_PATH:-"$project_root/opensesh"}
+editor_path=${EDITOR_PATH:-"$project_root/openmidisesh"}
 build_root=${BUILD_DIRECTORY:-}
 frame_count=${SMOOTHNESS_FRAME_COUNT:-480}
 test_timeout_seconds=${TEST_TIMEOUT_SECONDS:-45}
@@ -89,7 +89,7 @@ if ! XAUTHORITY="$xauthority_path" DISPLAY="$display_name" \
 fi
 
 if [ -z "$build_root" ]; then
-    build_root=$(mktemp -d /tmp/opensesh-smoothness-XXXXXX)
+    build_root=$(mktemp -d /tmp/openmidisesh-smoothness-XXXXXX)
     owns_build_root=1
 else
     if [ -e "$build_root" ]; then
@@ -108,7 +108,7 @@ cleanup_smoothness_directory()
         return
     fi
     case "$build_root" in
-        /tmp/opensesh-smoothness-??????)
+        /tmp/openmidisesh-smoothness-??????)
             rm -rf -- "$build_root"
             ;;
         *)
@@ -231,7 +231,7 @@ for case_specification in "${cases[@]}"; do
     fi
 
     require_report_value "$report_path" "$case_name" format \
-        OpenSeshUiSmoothness || exit 1
+        OpenMidiSeshUiSmoothness || exit 1
     require_report_value "$report_path" "$case_name" version 1 || exit 1
     require_report_value "$report_path" "$case_name" status pass || exit 1
     require_report_value "$report_path" "$case_name" scenario "$mode_name" || exit 1

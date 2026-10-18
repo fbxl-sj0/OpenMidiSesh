@@ -1,4 +1,4 @@
-' Project: OpenSesh validator regression checks
+' Project: OpenMidiSesh validator regression checks
 ' File: tools/fblint/test_field_cache.bas
 ' Purpose: Compare cached field boundaries with the original production reader.
 ' Responsibilities: Every field, memory caps, replacement models and snapshots.

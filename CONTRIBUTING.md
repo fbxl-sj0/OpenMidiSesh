@@ -1,6 +1,6 @@
-<!-- Project: OpenSesh; File: CONTRIBUTING.md; Purpose: contributor workflow. -->
+<!-- Project: OpenMidiSesh; File: CONTRIBUTING.md; Purpose: contributor workflow. -->
 
-# Contributing to OpenSesh
+# Contributing to OpenMidiSesh
 
 Start with the [user guide](docs/USER_GUIDE.md), [architecture](docs/ARCHITECTURE.md),
 and [build instructions](docs/BUILDING.md). Keep changes focused and describe

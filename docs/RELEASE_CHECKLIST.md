@@ -1,5 +1,5 @@
 <!--
-    Project: OpenSesh
+    Project: OpenMidiSesh
     File: docs/RELEASE_CHECKLIST.md
     Purpose: List the checks required before publishing a package.
     Responsibilities: tie release artifacts to their source, evidence and licenses.

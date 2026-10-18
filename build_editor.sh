@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Project: OpenSesh
+# Project: OpenMidiSesh
 # ----------------------------
 #
 # File: build_editor.sh
@@ -26,7 +26,7 @@ set -eu
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 compiler_path=${FREEBASIC_PATH:-fbc}
 omagui_root=${OMAGUI_PATH:-"$project_root/vendor/omaGui"}
-output_file=${OUTPUT_PATH:-"$project_root/opensesh"}
+output_file=${OUTPUT_PATH:-"$project_root/openmidisesh"}
 
 # Only Linux exposes the ALSA ABI. Other supported Unix hosts retain software
 # synthesis and editing, but must report unavailable external MIDI honestly.
@@ -46,7 +46,7 @@ if [ ! -d "$omagui_root" ]; then
 fi
 
 source_files=(
-    src/opensesh.bas
+    src/openmidisesh.bas
     src/omagui_runtime.bas
     src/midi_model.bas
     src/history_timeline.bas
@@ -93,7 +93,7 @@ source_files=(
 # The SoundFont renderer owns an audio worker, so every object must use the
 # thread-safe FreeBASIC runtime even when a particular module has no threads.
 mkdir -p -- "$(dirname -- "$output_file")"
-object_root=$(mktemp -d "${TMPDIR:-/tmp}/opensesh-build.XXXXXXXX")
+object_root=$(mktemp -d "${TMPDIR:-/tmp}/openmidisesh-build.XXXXXXXX")
 # Only this invocation's mktemp directory is removed. Objects never accumulate
 # beside sources, and a failed build leaves the last working executable intact.
 trap 'rm -rf -- "$object_root"' EXIT
@@ -106,8 +106,8 @@ for relative_file in "${source_files[@]}"; do
     fi
     object_file="$object_root/$(basename -- "${relative_file%.bas}").o"
     compiler_arguments=(-i "$omagui_root" -O 2 -mt -w all -c)
-    if [ "$relative_file" = src/opensesh.bas ]; then
-        compiler_arguments+=(-m opensesh)
+    if [ "$relative_file" = src/openmidisesh.bas ]; then
+        compiler_arguments+=(-m openmidisesh)
     fi
     # FreeBASIC has no warning-as-error option. Preserve its status, show the
     # diagnostics, and reject an otherwise successful compile with warnings.
@@ -126,16 +126,16 @@ for relative_file in "${source_files[@]}"; do
 done
 
 compile_exit=0
-"$compiler_path" -mt -strip "${object_files[@]}" -x "$object_root/opensesh" \
+"$compiler_path" -mt -strip "${object_files[@]}" -x "$object_root/openmidisesh" \
     > "$object_root/compiler.log" 2>&1 || compile_exit=$?
 cat -- "$object_root/compiler.log"
 if [ "$compile_exit" -ne 0 ] || \
    grep -Eiq '\bwarning[[:space:]]+[0-9]+' "$object_root/compiler.log" || \
-   [ ! -f "$object_root/opensesh" ]; then
+   [ ! -f "$object_root/openmidisesh" ]; then
     echo 'editor_compile_exit=1'
     exit 1
 fi
-mv -f -- "$object_root/opensesh" "$output_file"
+mv -f -- "$object_root/openmidisesh" "$output_file"
 echo "editor_executable=$output_file"
 echo "editor_compile_exit=$compile_exit"
 exit "$compile_exit"

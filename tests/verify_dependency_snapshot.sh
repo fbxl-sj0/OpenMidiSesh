@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Project: OpenSesh
+# Project: OpenMidiSesh
 # File: tests/verify_dependency_snapshot.sh
 #
 # Purpose:
@@ -26,10 +26,10 @@ for executable in sha256sum tr find mktemp grep; do
     }
 done
 
-normalized_manifest=$(mktemp "${TMPDIR:-/tmp}/opensesh-manifest.XXXXXXXX")
+normalized_manifest=$(mktemp "${TMPDIR:-/tmp}/openmidisesh-manifest.XXXXXXXX")
 payload_list=''
 trap 'rm -f -- "$normalized_manifest" "$payload_list"' EXIT
-payload_list=$(mktemp "${TMPDIR:-/tmp}/opensesh-payload.XXXXXXXX")
+payload_list=$(mktemp "${TMPDIR:-/tmp}/openmidisesh-payload.XXXXXXXX")
 declare -A release_paths=()
 declare -A tree_paths=()
 
@@ -46,7 +46,7 @@ read_manifest()
     tr -d '\r' < "$manifest" > "$normalized_manifest"
     while IFS= read -r line || [ -n "$line" ]; do
         case "$line" in ''|'#'*) continue ;; esac
-        if ! [[ $line =~ ^[0-9a-f]{64}\ \ [\ -~]+$ ]]; then
+        if ! [[ $line =~ ^[0-9A-Fa-f]{64}\ \ [\ -~]+$ ]]; then
             echo "Malformed dependency manifest line in $manifest." >&2
             return 1
         fi

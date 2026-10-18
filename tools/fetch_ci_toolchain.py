@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Project: OpenSesh
+Project: OpenMidiSesh
 File: tools/fetch_ci_toolchain.py
 Purpose: download the exact public compiler files reviewed for native CI.
 Responsibilities: enforce names, lengths, SHA-256 and exclusive file creation.

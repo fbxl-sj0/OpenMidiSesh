@@ -1,4 +1,4 @@
-' Project: OpenSesh validator regression checks
+' Project: OpenMidiSesh validator regression checks
 ' File: tools/fblint/test_callback_cast_inputs.bas
 ' Purpose: Check callback cast receipts with the production model reader.
 ' Responsibilities: Accept owned void calls and reject a mismatched signature.

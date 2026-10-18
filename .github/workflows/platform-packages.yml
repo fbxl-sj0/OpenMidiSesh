@@ -1,4 +1,4 @@
-# Project: OpenSesh
+# Project: OpenMidiSesh
 # File: .github/workflows/platform-packages.yml
 # Purpose: qualify downloadable packages by executing on each native OS.
 # Responsibilities: build, test, launch and publish only a complete passing set.

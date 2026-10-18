@@ -1,10 +1,10 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: version.bi
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; shared Windows/Linux x64 and Android editor builds.
@@ -37,9 +37,9 @@ Const OSE_VERSION_MINOR As Integer = 9
 Const OSE_VERSION_PATCH As Integer = 0
 Const OSE_VERSION_BUILD As Integer = 0
 Const OSE_VERSION_TEXT As String = "0.9.0-dev"
-Const OSE_PRODUCT_NAME As String = "OpenSesh"
+Const OSE_PRODUCT_NAME As String = "OpenMidiSesh"
 Const OSE_COPYRIGHT_TEXT As String = _
-    "Copyright (C) 2026 OpenSesh contributors"
+    "Copyright (C) 2026 OpenMidiSesh contributors"
 Const OSE_LICENSE_EXPRESSION As String = "GPL-3.0-or-later"
 
 #endif

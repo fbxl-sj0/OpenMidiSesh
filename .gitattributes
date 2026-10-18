@@ -1,4 +1,4 @@
-# Project: OpenSesh
+# Project: OpenMidiSesh
 # File: .gitattributes
 # Keep scripts portable while preserving byte-pinned third-party payloads.
 * text=auto eol=lf

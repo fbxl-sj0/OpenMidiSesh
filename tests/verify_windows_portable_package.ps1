@@ -1,5 +1,5 @@
 <#
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ----------------------------
 
     File: tests/verify_windows_portable_package.ps1
@@ -48,12 +48,12 @@ foreach ($requiredFile in @($package, $executable, $sourceArchive)) {
 
 $versionInfo = (Get-Item -LiteralPath $executable).VersionInfo
 $version = $versionInfo.FileVersion
-if ($versionInfo.ProductName -ne 'OpenSesh' -or
+if ($versionInfo.ProductName -ne 'OpenMidiSesh' -or
     $version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+-[A-Za-z0-9.]+$') {
     throw 'Portable executable version metadata is invalid.'
 }
-$rootName = "OpenSesh-$version-windows-portable"
-$sourceName = "OpenSesh-source-$version.zip"
+$rootName = "OpenMidiSesh-$version-windows-portable"
+$sourceName = "OpenMidiSesh-source-$version.zip"
 if ([System.IO.Path]::GetFileName($sourceArchive) -ne $sourceName) {
     throw "Corresponding source archive must be named $sourceName."
 }
@@ -63,7 +63,7 @@ $expectedRelativeNames = @(
     'COPYING',
     'COPYING.LESSER',
     'LICENSE',
-    'OpenSesh.exe',
+    'OpenMidiSesh.exe',
     'README.txt',
     'SHA256SUMS.txt',
     ('source/' + $sourceName),
@@ -154,7 +154,7 @@ finally {
 
 $executableHash = (Get-FileHash -LiteralPath $executable -Algorithm SHA256).Hash
 $sourceHash = (Get-FileHash -LiteralPath $sourceArchive -Algorithm SHA256).Hash
-if ((Get-ByteSha256 -Bytes $payload['OpenSesh.exe']) -ne
+if ((Get-ByteSha256 -Bytes $payload['OpenMidiSesh.exe']) -ne
     $executableHash) {
     throw 'Portable package executable differs from the verified build.'
 }
@@ -192,11 +192,11 @@ $buildInfo = $buildInfoText | ConvertFrom-Json
 $toolchainLockHash = (Get-FileHash -LiteralPath (
     Join-Path $projectRoot 'windows_toolchain_lock.json') -Algorithm SHA256).Hash
 if ($buildInfo.schema_version -ne 1 -or
-    $buildInfo.product -ne 'OpenSesh' -or
+    $buildInfo.product -ne 'OpenMidiSesh' -or
     $buildInfo.version -ne $version -or
     $buildInfo.platform -ne 'windows-x86_64' -or
     $buildInfo.package_kind -ne 'portable-unsigned-development' -or
-    $buildInfo.executable_file -ne 'OpenSesh.exe' -or
+    $buildInfo.executable_file -ne 'OpenMidiSesh.exe' -or
     $buildInfo.executable_sha256 -ne $executableHash -or
     $buildInfo.source_archive_file -ne $sourceName -or
     $buildInfo.source_archive_sha256 -ne $sourceHash -or

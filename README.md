@@ -1,22 +1,22 @@
 <!--
-    Project: OpenSesh
+    Project: OpenMidiSesh
     File: README.md
     Purpose: Introduce the editor and point users to practical documentation.
     Responsibilities: explain the product, capabilities, platforms and first steps.
     This file does not contain contributor setup details.
 -->
 
-# OpenSesh
+# OpenMidiSesh
 
 ## A MIDI workspace for writing and shaping songs
 
-OpenSesh keeps a multi-track score view and a sixteen-channel mixer in one
+OpenMidiSesh keeps a multi-track score view and a sixteen-channel mixer in one
 desktop editor. Edit notes, arrange drum phrases, shape a mix, and hear changes
 through the built-in synthesizer or a SoundFont you choose.
 
-![OpenSesh main window in the Dark theme](tests/visual_baselines/main-dark-1280x720.png)
+![OpenMidiSesh main window in the Dark theme](tests/visual_baselines/main-dark-1280x720.png)
 
-The built-in sound means a hardware synthesizer is optional. OpenSesh can also
+The built-in sound means a hardware synthesizer is optional. OpenMidiSesh can also
 send and receive MIDI through native endpoints on Windows and Linux. Add WAV
 clips to a project, record a live part, or export a WAV mix and a ProTracker MOD
 file.
@@ -44,8 +44,8 @@ file.
 
 The current version is **0.9.0-dev**. Download the package for your system from
 [GitHub Releases](https://github.com/fbxl-sj0/OpenMidiSesh/releases). Extract
-the complete archive and run <code>OpenSesh.exe</code> on Windows or
-<code>opensesh</code> on Unix-like systems. Package-specific runtime
+the complete archive and run <code>OpenMidiSesh.exe</code> on Windows or
+<code>openmidisesh</code> on Unix-like systems. Package-specific runtime
 requirements are listed in [Dependencies](docs/DEPENDENCIES.md).
 
 | Platform | Editor and built-in sound | Native MIDI endpoints |
@@ -64,14 +64,14 @@ The repository includes the omaGUI source used by the editor. Windows and Linux
 quick-start commands are:
 
 ~~~powershell
-powershell -NoProfile -File ./build_editor.ps1 -OutputPath ./build/opensesh.exe
+powershell -NoProfile -File ./build_editor.ps1 -OutputPath ./build/openmidisesh.exe
 ~~~
 
 ~~~bash
-OUTPUT_PATH="$PWD/build/opensesh" bash ./build_editor.sh
+OUTPUT_PATH="$PWD/build/openmidisesh" bash ./build_editor.sh
 ~~~
 
-See [Building OpenSesh](docs/BUILDING.md) for toolchain requirements, platform
+See [Building OpenMidiSesh](docs/BUILDING.md) for toolchain requirements, platform
 notes, and Android instructions.
 
 ## Documentation
@@ -86,7 +86,7 @@ notes, and Android instructions.
 
 ## License
 
-OpenSesh is licensed under [GPL-3.0-or-later](COPYING). Dependency licenses
+OpenMidiSesh is licensed under [GPL-3.0-or-later](COPYING). Dependency licenses
 and attributions are listed in [Third-Party Notices](THIRD_PARTY_NOTICES.md).
 
 <!-- end of README.md -->

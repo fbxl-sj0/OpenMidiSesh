@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Project: OpenSesh
+# Project: OpenMidiSesh
 # ----------------------------
 #
 # File: tests/run_tests.sh
@@ -27,7 +27,7 @@ set -u
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 compiler_path=${FREEBASIC_PATH:-fbc}
 omagui_root=${OMAGUI_PATH:-"$project_root/vendor/omaGui"}
-build_root=${BUILD_DIRECTORY:-"${TMPDIR:-/tmp}/opensesh-tests-$$"}
+build_root=${BUILD_DIRECTORY:-"${TMPDIR:-/tmp}/openmidisesh-tests-$$"}
 test_timeout_seconds=${TEST_TIMEOUT_SECONDS:-60}
 
 case "$(uname -s)" in

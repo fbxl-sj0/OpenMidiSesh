@@ -1,5 +1,5 @@
 <#
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ----------------------------
 
     File: tests/verify_windows_portable_package_negative.ps1
@@ -57,10 +57,10 @@ foreach ($requiredFile in @($verifier, $package, $executable, $sourceArchive)) {
 
 Add-Type -AssemblyName System.IO.Compression
 $version = (Get-Item -LiteralPath $executable).VersionInfo.FileVersion
-$packageRootName = "OpenSesh-$version-windows-portable"
+$packageRootName = "OpenMidiSesh-$version-windows-portable"
 $temporaryRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
 $mutationRoot = Join-Path $temporaryRoot `
-    ('opensesh-package-negative-' + [System.Guid]::NewGuid().ToString('N'))
+    ('openmidisesh-package-negative-' + [System.Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $mutationRoot | Out-Null
 $rejectionCount = 0
 
@@ -138,7 +138,7 @@ function New-MutatedPackage {
             }
             $entryBytes = Read-EntryBytes -Entry $sourceEntry
             if ($Mode -eq 'changed-executable' -and
-                $sourceEntry.Name -eq 'OpenSesh.exe') {
+                $sourceEntry.Name -eq 'OpenMidiSesh.exe') {
                 if ($entryBytes.Length -lt 1024) {
                     throw 'Control executable is too small for a safe mutation.'
                 }
@@ -226,7 +226,7 @@ finally {
             $temporaryBoundary,
             [System.StringComparison]::OrdinalIgnoreCase) -or
         -not (Split-Path -Leaf $resolvedMutationRoot).StartsWith(
-            'opensesh-package-negative-')) {
+            'openmidisesh-package-negative-')) {
         throw "Refusing to remove an unexpected directory: $resolvedMutationRoot"
     }
     if (Test-Path -LiteralPath $resolvedMutationRoot -PathType Container) {

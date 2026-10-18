@@ -1,13 +1,13 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: src/editor/smoothness.bi
 
     Targets: FreeBASIC fb dialect; the including application selects the native backend.
-    Module API: Private implementation include for opensesh.bas; state.bi owns shared storage.
+    Module API: Private implementation include for openmidisesh.bas; state.bi owns shared storage.
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Purpose:
@@ -30,7 +30,7 @@
         - an independently linked public module
         - application startup or resource shutdown
 
-    Included once by opensesh.bas in the editor translation unit.
+    Included once by openmidisesh.bas in the editor translation unit.
     Shared editor storage and forward declarations live in state.bi.
 '/
 
@@ -252,7 +252,7 @@ Private Function session_WriteSmoothnessReport( _
     If Open(reportFilename For Output As #fileNumber) <> 0 Then
         Return 0
     End If
-    Print #fileNumber, "format=OpenSeshUiSmoothness"
+    Print #fileNumber, "format=OpenMidiSeshUiSmoothness"
     Print #fileNumber, "version=1"
     Print #fileNumber, "status=" + IIf(result.passed <> 0, "pass", "fail")
     Print #fileNumber, "scenario=" + modeName
@@ -505,7 +505,7 @@ Private Sub session_CreateWidgets()
     gui_AddWidget session_MusicMenu
     session_HelpMenu = session_CreateEditorMenu("help_menu", _
         SESSION_INITIAL_WIDTH - 210, SESSION_MENU_HEIGHT)
-    menu_AddItem session_HelpMenu, "About OpenSesh", @session_OnHelpMenu
+    menu_AddItem session_HelpMenu, "About OpenMidiSesh", @session_OnHelpMenu
     menu_AddItem session_HelpMenu, "Quick start / shortcuts", @session_OnHelpMenu
     gui_AddWidget session_HelpMenu
     session_ApplyMenuInteractionMetrics()

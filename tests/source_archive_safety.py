@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Project: OpenSesh
+Project: OpenMidiSesh
 File: tests/source_archive_safety.py
 
 Purpose:
@@ -27,7 +27,7 @@ import check_source_archive
 
 class ArchiveSafety(unittest.TestCase):
     def setUp(self) -> None:
-        self.work = tempfile.TemporaryDirectory(prefix="opensesh-zip-test-")
+        self.work = tempfile.TemporaryDirectory(prefix="openmidisesh-zip-test-")
         self.addCleanup(self.work.cleanup)
         self.archive = Path(self.work.name) / "source.zip"
 
@@ -40,15 +40,15 @@ class ArchiveSafety(unittest.TestCase):
                     archive.writestr(entry, b"source\n")
 
     def test_regular_windows_and_unix_files(self) -> None:
-        unix_file = zipfile.ZipInfo("opensesh/src/editor.bi")
+        unix_file = zipfile.ZipInfo("openmidisesh/src/editor.bi")
         unix_file.external_attr = (stat.S_IFREG | 0o644) << 16
-        self.write_entries(["opensesh/README.md", unix_file])
+        self.write_entries(["openmidisesh/README.md", unix_file])
         self.assertEqual(check_source_archive.check_archive(self.archive, 2), 2)
 
     def test_unsafe_paths(self) -> None:
-        for name in ("/opensesh/a", "other/a", "opensesh/../a", "opensesh/./a",
-                     "opensesh//a", "opensesh/C:a",
-                     "opensesh/a\nb", "opensesh/a/"):
+        for name in ("/openmidisesh/a", "other/a", "openmidisesh/../a", "openmidisesh/./a",
+                     "openmidisesh//a", "openmidisesh/C:a",
+                     "openmidisesh/a\nb", "openmidisesh/a/"):
             with self.subTest(name=name):
                 self.write_entries([name])
                 with self.assertRaises(ValueError):
@@ -57,24 +57,24 @@ class ArchiveSafety(unittest.TestCase):
     def test_unportable_zip_metadata(self) -> None:
         # Normal ZIP writers truncate NULs and may normalize backslashes on
         # Windows. Mutate both metadata records to preserve the corrupt input.
-        for name in (b"opensesh/a\x00b", b"opensesh/a\\b"):
+        for name in (b"openmidisesh/a\x00b", b"openmidisesh/a\\b"):
             with self.subTest(name=name):
-                self.write_entries(["opensesh/aZb"])
-                self.archive.write_bytes(self.archive.read_bytes().replace(b"opensesh/aZb", name))
+                self.write_entries(["openmidisesh/aZb"])
+                self.archive.write_bytes(self.archive.read_bytes().replace(b"openmidisesh/aZb", name))
                 with self.assertRaises(ValueError):
                     check_source_archive.check_archive(self.archive, 1)
 
     def test_duplicate_paths(self) -> None:
-        for second in ("opensesh/README.md", "opensesh/readme.md"):
+        for second in ("openmidisesh/README.md", "openmidisesh/readme.md"):
             with self.subTest(second=second):
-                self.write_entries(["opensesh/README.md", second])
+                self.write_entries(["openmidisesh/README.md", second])
                 with self.assertRaises(ValueError):
                     check_source_archive.check_archive(self.archive, 2)
 
     def test_nonregular_files(self) -> None:
         for kind in (stat.S_IFLNK, stat.S_IFIFO, stat.S_IFDIR, stat.S_IFCHR):
             with self.subTest(kind=kind):
-                entry = zipfile.ZipInfo("opensesh/source")
+                entry = zipfile.ZipInfo("openmidisesh/source")
                 entry.create_system = 3
                 entry.external_attr = (kind | 0o644) << 16
                 self.write_entries([entry])
@@ -84,7 +84,7 @@ class ArchiveSafety(unittest.TestCase):
     def test_encryption_and_compression_metadata(self) -> None:
         for encrypted in (True, False):
             with self.subTest(encrypted=encrypted):
-                self.write_entries(["opensesh/README.md"])
+                self.write_entries(["openmidisesh/README.md"])
                 data = bytearray(self.archive.read_bytes())
                 central = data.index(b"PK\x01\x02")
                 if encrypted:
@@ -98,7 +98,7 @@ class ArchiveSafety(unittest.TestCase):
                     check_source_archive.check_archive(self.archive, 1)
 
     def test_count_and_size_limits(self) -> None:
-        self.write_entries(["opensesh/README.md"])
+        self.write_entries(["openmidisesh/README.md"])
         for count in (0, 2, 100001):
             with self.subTest(count=count), self.assertRaises(ValueError):
                 check_source_archive.check_archive(self.archive, count)

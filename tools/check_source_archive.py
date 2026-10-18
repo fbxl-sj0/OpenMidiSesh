@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Project: OpenSesh
+Project: OpenMidiSesh
 File: tools/check_source_archive.py
 
 Purpose:
     Check ZIP metadata before the Linux verifier extracts source files.
 Responsibilities:
-    - require portable, unique paths beneath the opensesh directory
+    - require portable, unique paths beneath the openmidisesh directory
     - reject links, special files, encryption and excessive expanded content
 This file intentionally does not extract, execute or authenticate an archive.
 """
@@ -36,7 +36,7 @@ def check_archive(path: Path, expected_count: int) -> int:
         for entry in entries:
             name = entry.orig_filename
             parts = name.split("/")
-            if (name != entry.filename or len(parts) < 2 or parts[0] != "opensesh"
+            if (name != entry.filename or len(parts) < 2 or parts[0] != "openmidisesh"
                     or any(part in ("", ".", "..") for part in parts)
                     or "\\" in name or ":" in name
                     or any(ord(character) < 32 or ord(character) > 126 for character in name)):

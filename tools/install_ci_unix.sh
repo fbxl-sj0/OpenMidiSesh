@@ -1,5 +1,5 @@
 #!/bin/sh
-# Project: OpenSesh
+# Project: OpenMidiSesh
 # File: tools/install_ci_unix.sh
 # Purpose: provision a native compiler inside disposable CI guests.
 # Responsibilities: install host tools and only hash-verified compiler packages.
@@ -50,7 +50,7 @@ esac
 
 python=python3
 if ! command -v "$python" >/dev/null 2>&1; then python=python3.12; fi
-download_root=$(mktemp -d "${TMPDIR:-/tmp}/opensesh-toolchain.XXXXXXXX")
+download_root=$(mktemp -d "${TMPDIR:-/tmp}/openmidisesh-toolchain.XXXXXXXX")
 trap 'rm -rf -- "$download_root"' EXIT
 "$python" "$root/tools/fetch_ci_toolchain.py" "$target" "$download_root"
 case "$target" in

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Project: OpenSesh
+Project: OpenMidiSesh
 File: tools/package_platform.py
 Purpose: create and exercise a portable package on the actual target OS.
 Responsibilities: include corresponding source, verify bytes, test extracted startup.
@@ -77,7 +77,7 @@ def source_bytes(root: Path) -> bytes:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_STORED) as archive:
         for name in sorted(names):
-            entry = zipfile.ZipInfo("opensesh/" + name, (2000, 1, 1, 0, 0, 0))
+            entry = zipfile.ZipInfo("openmidisesh/" + name, (2000, 1, 1, 0, 0, 0))
             entry.create_system = 3
             entry.external_attr = 0o100644 << 16
             archive.writestr(entry, (root / name).read_bytes())
@@ -155,12 +155,12 @@ def package(executable: Path, tests: Path, destination: Path) -> None:
     banner = subprocess.check_output([compiler, "-version"], text=True).splitlines()[0]
     version_text = (root / "src/version.bi").read_text()
     version = re.search(r'OSE_VERSION_TEXT As String = "([0-9A-Za-z.+-]+)"', version_text)[1]
-    native_name = "opensesh.exe" if system == "windows" else "opensesh"
-    prefix = "opensesh-" + version + "-" + system + "-x86_64/"
+    native_name = "openmidisesh.exe" if system == "windows" else "openmidisesh"
+    prefix = "openmidisesh-" + version + "-" + system + "-x86_64/"
     source = source_bytes(root)
     locks = tomllib.loads((root / "tools/ci_toolchains.toml").read_text())
     evidence = {
-        "schema_version": 1, "product": "OpenSesh", "application_version": version,
+        "schema_version": 1, "product": "OpenMidiSesh", "application_version": version,
         "source_commit": commit, "system": system, "architecture": "x86_64",
         "native_os_release": platform.release(), "compiler": banner,
         "compiler_downloads": locks[system]["files"],
@@ -173,14 +173,14 @@ def package(executable: Path, tests: Path, destination: Path) -> None:
         "physical_device_qualification": "not_run",
     }
     files = {prefix + native_name: executable.read_bytes(),
-             prefix + "opensesh-source.zip": source,
+             prefix + "openmidisesh-source.zip": source,
              prefix + "BUILD-INFO.json": (json.dumps(evidence, indent=2, sort_keys=True) + "\n").encode()}
     for name in ("COPYING", "COPYING.LESSER", "LICENSE", "THIRD_PARTY_NOTICES.md"):
         files[prefix + name] = (root / name).read_bytes()
     files[prefix + "README.txt"] = (
-        "OpenSesh " + version + " for " + system + " x86_64\n\n"
+        "OpenMidiSesh " + version + " for " + system + " x86_64\n\n"
         "Extract this entire archive, then run " + native_name + ".\n"
-        "Source, build instructions and user documentation are in opensesh-source.zip.\n"
+        "Source, build instructions and user documentation are in openmidisesh-source.zip.\n"
         + RUNTIME_NOTES[system] + "\n"
         "BSD and Haiku have editing and software synthesis; external MIDI endpoints\n"
         "are currently unavailable. SoundFonts are supplied by the user.\n"
@@ -194,7 +194,7 @@ def package(executable: Path, tests: Path, destination: Path) -> None:
     destination.mkdir(parents=True, exist_ok=True)
     filename = prefix.rstrip("/") + (".zip" if system == "windows" else ".tar.gz")
     # Only create files. Never replace a previous download or release artifact.
-    with tempfile.TemporaryDirectory(prefix="opensesh-package-check-") as directory:
+    with tempfile.TemporaryDirectory(prefix="openmidisesh-package-check-") as directory:
         extracted = Path(directory)
         # The verified inventory was assembled locally from explicit portable
         # names. Write those verified bytes, without general archive extraction.
@@ -204,7 +204,7 @@ def package(executable: Path, tests: Path, destination: Path) -> None:
             path.write_bytes(content)
         extracted_executable = extracted / prefix / native_name
         extracted_executable.chmod(0o755)
-        check_archive(extracted / prefix / "opensesh-source.zip", len(read_manifest(root) | dependency_files(root)))
+        check_archive(extracted / prefix / "openmidisesh-source.zip", len(read_manifest(root) | dependency_files(root)))
         check_editor(extracted_executable, root / "build/ci/packaged-editor")
     evidence["packaged_editor"] = json.loads((root / "build/ci/packaged-editor/editor-smoke.json").read_text())
     evidence["package"] = filename

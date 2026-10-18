@@ -1,5 +1,5 @@
 <#
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ----------------------------
 
     File: tests/run_android_device_smoke.ps1
@@ -40,7 +40,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $adbExecutable = [System.IO.Path]::GetFullPath($AdbPath)
-$packageName = 'net.fbxl.opensesh'
+$packageName = 'net.fbxl.openmidisesh'
 $activityName = 'org.freebasic.android.FreeBasicNativeActivity'
 $componentName = $packageName + '/' + $activityName
 
@@ -55,7 +55,7 @@ New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
 Add-Type -AssemblyName System.Drawing
 
 if ([string]::IsNullOrWhiteSpace($ApkPath)) {
-    $ApkPath = Join-Path $buildRoot 'opensesh-device-smoke.apk'
+    $ApkPath = Join-Path $buildRoot 'openmidisesh-device-smoke.apk'
 }
 $apkFile = [System.IO.Path]::GetFullPath($ApkPath)
 
@@ -98,7 +98,7 @@ function Save-DeviceScreenshot {
         [string] $DestinationPath
     )
 
-    $remotePath = '/sdcard/opensesh-device-smoke.png'
+    $remotePath = '/sdcard/openmidisesh-device-smoke.png'
     Invoke-Adb -CommandArguments @('shell', 'screencap', '-p', $remotePath) `
         -AllowEmptyOutput | Out-Null
     Invoke-Adb -CommandArguments @('pull', $remotePath, $DestinationPath) |
@@ -413,7 +413,7 @@ $logPath = Join-Path $buildRoot 'logcat.txt'
 $logLines = Invoke-Adb -CommandArguments @('logcat', '-d', '-v', 'brief')
 [System.IO.File]::WriteAllLines($logPath, [string[]] $logLines)
 $logText = $logLines -join "`n"
-if ($logText -match '(?i)FATAL EXCEPTION|Fatal signal|ANR in net\.fbxl\.opensesh') {
+if ($logText -match '(?i)FATAL EXCEPTION|Fatal signal|ANR in net\.fbxl\.openmidisesh') {
     throw 'Fatal Android runtime output was found in the retained logcat file.'
 }
 if ($logText -notmatch 'FreeBASIC Android sfx warmup complete') {

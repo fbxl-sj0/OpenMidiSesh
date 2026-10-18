@@ -1,4 +1,4 @@
-<!-- Project: OpenSesh; File: CHANGELOG.md; Purpose: release-facing changes. -->
+<!-- Project: OpenMidiSesh; File: CHANGELOG.md; Purpose: release-facing changes. -->
 
 # Changelog
 

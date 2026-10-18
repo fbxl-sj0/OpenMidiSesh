@@ -1,12 +1,12 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: midi_model_smoke.bas
 
     Module API: Test executable; process status reports failed behavioral assertions.
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; Windows/Linux host test runners.
@@ -546,13 +546,13 @@ If saveFilename <> "" Then
         End If
     Next
     If titleSourceIndex >= 0 Then
-        titlePoint.textValue = "OpenSesh test"
+        titlePoint.textValue = "OpenMidiSesh test"
         If midi_SetTextEvent(summary, titleSourceIndex, titlePoint) = 0 Then
             Print "ERROR: could not update document title"
             End 1
         End If
     ElseIf midi_AddTextEvent(summary, 0, 0, &H01, _
-        "OpenSesh test") < 0 Then
+        "OpenMidiSesh test") < 0 Then
         Print "ERROR: could not add document title"
         End 1
     End If
@@ -580,7 +580,7 @@ If saveFilename <> "" Then
 
     Dim As Integer originalTextCount = midi_GetTextEventCount()
     Dim As Integer temporaryText = midi_AddTextEvent(summary, addedTrack, _
-        keyTestTick, &H06, "OpenSesh marker")
+        keyTestTick, &H06, "OpenMidiSesh marker")
     If temporaryText < 0 OrElse _
         midi_GetTextEventCount() <> originalTextCount + 1 Then
         Print "ERROR: could not add a temporary text event"

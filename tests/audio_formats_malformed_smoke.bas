@@ -1,19 +1,19 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: tests/audio_formats_malformed_smoke.bas
 
     Module API: Test executable; process status reports failed behavioral assertions.
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; Windows/Linux host test runners.
 
     Purpose:
 
-        Exercise malformed PCM WAV and OpenSesh project inputs against
+        Exercise malformed PCM WAV and OpenMidiSesh project inputs against
         their production parsers with transactional-state assertions.
 
     Responsibilities:

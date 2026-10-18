@@ -1,5 +1,5 @@
 <#
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ----------------------------
 
     File: tests/run_tests.ps1
@@ -48,7 +48,7 @@ if ([string]::IsNullOrWhiteSpace($OmaGuiPath)) {
 }
 if ([string]::IsNullOrWhiteSpace($BuildDirectory)) {
     $BuildDirectory = Join-Path ([System.IO.Path]::GetTempPath()) `
-        ('opensesh-tests-' + $PID)
+        ('openmidisesh-tests-' + $PID)
 }
 
 $compilerPath = [System.IO.Path]::GetFullPath($FreeBasicPath)
@@ -760,7 +760,7 @@ else {
         $uiPreferencesFile = Join-Path $buildRoot 'ui-theme-preferences.conf'
         [System.IO.File]::WriteAllText(
             $uiPreferencesFile,
-            "format=OpenSeshPreferences`nversion=1`ntheme=dark`n")
+            "format=OpenMidiSeshPreferences`nversion=1`ntheme=dark`n")
         $env:OSE_TEST_PREFERENCES_FILE = $uiPreferencesFile
         $uiFixtureArgument = '"' + `
             (Join-Path $buildRoot 'empty-document-smoke.mid').Replace('"', '\"') + `
@@ -805,7 +805,7 @@ else {
         $versionInfo = (Get-Item -LiteralPath $uiContractExecutable).VersionInfo
         if ($versionInfo.FileVersion -ne '0.9.0-dev' -or
             $versionInfo.ProductVersion -ne '0.9.0-dev' -or
-            $versionInfo.ProductName -ne 'OpenSesh') {
+            $versionInfo.ProductName -ne 'OpenMidiSesh') {
             throw 'Windows executable version metadata is missing or inconsistent.'
         }
         $passedTests++

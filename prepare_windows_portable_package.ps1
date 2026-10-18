@@ -1,5 +1,5 @@
 <#
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ----------------------------
 
     File: prepare_windows_portable_package.ps1
@@ -60,11 +60,11 @@ if (-not (Test-Path -LiteralPath $packageParent -PathType Container)) {
 
 $versionInfo = (Get-Item -LiteralPath $executable).VersionInfo
 $version = $versionInfo.FileVersion
-if ($versionInfo.ProductName -ne 'OpenSesh' -or
+if ($versionInfo.ProductName -ne 'OpenMidiSesh' -or
     $version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+-[A-Za-z0-9.]+$') {
     throw 'Windows executable has no valid development product version.'
 }
-$expectedSourceName = "OpenSesh-source-$version.zip"
+$expectedSourceName = "OpenMidiSesh-source-$version.zip"
 if ([System.IO.Path]::GetFileName($sourceArchive) -ne $expectedSourceName) {
     throw "Corresponding source archive must be named $expectedSourceName."
 }
@@ -105,10 +105,10 @@ $executableHash = Get-ByteSha256 -Bytes $executableBytes
 $sourceHash = Get-ByteSha256 -Bytes $sourceBytes
 $toolchainLockHash = (Get-FileHash -LiteralPath $toolchainLock `
     -Algorithm SHA256).Hash
-$rootName = "OpenSesh-$version-windows-portable"
+$rootName = "OpenMidiSesh-$version-windows-portable"
 
 $payload = [ordered]@{}
-$payload['OpenSesh.exe'] = $executableBytes
+$payload['OpenMidiSesh.exe'] = $executableBytes
 foreach ($documentName in $documentMap.Keys) {
     $payload[$documentName] = [System.IO.File]::ReadAllBytes(
         $documentMap[$documentName])
@@ -118,11 +118,11 @@ $payload[$sourceEntry] = $sourceBytes
 
 $buildInfo = [ordered]@{
     schema_version = 1
-    product = 'OpenSesh'
+    product = 'OpenMidiSesh'
     version = $version
     platform = 'windows-x86_64'
     package_kind = 'portable-unsigned-development'
-    executable_file = 'OpenSesh.exe'
+    executable_file = 'OpenMidiSesh.exe'
     executable_sha256 = $executableHash
     source_archive_file = $expectedSourceName
     source_archive_sha256 = $sourceHash

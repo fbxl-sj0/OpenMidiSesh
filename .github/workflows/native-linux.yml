@@ -1,4 +1,4 @@
-# Project: OpenSesh
+# Project: OpenMidiSesh
 # File: .github/workflows/native-linux.yml
 # Purpose: build and exercise public changes on an isolated native Linux runner.
 # Responsibilities: validate source integrity, all compiler warnings and tests.
@@ -49,7 +49,7 @@ jobs:
         run: |
           mkdir -p build
           set -o pipefail
-          OUTPUT_PATH="$PWD/build/opensesh" bash build_editor.sh 2>&1 | tee build/linux-build.log
+          OUTPUT_PATH="$PWD/build/openmidisesh" bash build_editor.sh 2>&1 | tee build/linux-build.log
       - name: Run deterministic tests
         shell: bash
         run: |

@@ -1,5 +1,5 @@
 <#
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: tests/verify_windows_manifest.ps1
@@ -35,13 +35,13 @@ if (-not (Test-Path -LiteralPath $resolvedExecutable -PathType Leaf)) {
     throw "Windows executable was not found: $resolvedExecutable"
 }
 
-if (-not ('OpenSesh.NativeResourceReader' -as [type])) {
+if (-not ('OpenMidiSesh.NativeResourceReader' -as [type])) {
     Add-Type -TypeDefinition @'
 using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 
-namespace OpenSesh
+namespace OpenMidiSesh
 {
     public static class NativeResourceReader
     {
@@ -124,7 +124,7 @@ namespace OpenSesh
 
 # RT_MANIFEST is resource type 24. Windows uses integer resource ID 1 for the
 # application manifest selected by the process loader.
-$manifestBytes = [OpenSesh.NativeResourceReader]::Read(
+$manifestBytes = [OpenMidiSesh.NativeResourceReader]::Read(
     $resolvedExecutable,
     1,
     24)
@@ -175,7 +175,7 @@ function Get-RequiredNode {
 $identity = Get-RequiredNode `
     -XPath '/asmv1:assembly/asmv1:assemblyIdentity' `
     -Description 'assembly identity'
-if ($identity.GetAttribute('name') -ne 'OpenSesh.opensesh' -or
+if ($identity.GetAttribute('name') -ne 'OpenMidiSesh.openmidisesh' -or
     $identity.GetAttribute('processorArchitecture') -ne 'amd64' -or
     $identity.GetAttribute('type') -ne 'win32') {
     throw 'The embedded Windows assembly identity is inconsistent.'

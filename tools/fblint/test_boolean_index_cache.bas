@@ -1,4 +1,4 @@
-' Project: OpenSesh validator regression checks
+' Project: OpenMidiSesh validator regression checks
 ' File: tools/fblint/test_boolean_index_cache.bas
 ' Purpose: Compare retained Boolean scratch with the original production pass.
 ' Responsibilities: Scratch ownership, replacement models and snapshot lifetime.

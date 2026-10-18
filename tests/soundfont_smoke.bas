@@ -1,12 +1,12 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: tests/soundfont_smoke.bas
 
     Module API: Test executable; process status reports failed behavioral assertions.
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; Windows/Linux host test runners.
@@ -158,7 +158,7 @@ Private Function test_CreateSoundFont( _
     Dim As String infoPayload = _
         test_Chunk("ifil", test_Le16(2) + test_Le16(1)) + _
         test_Chunk("isng", "EMU8000" + Chr(0)) + _
-        test_Chunk("INAM", "OpenSesh Test Bank" + Chr(0))
+        test_Chunk("INAM", "OpenMidiSesh Test Bank" + Chr(0))
     Dim As String samplePayload = test_Chunk("smpl", sampleData)
 
     Dim As Integer monoPresetBags = IIf(presetGlobal = "", 1, 2)
@@ -272,7 +272,7 @@ Dim As String errorText
 If soundfontBank_Load(soundFontFilename, errorText) = 0 Then _
     test_Fail "valid SoundFont was rejected: " + errorText
 test_WritePhase resultFilename, "bank-loaded"
-If soundfontBank_GetName() <> "OpenSesh Test Bank" OrElse _
+If soundfontBank_GetName() <> "OpenMidiSesh Test Bank" OrElse _
     soundfontBank_GetPresetCount() <> 2 OrElse _
     soundfontBank_GetSampleHeaderCount() <> 3 OrElse _
     soundfontBank_GetSamplePointCount() <> 512 Then _
@@ -310,7 +310,7 @@ Dim As String malformedData = Left(soundFontData, Len(soundFontData) - 1)
 test_WriteFile malformedFilename, malformedData
 If soundfontBank_Load(malformedFilename, errorText) <> 0 Then _
     test_Fail "a truncated SoundFont was accepted"
-If soundfontBank_GetName() <> "OpenSesh Test Bank" Then _
+If soundfontBank_GetName() <> "OpenMidiSesh Test Bank" Then _
     test_Fail "a failed replacement destroyed the active bank"
 test_WritePhase resultFilename, "malformed-rejected"
 
@@ -378,7 +378,7 @@ End 0
 Dim As OsePlaybackMixValues mixValues
 mixValues.channelGain = 0.8
 mixValues.meterGain = 0.8
-mixValues.voiceGain = 0.45
+mixValues.voiceGain = OSE_PLAYBACK_VOICE_HEADROOM
 mixValues.pan = 0.0
 Const previewFrames As Integer = 24000
 Dim As Single previewSamples(0 To previewFrames * 2 - 1)
@@ -456,7 +456,7 @@ If soundfontBank_IsLoaded() <> 0 OrElse soundfontSynth_IsActive() <> 0 Then _
 Dim As String resultData = "soundfont_smoke=ok" + Chr(10)
 test_WriteFile resultFilename, resultData
 Print "soundfont_smoke=ok"
-Print "bank_name=OpenSesh Test Bank"
+Print "bank_name=OpenMidiSesh Test Bank"
 Print "presets=2"
 Print "sample_headers=3"
 Print "preview_peak="; peakValue

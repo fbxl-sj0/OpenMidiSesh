@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Project: OpenSesh
+# Project: OpenMidiSesh
 # File: tests/dependency_snapshot_negative.sh
 # Purpose: exercise the GUI release subset's integrity and path boundaries.
 # Responsibilities: mutate one private payload copy and require specific errors.
@@ -11,7 +11,7 @@ project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 verifier="$project_root/tests/verify_dependency_snapshot.sh"
 vendor_source="$project_root/vendor/omaGui"
 bash "$verifier" "$vendor_source"
-work_root=$(mktemp -d "${TMPDIR:-/tmp}/opensesh-dependency-check.XXXXXXXX")
+work_root=$(mktemp -d "${TMPDIR:-/tmp}/openmidisesh-dependency-check.XXXXXXXX")
 # The only recursive cleanup target is the directory returned by mktemp above.
 trap 'rm -rf -- "$work_root"' EXIT
 vendor="$work_root/omaGui"

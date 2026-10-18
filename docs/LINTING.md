@@ -1,5 +1,5 @@
 <!--
-    Project: OpenSesh
+    Project: OpenMidiSesh
     File: docs/LINTING.md
     Purpose: Explain the strict source lint entry point for contributors.
     Responsibilities: document required semantic coverage and useful summaries.

@@ -1,4 +1,4 @@
-' Project: OpenSesh validator regression checks
+' Project: OpenMidiSesh validator regression checks
 ' File: tools/fblint/test_anonymous_enum_replay.bas
 ' Purpose: Exercise production anonymous enum replay keys on compiler exports.
 ' Responsibilities: Retain distinct enum identities and leave source names and records intact.

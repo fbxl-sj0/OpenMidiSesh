@@ -1,10 +1,10 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: playback_mix.bi
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; shared Windows/Linux x64 and Android editor builds.
@@ -33,7 +33,7 @@
 #ifndef __OSE_PLAYBACK_MIX_BI__
 #define __OSE_PLAYBACK_MIX_BI__
 
-Const OSE_PLAYBACK_VOICE_HEADROOM As Single = 0.45
+Const OSE_PLAYBACK_VOICE_HEADROOM As Single = 0.75
 
 ' The synthesizer applies voiceGain in SOUND and channelGain through the
 ' channel VOLUME command. Keeping the two stages explicit prevents CC7 from

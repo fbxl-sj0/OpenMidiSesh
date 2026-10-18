@@ -1,4 +1,4 @@
-# Project: OpenSesh
+# Project: OpenMidiSesh
 # File: fblint.toml
 # Purpose: consistent strict source policy; tools/lint.ps1 defines release inputs.
 [tool.fblint]

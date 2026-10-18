@@ -1,5 +1,5 @@
 <#
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ----------------------------
 
     File: tests/verify_windows_binary.ps1
@@ -327,7 +327,7 @@ $binaryText = [System.Text.Encoding]::GetEncoding(28591).GetString(
 foreach ($forbiddenFragment in @(
         'C:\Users\',
         'E:\Midisoft',
-        'opensesh-build-',
+        'openmidisesh-build-',
         '\midisoft-fb\')) {
     if ($binaryText.IndexOf(
             $forbiddenFragment,

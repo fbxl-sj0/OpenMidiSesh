@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Project: OpenSesh
+# Project: OpenMidiSesh
 # File: tools/ci_native.sh
 # Purpose: run native Unix build, tests, window checks and packaging as one gate.
 # Responsibilities: preserve failures, isolate a display, verify packaged startup.
@@ -27,7 +27,7 @@ python3 tests/source_archive_safety.py
 python3 tests/ci_package_safety.py
 bash tests/dependency_snapshot_negative.sh
 BUILD_DIRECTORY="$root/build/ci/tests" bash tests/run_tests.sh 2>&1 | tee build/ci/logs/tests.log
-OUTPUT_PATH="$root/build/ci/opensesh" bash build_editor.sh 2>&1 | tee build/ci/logs/build.log
+OUTPUT_PATH="$root/build/ci/openmidisesh" bash build_editor.sh 2>&1 | tee build/ci/logs/build.log
 
 display_pid=''
 cleanup() {
@@ -46,8 +46,8 @@ if [ "$(uname -s)" != Haiku ]; then
     sleep 2
     kill -0 "$display_pid"
 fi
-python3 tools/ci_editor_smoke.py build/ci/opensesh build/ci/editor
-python3 tools/package_platform.py build/ci/opensesh build/ci/logs/tests.log build/packages
+python3 tools/ci_editor_smoke.py build/ci/openmidisesh build/ci/editor
+python3 tools/package_platform.py build/ci/openmidisesh build/ci/logs/tests.log build/packages
 echo 'native_package_gate=pass'
 
 # end of tools/ci_native.sh

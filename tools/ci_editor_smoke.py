@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Project: OpenSesh
+Project: OpenMidiSesh
 File: tools/ci_editor_smoke.py
 Purpose: launch the real editor on its native graphics backend in CI.
 Responsibilities: exercise Desktop/Touch contracts and verify framebuffer output.
@@ -22,7 +22,7 @@ def check_editor(executable: Path, output: Path) -> None:
     executable = executable.resolve(strict=True)
     output.mkdir(parents=True, exist_ok=True)
     failures = []
-    with tempfile.TemporaryDirectory(prefix="opensesh-ci-window-") as directory:
+    with tempfile.TemporaryDirectory(prefix="openmidisesh-ci-window-") as directory:
         work = Path(directory)
         midi = work / "example.mid"
         # The selected-phrase audit requires two real notes, at different ticks.
@@ -44,7 +44,7 @@ def check_editor(executable: Path, output: Path) -> None:
             report = output / (mode.lower() + "-controls.txt")
             preferences = work / (mode + ".conf")
             interaction = "fine" if mode == "Desktop" else "touch"
-            preferences.write_text("format=OpenSeshPreferences\nversion=1\n"
+            preferences.write_text("format=OpenMidiSeshPreferences\nversion=1\n"
                                    + "theme=dark\ninteraction=" + interaction + "\n")
             environment.update(OSE_TEST_CONTROL_REPORT=str(report.resolve()),
                                OSE_TEST_PREFERENCES_FILE=str(preferences))

@@ -1,5 +1,5 @@
 """
-Project: OpenSesh validator regression checks
+Project: OpenMidiSesh validator regression checks
 File: tools/fblint/test_reporting_lifetime.py
 Purpose: Keep included-source suppressions alive through conversion checks.
 Responsibilities: Exercise assignment and conversion passes with real compiler facts.

@@ -1,10 +1,10 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: soundfont_synth.bas
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; shared Windows/Linux x64 and Android editor builds.
@@ -58,6 +58,8 @@ Const SOUNDFONT_ENVELOPE_HOLD As Integer = 1
 Const SOUNDFONT_ENVELOPE_DECAY As Integer = 2
 Const SOUNDFONT_ENVELOPE_SUSTAIN As Integer = 3
 Const SOUNDFONT_ENVELOPE_RELEASE As Integer = 4
+' MIDI program 20, Church Organ, is stored as zero-based program 19.
+Const SOUNDFONT_GM_CHURCH_ORGAN_PROGRAM As Integer = 19
 
 /'
     Shared mixer bridge
@@ -763,8 +765,14 @@ Public Function soundfontSynth_PlayMidiNote( _
             region->attackSeconds, sampleRate)
         voiceState->holdFrames = soundfontSynth_BoundedFrames( _
             region->holdSeconds, sampleRate)
-        voiceState->decayFrames = soundfontSynth_BoundedFrames( _
-            region->decaySeconds, sampleRate)
+        If bankNumber = 0 AndAlso _
+            programNumber = SOUNDFONT_GM_CHURCH_ORGAN_PROGRAM Then
+            voiceState->decayFrames = 0
+            voiceState->region.sustainLevel = 1.0
+        Else
+            voiceState->decayFrames = soundfontSynth_BoundedFrames( _
+                region->decaySeconds, sampleRate)
+        End If
         voiceState->releaseFrames = soundfontSynth_BoundedFrames( _
             region->releaseSeconds, sampleRate)
         voiceState->envelopeStage = SOUNDFONT_ENVELOPE_ATTACK

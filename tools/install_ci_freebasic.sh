@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Project: OpenSesh
+# Project: OpenMidiSesh
 # File: tools/install_ci_freebasic.sh
 # Purpose: provision the reviewed FreeBASIC packages in an ephemeral CI runner.
 # Responsibilities: verify download bytes before installing native build tools.
@@ -21,7 +21,7 @@ apt-get install -y --no-install-recommends ca-certificates curl git python3 \
     gcc binutils libc6-dev libx11-dev libxext-dev libxpm-dev libxrandr-dev \
     libxrender-dev libasound2-dev libgl1-mesa-dev libffi-dev libgmp-dev libncurses-dev
 
-download_root=$(mktemp -d /tmp/opensesh-ci-toolchain.XXXXXXXX)
+download_root=$(mktemp -d /tmp/openmidisesh-ci-toolchain.XXXXXXXX)
 trap 'rm -rf -- "$download_root"' EXIT
 base_url=https://github.com/jasonkfirth/fbc/releases/download/v1.20.4
 packages=(

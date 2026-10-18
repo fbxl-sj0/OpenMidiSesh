@@ -1,11 +1,11 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     File: midi_null_smoke.bas
     Purpose: verify the external-MIDI capability boundary on unsupported hosts.
     Responsibilities: reject opens and sends; clear poll and clock output safely.
     This file intentionally does NOT contain:
         - device emulation or software synthesis tests
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
     Targets: FreeBASIC fb dialect; native BSD, Haiku, and Android capability adapter.
     Module API: test executable; nonzero exit reports a broken capability contract.

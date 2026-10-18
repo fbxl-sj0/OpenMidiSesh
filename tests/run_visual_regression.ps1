@@ -1,5 +1,5 @@
 <#
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: tests/run_visual_regression.ps1
@@ -49,7 +49,7 @@ if ([string]::IsNullOrWhiteSpace($OmaGuiPath)) {
 }
 if ([string]::IsNullOrWhiteSpace($BuildDirectory)) {
     $BuildDirectory = Join-Path ([System.IO.Path]::GetTempPath()) `
-        ('opensesh-visual-' + $PID)
+        ('openmidisesh-visual-' + $PID)
 }
 if ([string]::IsNullOrWhiteSpace($BaselineDirectory)) {
     $BaselineDirectory = Join-Path $PSScriptRoot 'visual_baselines'
@@ -107,7 +107,7 @@ if (-not [System.StringComparer]::OrdinalIgnoreCase.Equals(
 $fixtureFile = $canonicalFixtureFile
 
 if ([string]::IsNullOrWhiteSpace($EditorPath)) {
-    $EditorPath = Join-Path $buildRoot 'opensesh_visual.exe'
+    $EditorPath = Join-Path $buildRoot 'openmidisesh_visual.exe'
     & (Join-Path $projectRoot 'build_editor.ps1') `
         -FreeBasicPath $compilerPath `
         -OmaGuiPath $omaGuiRoot `

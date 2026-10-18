@@ -1,5 +1,5 @@
 """
-Project: OpenSesh validator regression checks
+Project: OpenMidiSesh validator regression checks
 File: tools/fblint/test_procedure_keyword_fields.py
 Purpose: Distinguish keyword-named fields from procedure headers.
 Responsibilities: Require genuine exports and reject missing member headers.

@@ -1,13 +1,13 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: src/editor/keyboard.bi
 
     Targets: FreeBASIC fb dialect; the including application selects the native backend.
-    Module API: Private implementation include for opensesh.bas; state.bi owns shared storage.
+    Module API: Private implementation include for openmidisesh.bas; state.bi owns shared storage.
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Purpose:
@@ -24,7 +24,7 @@
         - an independently linked public module
         - application startup or resource shutdown
 
-    Included once by opensesh.bas in the editor translation unit.
+    Included once by openmidisesh.bas in the editor translation unit.
     Shared editor storage and forward declarations live in state.bi.
 '/
 
@@ -153,14 +153,16 @@ Private Sub session_ProcessKeyboardMouse()
     End If
 
     Dim As ULongInt currentTick
-    If session_LiveRecording <> 0 Then
+    If session_LiveRecording <> 0 AndAlso _
+        session_LiveRecordingPaused = 0 Then
         currentTick = session_LiveRecordingTick()
     End If
     Dim As Integer previousPitch = session_KeyboardMousePitch
     session_KeyboardMousePitch = nextPitch
     If previousPitch >= 0 AndAlso _
         session_KeyboardPcPitchHeld(previousPitch) = 0 Then
-        If session_LiveRecording <> 0 Then
+        If session_LiveRecording <> 0 AndAlso _
+            session_LiveRecordingPaused = 0 Then
             If session_CloseLiveKeyboardNote(previousPitch, currentTick) <> 0 Then _
                 session_Dirty = -1
         End If
@@ -168,7 +170,8 @@ Private Sub session_ProcessKeyboardMouse()
     End If
     If nextPitch >= 0 Then
         session_StartAuditionPitch nextPitch
-        If session_LiveRecording <> 0 Then _
+        If session_LiveRecording <> 0 AndAlso _
+            session_LiveRecordingPaused = 0 Then _
             session_StartLiveKeyboardNote nextPitch, currentTick
     End If
     session_KeyboardLastMouseButtons = mouseButtons

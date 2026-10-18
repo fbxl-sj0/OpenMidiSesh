@@ -1,10 +1,10 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: audio_tracks.bas
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; shared Windows/Linux x64 and Android editor builds.
@@ -22,7 +22,7 @@
         - add, edit, enumerate, and remove user-referenced audio clips
         - keep bounded multi-step audio undo and redo history
         - stage audio undo snapshots until an edit succeeds
-        - save and load the text-based OpenSesh project container
+        - save and load the text-based OpenMidiSesh project container
 
     Ownership:
 
@@ -696,7 +696,7 @@ End Function
 
 
 ' -------------------------------------------------------------------------
-' OpenSesh project file
+' OpenMidiSesh project file
 ' -------------------------------------------------------------------------
 
 Function audio_SerializeProject( _

@@ -1,10 +1,10 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
-    File: opensesh.bas
+    File: openmidisesh.bas
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; shared Windows/Linux x64 and Android editor builds.
@@ -77,6 +77,7 @@
 #include once "selected_note_playback.bi"
 #include once "score_tools.bi"
 #include once "numeric_text.bi"
+#include once "general_midi_instruments.bi"
 #include once "score_controls.bi"
 #include once "capture_paths.bi"
 #include once "score_scroll.bi"
@@ -129,7 +130,7 @@ session_MasterEchoFeedback = CSng(0.30)
 mixerMeter_Initialize session_MixerMeter
 mixerState_Initialize session_MixerChannels
 For channelIndex As Integer = 0 To SESSION_CHANNEL_COUNT - 1
-    session_ChannelVolume(channelIndex) = CSng(0.82)
+    session_ChannelVolume(channelIndex) = 1.0
     session_ChannelPan(channelIndex) = 0.0
     session_ChannelChorus(channelIndex) = 0.0
     session_ChannelReverb(channelIndex) = CSng(40.0 / 127.0)
@@ -462,6 +463,7 @@ Do
     session_ProcessNoteWindow()
     session_UpdateTempoMapSelection()
     session_ProcessTempoMapWindow()
+    session_ProcessTrackInstrumentPickerWindow()
     session_ProcessTrackPropertiesWindow()
     session_ProcessMidiInputWindow()
     session_ProcessMidiOutputWindow()
@@ -485,6 +487,7 @@ Do
     session_ProcessTransportShortcuts()
     session_ProcessStepRecording()
     session_UpdateSoftwarePlayback()
+    session_UpdateScoreFollow()
     session_UpdateMixerMeters()
 
     If session_TestSmoothnessReport <> "" Then
@@ -626,4 +629,4 @@ musicSymbols_Clear()
 gui_ResetForTest()
 backend_Exit()
 
-/' end of opensesh.bas '/
+/' end of openmidisesh.bas '/

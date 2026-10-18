@@ -1,4 +1,4 @@
-' Project: OpenSesh validator regression checks
+' Project: OpenMidiSesh validator regression checks
 ' File: tools/fblint/test_wire_copy.bas
 ' Purpose: Preserve byte-oriented semantic field decoding after the plain copy optimization.
 ' Responsibilities: Raw bytes, escaped bytes, embedded NULs and malformed escapes.

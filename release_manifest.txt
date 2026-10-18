@@ -1,4 +1,4 @@
-# Project: OpenSesh
+# Project: OpenMidiSesh
 # File: release_manifest.txt
 # Purpose: reviewed source archive inputs; GUI bytes use SNAPSHOT.sha256.
 .editorconfig
@@ -74,6 +74,7 @@ src/keyboard_controls.bi
 src/master_effect.bas
 src/master_effect.bi
 src/midi_alsa.bas
+src/general_midi_instruments.bi
 src/midi_input.bi
 src/midi_input_protocol.bas
 src/midi_input_protocol.bi
@@ -100,10 +101,10 @@ src/note_selection.bi
 src/numeric_text.bas
 src/numeric_text.bi
 src/omagui_runtime.bas
-src/opensesh.bas
-src/opensesh.manifest
-src/opensesh.rc
-src/opensesh_unity.bas
+src/openmidisesh.bas
+src/openmidisesh.manifest
+src/openmidisesh.rc
+src/openmidisesh_unity.bas
 src/pitch_transcriber.bas
 src/pitch_transcriber.bi
 src/playback_mix.bas
@@ -171,6 +172,7 @@ tests/linux_visual_baselines.sha256
 tests/master_effect_smoke.bas
 tests/midi_history_smoke.bas
 tests/midi_input_protocol_smoke.bas
+tests/midi_thread_timing_smoke.bas
 tests/midi_input_smoke.bas
 tests/midi_loopback_smoke.bas
 tests/midi_model_fuzz_smoke.bas

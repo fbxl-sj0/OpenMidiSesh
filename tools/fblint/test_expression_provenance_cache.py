@@ -1,5 +1,5 @@
 """
-Project: OpenSesh validator regression checks
+Project: OpenMidiSesh validator regression checks
 File: tools/fblint/test_expression_provenance_cache.py
 Purpose: Export real expression provenance for the native cache regression.
 Responsibilities: Distinct evaluated and unevaluated inputs with full model validation.

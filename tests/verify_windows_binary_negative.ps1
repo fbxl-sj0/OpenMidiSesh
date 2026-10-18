@@ -1,5 +1,5 @@
 <#
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ----------------------------
 
     File: tests/verify_windows_binary_negative.ps1
@@ -86,7 +86,7 @@ $optionalBytes = Read-CandidateUInt16 -Bytes $originalBytes `
 $sectionTableOffset = $optionalOffset + $optionalBytes
 $temporaryRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
 $mutationRoot = Join-Path $temporaryRoot `
-    ('opensesh-pe-negative-' + [System.Guid]::NewGuid().ToString('N'))
+    ('openmidisesh-pe-negative-' + [System.Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $mutationRoot | Out-Null
 $rejectionCount = 0
 
@@ -212,7 +212,7 @@ finally {
             $temporaryBoundary,
             [System.StringComparison]::OrdinalIgnoreCase) -or
         -not (Split-Path -Leaf $resolvedMutationRoot).StartsWith(
-            'opensesh-pe-negative-')) {
+            'openmidisesh-pe-negative-')) {
         throw "Refusing to remove an unexpected directory: $resolvedMutationRoot"
     }
     if (Test-Path -LiteralPath $resolvedMutationRoot -PathType Container) {

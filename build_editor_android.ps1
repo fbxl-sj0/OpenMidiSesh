@@ -1,5 +1,5 @@
 <#
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ----------------------------
 
     File: build_editor_android.ps1
@@ -44,14 +44,14 @@ if ([string]::IsNullOrWhiteSpace($OmaGuiPath)) {
     $OmaGuiPath = Join-Path $projectRoot 'vendor\omaGui'
 }
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
-    $OutputPath = Join-Path $projectRoot 'build\android\opensesh-debug.apk'
+    $OutputPath = Join-Path $projectRoot 'build\android\openmidisesh-debug.apk'
 }
 
 $compilerPath = [System.IO.Path]::GetFullPath($FreeBasicAndroidPath)
 $omaGuiRoot = [System.IO.Path]::GetFullPath($OmaGuiPath)
 $outputFile = [System.IO.Path]::GetFullPath($OutputPath)
 $outputDirectory = Split-Path -Parent $outputFile
-$packageName = 'net.fbxl.opensesh'
+$packageName = 'net.fbxl.openmidisesh'
 
 if (-not (Test-Path -LiteralPath $compilerPath -PathType Leaf)) {
     throw "Android FreeBASIC wrapper was not found: $compilerPath"
@@ -91,8 +91,8 @@ if (-not (Test-Path -LiteralPath (Join-Path $templateSource 'AndroidManifest.xml
 }
 
 $sourceFiles = @(
-    'src\opensesh_unity.bas',
-    'src\opensesh.bas',
+    'src\openmidisesh_unity.bas',
+    'src\openmidisesh.bas',
     'src\omagui_runtime.bas',
     'src\midi_model.bas',
     'src\history_timeline.bas',
@@ -157,7 +157,7 @@ $compilerArguments = @(
     '--target-api', 35,
     '--target', $Target,
     '--package', $packageName,
-    '--label', 'OpenSesh',
+    '--label', 'OpenMidiSesh',
     '--landscape',
     '--env', 'OSE_DEFAULT_INTERACTION_MODE=touch',
     '--env', "XDG_CONFIG_HOME=/data/data/$packageName",
@@ -166,7 +166,7 @@ $compilerArguments = @(
     '-mt',
     '-d', 'OSE_SFX_ECHO_AVAILABLE=0',
     '-d', 'OSE_SFX_OUTPUT_TELEMETRY_AVAILABLE=0',
-    (Join-Path $projectRoot 'src\opensesh_unity.bas'),
+    (Join-Path $projectRoot 'src\openmidisesh_unity.bas'),
     '-x', $outputFile
 )
 if ($RunOnDevice) {
@@ -174,7 +174,7 @@ if ($RunOnDevice) {
 }
 
 $temporaryParent = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
-$stageName = 'opensesh-android-template-' + [Guid]::NewGuid().ToString('N')
+$stageName = 'openmidisesh-android-template-' + [Guid]::NewGuid().ToString('N')
 $stageRoot = Join-Path $temporaryParent $stageName
 New-Item -ItemType Directory -Path $stageRoot | Out-Null
 try {

@@ -1,13 +1,13 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: src/editor/state.bi
 
     Targets: FreeBASIC fb dialect; the including application selects the native backend.
-    Module API: Private implementation include for opensesh.bas; state.bi owns shared storage.
+    Module API: Private implementation include for openmidisesh.bas; state.bi owns shared storage.
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Purpose:
@@ -24,7 +24,7 @@
         - an independently linked public module
         - application startup or resource shutdown
 
-    Included once by opensesh.bas in the editor translation unit.
+    Included once by openmidisesh.bas in the editor translation unit.
     Shared editor storage and forward declarations live in state.bi.
 '/
 
@@ -213,7 +213,11 @@ Const SESSION_NOTE_WINDOW_HEIGHT As Integer = 270
 Const SESSION_TEMPO_MAP_WINDOW_WIDTH As Integer = 500
 Const SESSION_TEMPO_MAP_WINDOW_HEIGHT As Integer = 390
 Const SESSION_TRACK_WINDOW_WIDTH As Integer = 520
-Const SESSION_TRACK_WINDOW_HEIGHT As Integer = 434
+Const SESSION_TRACK_WINDOW_HEIGHT As Integer = 484
+Const SESSION_GENERAL_MIDI_PROGRAM_COUNT As Integer = _
+    OSE_GENERAL_MIDI_PROGRAM_COUNT
+Const SESSION_GM_INSTRUMENT_PICKER_WIDTH As Integer = 560
+Const SESSION_GM_INSTRUMENT_PICKER_HEIGHT As Integer = 580
 Const SESSION_AUDIO_WINDOW_WIDTH As Integer = 720
 Const SESSION_AUDIO_WINDOW_HEIGHT As Integer = 360
 Const SESSION_MIDI_INPUT_WINDOW_WIDTH As Integer = 460
@@ -327,6 +331,13 @@ Dim Shared session_TempoMapSelectedIndex As Integer
 Dim Shared session_TrackList As Widget Ptr
 Dim Shared session_TrackWindow As Widget Ptr
 Dim Shared session_TrackNameBox As Widget Ptr
+Dim Shared session_TrackInstrumentNameLabel As Widget Ptr
+Dim Shared session_TrackInstrumentChannel As Integer
+Dim Shared session_TrackInstrumentInitialProgram As Integer
+Dim Shared session_TrackInstrumentSelectedProgram As Integer
+Dim Shared session_TrackInstrumentPickerWindow As Widget Ptr
+Dim Shared session_TrackInstrumentPickerList As Widget Ptr
+Dim Shared session_TrackInstrumentPickerCloseRequested As Integer
 Dim Shared session_DocumentTitleBox As Widget Ptr
 Dim Shared session_CopyrightBox As Widget Ptr
 Dim Shared session_LyricBox As Widget Ptr
@@ -538,6 +549,8 @@ Dim Shared session_LiveRecordingStartClock As Double
 Dim Shared session_LiveRecordingStartMidiTimestamp As ULong
 Dim Shared session_LiveRecordingHasMidiTimestamp As Integer
 Dim Shared session_LiveRecordingKeyboardOnly As Integer
+Dim Shared session_LiveRecordingPaused As Integer
+Dim Shared session_LiveRecordingPauseTick As ULongInt
 Dim Shared session_ScoreLayout As OseScoreLayoutState
 Dim Shared session_ScoreVisibleNoteIndices( _
     0 To SESSION_SCORE_NOTE_CACHE_CAPACITY - 1) As Integer
@@ -562,6 +575,7 @@ Dim Shared session_LiveMidiNoteIndex(0 To 2047) As Integer
 Dim Shared session_LiveMidiNoteStartTick(0 To 2047) As ULongInt
 Dim Shared session_LiveMidiNoteReleased(0 To 2047) As Integer
 Dim Shared session_LiveMidiSustain(0 To SESSION_CHANNEL_COUNT - 1) As Integer
+Dim Shared session_LiveInputProgram(0 To SESSION_CHANNEL_COUNT - 1) As Integer
 Dim Shared session_MidiInputDeviceIndex As Integer
 Dim Shared session_MidiInputAutoOpened As Integer
 Dim Shared session_LastMidiInputDroppedCount As ULongInt
@@ -669,6 +683,11 @@ Declare Sub session_OnTrackProperties(ByVal source As Widget Ptr)
 Declare Sub session_OnTrackPropertiesClose(ByVal source As Widget Ptr)
 Declare Sub session_OnApplyTrackProperties(ByVal source As Widget Ptr)
 Declare Sub session_OnQuantizeTrack(ByVal source As Widget Ptr)
+Declare Sub session_OnChooseTrackInstrument(ByVal source As Widget Ptr)
+Declare Sub session_OnUseTrackInstrument(ByVal source As Widget Ptr)
+Declare Sub session_OnCancelTrackInstrumentPicker(ByVal source As Widget Ptr)
+Declare Sub session_OnTrackInstrumentPickerClose(ByVal source As Widget Ptr)
+Declare Sub session_ProcessTrackInstrumentPickerWindow()
 Declare Sub session_OnAutomation(ByVal source As Widget Ptr)
 Declare Sub session_OnAddAutomation(ByVal source As Widget Ptr)
 Declare Sub session_OnApplyAutomation(ByVal source As Widget Ptr)

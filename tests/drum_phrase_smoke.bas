@@ -1,10 +1,10 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     File: tests/drum_phrase_smoke.bas
 
     Module API: Test executable; process status reports failed behavioral assertions.
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; Windows/Linux host test runners.
@@ -130,10 +130,10 @@ test_Check drumPhrase_Load(0, loadedPhrase) AndAlso loadedPhrase.title = "Offbea
 ' Corrupt external MIDI text must never partially fill the caller's draft.
 Dim As MidiTextEventPoint textPoint
 test_Check midi_GetTextEvent(0, textPoint), "find metadata to corrupt"
-textPoint.textValue = "OpenSesh:DrumPhrase:1:0|ZZ0304|Bad|" + String(768, "h")
+textPoint.textValue = "OpenMidiSesh:DrumPhrase:1:0|ZZ0304|Bad|" + String(768, "h")
 test_Check midi_SetTextEvent(summary, textPoint.sourceIndex, textPoint), "write malformed hex fixture"
 test_Check drumPhrase_Load(0, loadedPhrase) = 0 AndAlso loadedPhrase.denominator = 4, "reject malformed meter"
-textPoint.textValue = "OpenSesh:DrumPhrase:1:0|040304|Bad|" + String(767, "h") + "?"
+textPoint.textValue = "OpenMidiSesh:DrumPhrase:1:0|040304|Bad|" + String(767, "h") + "?"
 test_Check midi_SetTextEvent(summary, textPoint.sourceIndex, textPoint), "write malformed velocity fixture"
 test_Check drumPhrase_Load(0, loadedPhrase) = 0 AndAlso loadedPhrase.velocity(0, 0) = 0, "reject partial velocity payload"
 drumPhrase_Reset phrase, 0

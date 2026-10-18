@@ -1,19 +1,19 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: audio_tracks_smoke.bas
 
     Module API: Test executable; process status reports failed behavioral assertions.
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; Windows/Linux host test runners.
 
     Purpose:
 
-        Exercise the independent WAV clip and OpenSesh project layer
+        Exercise the independent WAV clip and OpenMidiSesh project layer
         without starting the graphical editor or an audio device.
 
     Responsibilities:
@@ -154,12 +154,12 @@ End If
 Print #fileNumber, String(4096, "X");
 Close #fileNumber
 If audio_SaveProject(projectFilename, "recording.mid") = 0 Then
-    Print "ERROR: OpenSesh project could not be saved"
+    Print "ERROR: OpenMidiSesh project could not be saved"
     End 1
 End If
 fileNumber = FreeFile()
 If Open(projectFilename For Binary Access Read As #fileNumber) <> 0 Then
-    Print "ERROR: saved OpenSesh project could not be measured"
+    Print "ERROR: saved OpenMidiSesh project could not be measured"
     End 1
 End If
 savedProjectBytes = Lof(fileNumber)
@@ -173,7 +173,7 @@ audio_Clear()
 Dim As String loadedMidiFilename
 If audio_LoadProject(projectFilename, loadedMidiFilename) = 0 OrElse _
     loadedMidiFilename <> "recording.mid" OrElse audio_GetCount() <> 2 Then
-    Print "ERROR: OpenSesh project could not be loaded"
+    Print "ERROR: OpenMidiSesh project could not be loaded"
     End 1
 End If
 

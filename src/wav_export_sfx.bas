@@ -1,10 +1,10 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: wav_export_sfx.bas
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; shared Windows/Linux x64 and Android editor builds.
@@ -201,7 +201,8 @@ Public Function wavExport_Finish( _
         avoids copying a long capture into another full-size memory buffer.
     '/
     Dim As String temporaryFilename
-    If atomicFile_TemporaryName(outputFilename, temporaryFilename) = 0 Then
+    If atomicFile_ReserveTemporaryPath( _
+        outputFilename, temporaryFilename) = 0 Then
         wavExport_ClearState state
         errorText = "Could not prepare the WAV output file."
         Return 0

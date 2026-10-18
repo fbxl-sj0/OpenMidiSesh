@@ -1,5 +1,5 @@
 """
-Project: OpenSesh validator regression checks
+Project: OpenMidiSesh validator regression checks
 File: tools/fblint/test_callback_cast_inputs.py
 Purpose: Exercise callback ownership against genuine compiler exports.
 Responsibilities: Retain void cast calls and reject a different callback signature.

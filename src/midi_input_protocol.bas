@@ -1,10 +1,10 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: midi_input_protocol.bas
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; shared Windows/Linux x64 and Android editor builds.
@@ -30,8 +30,9 @@
         On Windows, the WinMM callback is the sole producer and the editor
         thread is the sole consumer. Interlocked publication prevents the
         consumer from seeing a partially written queue slot. Linux ALSA input
-        is pumped by the editor thread, so the same queue uses ordinary index
-        access there and in single-threaded deterministic protocol tests.
+        uses a capture worker and the editor thread consumes its queue. A
+        module-owned mutex protects Linux queue access and SysEx assembly;
+        deterministic protocol tests use the same lock.
 
     This file intentionally does NOT contain:
 
@@ -103,16 +104,31 @@ Private Dim Shared protocol_WriteIndex As Long
 Private Dim Shared protocol_DroppedCount As Long
 Private Dim Shared protocol_Closing As Long
 Private Dim Shared protocol_DeviceIndex As Integer = -1
+Private Dim Shared protocol_Initialized As Integer
+#if defined(__FB_LINUX__)
+' Created on the first public operation and retained for the process lifetime.
+Private Dim Shared protocol_Mutex As Any Ptr
+#endif
 
 
 ' -------------------------------------------------------------------------
 ' Target-aware atomic publication
 ' -------------------------------------------------------------------------
 
+Private Function protocol_EnsureMutex() As Integer
+#if defined(__FB_LINUX__)
+    If protocol_Mutex = 0 Then protocol_Mutex = MutexCreate()
+    If protocol_Mutex = 0 Then Return 0
+#endif
+    Return -1
+End Function
+
+
 Private Function protocol_AtomicRead(ByRef value As Long) As Long
 #if defined(__FB_WIN32__)
     Return _InterlockedCompareExchange(@value, 0, 0)
 #else
+    ' Linux queue methods hold protocol_Mutex for their full operation.
     Return value
 #endif
 End Function
@@ -309,25 +325,60 @@ End Function
 
 
 Public Sub midiInputProtocol_Initialize(ByVal deviceIndex As Integer)
+#if defined(__FB_LINUX__)
+    If protocol_EnsureMutex() = 0 Then Exit Sub
+    MutexLock protocol_Mutex
+#endif
     protocol_AtomicWrite protocol_Closing, 0
     protocol_AtomicWrite protocol_LongAssemblyResetRequested, 0
     protocol_DeviceIndex = deviceIndex
     protocol_ClearQueue()
     protocol_ResetLongAssembly()
+    protocol_Initialized = -1
+#if defined(__FB_LINUX__)
+    MutexUnlock protocol_Mutex
+#endif
 End Sub
 
 
+Public Function midiInputProtocol_IsReady() As Integer
+#if defined(__FB_LINUX__)
+    If protocol_EnsureMutex() = 0 Then Return 0
+    MutexLock protocol_Mutex
+#endif
+    Dim As Integer initialized = protocol_Initialized
+#if defined(__FB_LINUX__)
+    MutexUnlock protocol_Mutex
+#endif
+    Return initialized
+End Function
+
+
 Public Sub midiInputProtocol_SetClosing(ByVal closing As Integer)
+#if defined(__FB_LINUX__)
+    If protocol_EnsureMutex() = 0 Then Exit Sub
+    MutexLock protocol_Mutex
+#endif
     protocol_AtomicWrite protocol_Closing, IIf(closing <> 0, -1, 0)
+#if defined(__FB_LINUX__)
+    MutexUnlock protocol_Mutex
+#endif
 End Sub
 
 
 Public Sub midiInputProtocol_ClearPending()
     ' The consumer discards only events already published. A callback racing
     ' this operation may publish the first valid event of the next pass.
+#if defined(__FB_LINUX__)
+    If protocol_EnsureMutex() = 0 Then Exit Sub
+    MutexLock protocol_Mutex
+#endif
     Dim As Long writeIndex = protocol_AtomicRead(protocol_WriteIndex)
     protocol_AtomicWrite protocol_ReadIndex, writeIndex
     protocol_AtomicWrite protocol_LongAssemblyResetRequested, -1
+#if defined(__FB_LINUX__)
+    MutexUnlock protocol_Mutex
+#endif
 End Sub
 
 
@@ -342,17 +393,28 @@ Public Function midiInputProtocol_ProcessShort( _
         data2Byte < 0 OrElse data2Byte > 255 Then
         Return 0
     End If
+#if defined(__FB_LINUX__)
+    If protocol_EnsureMutex() = 0 Then Return 0
+    MutexLock protocol_Mutex
+#endif
 
     Dim As UByte statusValue = CByte(statusByte)
     Dim As UByte data1Value = CByte(data1Byte)
     Dim As UByte data2Value = CByte(data2Byte)
     If protocol_IsSupportedShortMessage( _
         statusValue, data1Value, data2Value) = 0 Then
+#if defined(__FB_LINUX__)
+        MutexUnlock protocol_Mutex
+#endif
         Return 0
     End If
 
-    Return protocol_EnqueueShort( _
+    Dim As Integer enqueueResult = protocol_EnqueueShort( _
         statusValue, data1Value, data2Value, timestamp)
+#if defined(__FB_LINUX__)
+    MutexUnlock protocol_Mutex
+#endif
+    Return enqueueResult
 End Function
 
 
@@ -365,6 +427,10 @@ Public Function midiInputProtocol_ProcessLongChunk( _
         payloadLength > OSE_MIDI_INPUT_MAX_LONG_BYTES Then
         Return 0
     End If
+#if defined(__FB_LINUX__)
+    If protocol_EnsureMutex() = 0 Then Return 0
+    MutexLock protocol_Mutex
+#endif
 
     protocol_ApplyLongAssemblyResetRequest()
 
@@ -408,6 +474,9 @@ Public Function midiInputProtocol_ProcessLongChunk( _
             End If
         End If
     Next
+#if defined(__FB_LINUX__)
+    MutexUnlock protocol_Mutex
+#endif
     Return -1
 End Function
 
@@ -415,9 +484,16 @@ End Function
 Public Function midiInputProtocol_Poll( _
     ByRef message As OseMidiInputMessage _
 ) As Integer
+#if defined(__FB_LINUX__)
+    If protocol_EnsureMutex() = 0 Then Return 0
+    MutexLock protocol_Mutex
+#endif
     Dim As Long readIndex = protocol_AtomicRead(protocol_ReadIndex)
     Dim As Long writeIndex = protocol_AtomicRead(protocol_WriteIndex)
     If readIndex = writeIndex Then
+#if defined(__FB_LINUX__)
+        MutexUnlock protocol_Mutex
+#endif
         Return 0
     End If
 
@@ -428,12 +504,22 @@ Public Function midiInputProtocol_Poll( _
         nextIndex = 0
     End If
     protocol_AtomicWrite protocol_ReadIndex, nextIndex
+#if defined(__FB_LINUX__)
+    MutexUnlock protocol_Mutex
+#endif
     Return -1
 End Function
 
 
 Public Function midiInputProtocol_GetDroppedCount() As ULongInt
+#if defined(__FB_LINUX__)
+    If protocol_EnsureMutex() = 0 Then Return 0
+    MutexLock protocol_Mutex
+#endif
     Dim As Long droppedCount = protocol_AtomicRead(protocol_DroppedCount)
+#if defined(__FB_LINUX__)
+    MutexUnlock protocol_Mutex
+#endif
     If droppedCount < 0 Then
         Return 2147483647
     End If

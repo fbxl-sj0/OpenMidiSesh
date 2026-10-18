@@ -1,5 +1,5 @@
 <#
-    Project: OpenSesh
+    Project: OpenMidiSesh
     File: tests/windows_toolchain_selection_smoke.ps1
     Purpose: Verify that the release lock hashes the selected Windows compiler.
     Responsibilities:
@@ -37,7 +37,7 @@ function Assert-Test {
 }
 
 $temporaryParent = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
-$testName = 'opensesh-windows-toolchain-' + [Guid]::NewGuid().ToString('N')
+$testName = 'openmidisesh-windows-toolchain-' + [Guid]::NewGuid().ToString('N')
 $testRoot = Join-Path $temporaryParent $testName
 $failures = @()
 New-Item -ItemType Directory -Path $testRoot | Out-Null
@@ -46,13 +46,13 @@ try {
     New-Item -ItemType Directory -Path $compilerRoot | Out-Null
     $selectedCompiler = Join-Path $compilerRoot 'fbc64.ps1'
     $neighborCompiler = Join-Path $compilerRoot 'fbc.exe'
-    $banner = 'OpenSesh compiler selection fixture'
+    $banner = 'OpenMidiSesh compiler selection fixture'
     $matchingCompiler = @'
 # fake compiler identity=A
 if ($args.Count -ne 1 -or $args[0] -cne '-version') {
     throw 'The fake compiler only accepts -version.'
 }
-Write-Output 'OpenSesh compiler selection fixture'
+Write-Output 'OpenMidiSesh compiler selection fixture'
 $global:LASTEXITCODE = 0
 '@
     # Equal-length comment changes leave exactly the same executable behavior.

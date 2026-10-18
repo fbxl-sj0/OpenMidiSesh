@@ -1,8 +1,8 @@
-<!-- Project: OpenSesh; File: SECURITY.md; Purpose: vulnerability reporting. -->
+<!-- Project: OpenMidiSesh; File: SECURITY.md; Purpose: vulnerability reporting. -->
 
 # Security
 
-OpenSesh opens untrusted MIDI, project, audio, and SoundFont files. Reports of
+OpenMidiSesh opens untrusted MIDI, project, audio, and SoundFont files. Reports of
 out-of-bounds access, arithmetic overflow, unexpected file replacement, unsafe
 allocation, and resource-lifetime failures are useful even when they require a
 malformed input.

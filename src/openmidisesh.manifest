@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <!--
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ============================
 
-    File: opensesh.manifest
+    File: openmidisesh.manifest
 
     Purpose:
 
@@ -23,7 +23,7 @@
 -->
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
     <assemblyIdentity
-        name="OpenSesh.opensesh"
+        name="OpenMidiSesh.openmidisesh"
         processorArchitecture="amd64"
         type="win32"
         version="0.9.0.0" />
@@ -50,4 +50,4 @@
     </application>
 </assembly>
 
-<!-- end of opensesh.manifest -->
+<!-- end of openmidisesh.manifest -->

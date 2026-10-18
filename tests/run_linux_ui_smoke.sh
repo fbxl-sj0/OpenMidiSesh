@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Project: OpenSesh
+# Project: OpenMidiSesh
 # ----------------------------
 #
 # File: tests/run_linux_ui_smoke.sh
@@ -27,7 +27,7 @@
 set -u
 
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-editor_path=${EDITOR_PATH:-"$project_root/opensesh"}
+editor_path=${EDITOR_PATH:-"$project_root/openmidisesh"}
 midi_fixture=${MIDI_FIXTURE_PATH:-}
 audio_fixture=${AUDIO_FIXTURE_PATH:-}
 display_name=${LINUX_UI_DISPLAY:-${DISPLAY:-}}
@@ -95,7 +95,7 @@ if ! XAUTHORITY="$xauthority_path" DISPLAY="$display_name" \
 fi
 
 if [ -z "$build_root" ]; then
-    build_root=$(mktemp -d /tmp/opensesh-linux-ui-XXXXXX)
+    build_root=$(mktemp -d /tmp/openmidisesh-linux-ui-XXXXXX)
     owns_build_root=1
 else
     if [ -e "$build_root" ]; then
@@ -114,7 +114,7 @@ cleanup_linux_ui_directory()
         return
     fi
     case "$build_root" in
-        /tmp/opensesh-linux-ui-??????)
+        /tmp/openmidisesh-linux-ui-??????)
             rm -rf -- "$build_root"
             ;;
         *)
@@ -273,7 +273,7 @@ fi
 control_report="$build_root/linux-ui-control-report.txt"
 control_log="$build_root/linux-ui-control-audit.log"
 preferences_file="$build_root/linux-ui-preferences.conf"
-printf 'format=OpenSeshPreferences\nversion=1\ntheme=dark\ninteraction=fine\n' \
+printf 'format=OpenMidiSeshPreferences\nversion=1\ntheme=dark\ninteraction=fine\n' \
     > "$preferences_file"
 
 linux_ui_control_launches=$((linux_ui_control_launches + 1))

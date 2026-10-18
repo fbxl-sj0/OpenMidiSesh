@@ -1,10 +1,10 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: music_symbols.bi
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; shared Windows/Linux x64 and Android editor builds.
@@ -28,8 +28,8 @@
         - score layout or MIDI-duration policy
 '/
 
-#ifndef __OPENSESH_MUSIC_SYMBOLS_BI__
-#define __OPENSESH_MUSIC_SYMBOLS_BI__
+#ifndef __OPENMIDISESH_MUSIC_SYMBOLS_BI__
+#define __OPENMIDISESH_MUSIC_SYMBOLS_BI__
 
 Const MUSIC_SYMBOL_NOTE_FILLED As Integer = &H20
 Const MUSIC_SYMBOL_NOTE_HOLLOW As Integer = &H21

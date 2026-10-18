@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Project: OpenSesh
+Project: OpenMidiSesh
 File: tools/publish_packages.py
 Purpose: publish a complete native package set after all CI jobs pass.
 Responsibilities: enforce target/commit/hash evidence and create checksum assets.
@@ -32,7 +32,7 @@ def publish(directory: Path) -> None:
         report_path = directory / (target + "-validation.json")
         report = json.loads(report_path.read_text())
         filename = report["package"]
-        if (not re.fullmatch(r"opensesh-[0-9A-Za-z.+-]+-" + target + r"-x86_64\.(zip|tar\.gz)", filename)
+        if (not re.fullmatch(r"openmidisesh-[0-9A-Za-z.+-]+-" + target + r"-x86_64\.(zip|tar\.gz)", filename)
                 or report["system"] != target or report["architecture"] != "x86_64"
                 or report["source_commit"] != commit or report["tests_failed"] != 0
                 or report["tests_passed"] != (61 if target == "windows" else 60)
@@ -56,7 +56,7 @@ def publish(directory: Path) -> None:
     checksums.write_text("".join(hashlib.sha256(path.read_bytes()).hexdigest() + "  " + path.name + "\n"
                                   for path in assets))
     body = directory.parent / "native-release-notes.md"
-    body.write_text("Download the archive for your x86_64 operating system and extract it before running OpenSesh.\n\n"
+    body.write_text("Download the archive for your x86_64 operating system and extract it before running OpenMidiSesh.\n\n"
                     "All six packages passed native compilation, deterministic tests, Desktop/Touch editor checks "
                     "and startup checks of the extracted executable. Each includes corresponding source and licenses. "
                     "Exact compiler, OS, source and test evidence is in CI-SUMMARY.json.\n\n"
@@ -69,7 +69,7 @@ def publish(directory: Path) -> None:
                     "Haiku uses a fixed editor window because of the pinned runtime's resize initialization bug. "
                     "These unsigned development builds have no physical-device or frame-pacing qualification from hosted CI.\n\n"
                     "This is distribution revision " + tag + "; the application reports " + evidence[0]["application_version"] + ".\n")
-    command = ["gh", "release", "create", tag, "--verify-tag", "--title", "OpenSesh " + tag[1:],
+    command = ["gh", "release", "create", tag, "--verify-tag", "--title", "OpenMidiSesh " + tag[1:],
                "--notes-file", str(body), "--repo", "fbxl-sj0/OpenMidiSesh"]
     if "dev" in tag:
         command.append("--prerelease")

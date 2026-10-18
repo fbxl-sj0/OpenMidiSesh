@@ -1,10 +1,10 @@
 /'
-    Project: OpenSesh
+    Project: OpenMidiSesh
     ---------------------------
 
     File: atomic_file_internal.bi
 
-    Copyright (C) 2026 OpenSesh contributors
+    Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
     Targets: FreeBASIC fb dialect; shared Windows/Linux x64 and Android editor builds.
@@ -165,24 +165,47 @@ End Function
 
 
 ' FBLINT: DISABLE-NEXT-LINE FBL-INC-008 REASON: Internal helper included only by project modules.
-Private Function atomicFile_WriteVerified( _
+Private Function atomicFile_ReserveTemporaryPath( _
     ByVal destinationFilename As String, _
-    ByRef fileData As String _
+    ByRef temporaryFilename As String _
+) As Integer
+    If destinationFilename = "" OrElse _
+        Len(destinationFilename) > ATOMIC_FILE_MAX_PATH_BYTES OrElse _
+        InStr(destinationFilename, Chr(0)) > 0 Then Return 0
+
+    Dim As FILE Ptr temporaryStream = 0
+    temporaryFilename = ""
+    If atomicFile_CreateTemporary( _
+        destinationFilename, temporaryFilename, temporaryStream) = 0 Then _
+        Return 0
+    If fclose(temporaryStream) <> 0 Then
+        atomicFile_RemoveTemporary temporaryFilename
+        temporaryFilename = ""
+        Return 0
+    End If
+    Return -1
+End Function
+
+
+' FBLINT: DISABLE-NEXT-LINE FBL-INC-008 REASON: Internal helper included only by project modules.
+Private Function atomicFile_WriteTemporaryVerified( _
+    ByVal destinationFilename As String, _
+    ByRef fileData As String, _
+    ByRef temporaryFilename As String _
 ) As Integer
     /'
-        Checked FreeBASIC builds use resumable runtime-error labels around file
-        operations. Keep scalar state above those labels so GCC can prove that
-        every generated resume path observes initialized storage.
+        Create an exclusively owned same-directory image and leave it in place
+        for a transaction journal to retain as a rollback backup.
     '/
     Dim As LongInt writtenBytes = 0
     Dim As Integer closeStatus = 0
     Dim As FILE Ptr temporaryStream = 0
-    Dim As String temporaryFilename
 
     If destinationFilename = "" OrElse _
         Len(destinationFilename) > ATOMIC_FILE_MAX_PATH_BYTES OrElse _
         InStr(destinationFilename, Chr(0)) > 0 Then Return 0
 
+    temporaryFilename = ""
     If atomicFile_CreateTemporary( _
         destinationFilename, temporaryFilename, temporaryStream) = 0 Then _
         Return 0
@@ -195,6 +218,7 @@ Private Function atomicFile_WriteVerified( _
     temporaryStream = 0
     If closeStatus <> 0 OrElse writtenBytes <> Len(fileData) Then
         atomicFile_RemoveTemporary temporaryFilename
+        temporaryFilename = ""
         Return 0
     End If
 
@@ -202,6 +226,7 @@ Private Function atomicFile_WriteVerified( _
     If Open(temporaryFilename For Binary Access Read As #fileNumber) <> 0 Then
         ' a failed Open does not own a file handle.
         atomicFile_RemoveTemporary temporaryFilename
+        temporaryFilename = ""
         Return 0
     End If
     writtenBytes = Lof(fileNumber)
@@ -212,6 +237,7 @@ Private Function atomicFile_WriteVerified( _
             Len(verifiedData)) = 0 Then
             Close #fileNumber
             atomicFile_RemoveTemporary temporaryFilename
+            temporaryFilename = ""
             Return 0
         End If
     End If
@@ -220,9 +246,27 @@ Private Function atomicFile_WriteVerified( _
     If writtenBytes <> Len(fileData) OrElse _
         (writtenBytes > 0 AndAlso verifiedData <> fileData) Then
         atomicFile_RemoveTemporary temporaryFilename
+        temporaryFilename = ""
         Return 0
     End If
 
+    Return -1
+End Function
+
+
+' FBLINT: DISABLE-NEXT-LINE FBL-INC-008 REASON: Internal helper included only by project modules.
+Private Function atomicFile_WriteVerified( _
+    ByVal destinationFilename As String, _
+    ByRef fileData As String _
+) As Integer
+    /'
+        Checked FreeBASIC builds use resumable runtime-error labels around file
+        operations. Keep scalar state above those labels so GCC can prove that
+        every generated resume path observes initialized storage.
+    '/
+    Dim As String temporaryFilename
+    If atomicFile_WriteTemporaryVerified( _
+        destinationFilename, fileData, temporaryFilename) = 0 Then Return 0
     If atomicFile_Replace(temporaryFilename, destinationFilename) = 0 Then
         atomicFile_RemoveTemporary temporaryFilename
         Return 0

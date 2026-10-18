@@ -1,5 +1,5 @@
 """
-Project: OpenSesh validator regression checks
+Project: OpenMidiSesh validator regression checks
 File: tools/fblint/test_field_cache.py
 Purpose: Export real compiler records for the native field-cache regression.
 Responsibilities: Distinct source layouts and escaped percent bytes with full validation.

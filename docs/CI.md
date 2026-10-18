@@ -1,5 +1,5 @@
 <!--
-    Project: OpenSesh
+    Project: OpenMidiSesh
     File: docs/CI.md
     Purpose: Summarize automated build and package coverage.
     Responsibilities: describe the native workflows and their limits.
