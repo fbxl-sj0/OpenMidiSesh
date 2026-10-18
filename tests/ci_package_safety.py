@@ -26,7 +26,7 @@ from package_platform import archive_bytes, verify_archive
 class PackageSafety(unittest.TestCase):
     def test_dependency_manifest_accepts_uppercase_sha256(self):
         with tempfile.TemporaryDirectory() as folder:
-            root = Path(folder)
+            root = Path(folder).resolve()
             vendor = root / "vendor/omaGui"
             vendor.mkdir(parents=True)
             payload = b"pinned dependency bytes\n"
