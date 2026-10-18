@@ -132,7 +132,7 @@ End Function
 Private Function atomicFile_CreateTemporary( _
     ByVal destinationFilename As String, _
     ByRef temporaryFilename As String, _
-    ByRef temporaryStream As FILE Ptr _
+    ByRef temporaryStream As Any Ptr _
 ) As Integer
     Dim As ULongInt firstCandidate = _
         CULngInt(Timer * ATOMIC_FILE_TIMER_SEED_SCALE)
@@ -147,14 +147,26 @@ Private Function atomicFile_CreateTemporary( _
             LTrim(Str(candidateNumber))
         If Len(candidate) > ATOMIC_FILE_MAX_PATH_BYTES Then Return 0
 
+#If Defined(__FB_WIN32__)
         /'
-            The C11 x mode claims a new path atomically and fails when the
+            The pinned Windows CRT rejects C11's exclusive "x" fopen mode.
+            CREATE_NEW claims the candidate atomically and fails if it exists,
+            without opening a path found by a separate Dir check.
+        '/
+        Dim As HANDLE candidateStream = CreateFileA( _
+            StrPtr(candidate), GENERIC_WRITE, 0, 0, CREATE_NEW, _
+            FILE_ATTRIBUTE_NORMAL, 0)
+        If candidateStream <> INVALID_HANDLE_VALUE Then
+#Else
+        /'
+            C11's x mode claims a new path atomically and fails when the
             candidate already exists. A Dir check followed by a normal write
             open would allow another save to claim the path in between.
         '/
         Dim As FILE Ptr candidateStream = fopen( _
             StrPtr(candidate), StrPtr("wbx"))
         If candidateStream <> 0 Then
+#EndIf
             temporaryFilename = candidate
             temporaryStream = candidateStream
             Return -1
@@ -173,12 +185,16 @@ Private Function atomicFile_ReserveTemporaryPath( _
         Len(destinationFilename) > ATOMIC_FILE_MAX_PATH_BYTES OrElse _
         InStr(destinationFilename, Chr(0)) > 0 Then Return 0
 
-    Dim As FILE Ptr temporaryStream = 0
+    Dim As Any Ptr temporaryStream = 0
     temporaryFilename = ""
     If atomicFile_CreateTemporary( _
         destinationFilename, temporaryFilename, temporaryStream) = 0 Then _
         Return 0
-    If fclose(temporaryStream) <> 0 Then
+#If Defined(__FB_WIN32__)
+    If CloseHandle(Cast(HANDLE, temporaryStream)) = 0 Then
+#Else
+    If fclose(Cast(FILE Ptr, temporaryStream)) <> 0 Then
+#EndIf
         atomicFile_RemoveTemporary temporaryFilename
         temporaryFilename = ""
         Return 0
@@ -199,7 +215,7 @@ Private Function atomicFile_WriteTemporaryVerified( _
     '/
     Dim As LongInt writtenBytes = 0
     Dim As Integer closeStatus = 0
-    Dim As FILE Ptr temporaryStream = 0
+    Dim As Any Ptr temporaryStream = 0
 
     If destinationFilename = "" OrElse _
         Len(destinationFilename) > ATOMIC_FILE_MAX_PATH_BYTES OrElse _
@@ -210,12 +226,27 @@ Private Function atomicFile_WriteTemporaryVerified( _
         destinationFilename, temporaryFilename, temporaryStream) = 0 Then _
         Return 0
 
+#If Defined(__FB_WIN32__)
+    Dim As ULong bytesWritten = 0
+    If Len(fileData) > 0 Then
+        If WriteFile(Cast(HANDLE, temporaryStream), StrPtr(fileData), _
+            CULng(Len(fileData)), @bytesWritten, 0) <> 0 Then
+            writtenBytes = CLngInt(bytesWritten)
+        End If
+    End If
+    If FlushFileBuffers(Cast(HANDLE, temporaryStream)) = 0 Then _
+        closeStatus = -1
+    If CloseHandle(Cast(HANDLE, temporaryStream)) = 0 Then _
+        closeStatus = -1
+    temporaryStream = 0
+#Else
     If Len(fileData) > 0 Then
         writtenBytes = CLngInt(fwrite( _
             StrPtr(fileData), 1, Len(fileData), temporaryStream))
     End If
     closeStatus = CInt(fclose(temporaryStream))
     temporaryStream = 0
+#EndIf
     If closeStatus <> 0 OrElse writtenBytes <> Len(fileData) Then
         atomicFile_RemoveTemporary temporaryFilename
         temporaryFilename = ""
