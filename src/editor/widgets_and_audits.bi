@@ -2439,7 +2439,7 @@ Private Sub session_AuditSemanticTrackMutations( _
             "Unchanged track properties altered document history", _
             behaviorCheckCount, errorText
         session_AuditBehavior session_StatusText = _
-            "Track and document information are unchanged.", _
+            "Track, document, and instrument values are unchanged.", _
             "Unchanged track properties were not reported", _
             behaviorCheckCount, errorText
 
