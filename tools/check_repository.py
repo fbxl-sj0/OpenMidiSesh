@@ -57,7 +57,7 @@ def dependency_files(root: Path) -> set[str]:
     for line in (vendor / "SNAPSHOT.sha256").read_text(encoding="utf-8").splitlines():
         if not line or line.startswith("#"):
             continue
-        match = re.fullmatch(r"([0-9a-f]{64})  ([ -~]+)", line)
+        match = re.fullmatch(r"([0-9a-fA-F]{64})  ([ -~]+)", line)
         if match is None:
             raise ValueError("Malformed GUI dependency manifest.")
         digest, relative = match.groups()
@@ -65,7 +65,7 @@ def dependency_files(root: Path) -> set[str]:
         name = "vendor/omaGui/" + relative
         if name in names or "font_arial" in relative or relative.endswith("font_data_impl.bi"):
             raise ValueError(f"Duplicate or excluded GUI payload: {relative}")
-        if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+        if hashlib.sha256(path.read_bytes()).hexdigest() != digest.lower():
             raise ValueError(f"Changed GUI dependency bytes: {relative}")
         names.add(name)
     if len(names) <= 2:

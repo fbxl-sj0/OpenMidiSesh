@@ -18,11 +18,29 @@ from unittest.mock import patch
 import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
+from check_repository import dependency_files
 from fetch_ci_toolchain import fetch
 from package_platform import archive_bytes, verify_archive
 
 
 class PackageSafety(unittest.TestCase):
+    def test_dependency_manifest_accepts_uppercase_sha256(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            vendor = root / "vendor/omaGui"
+            vendor.mkdir(parents=True)
+            payload = b"pinned dependency bytes\n"
+            (vendor / "payload.bi").write_bytes(payload)
+            digest = hashlib.sha256(payload).hexdigest().upper()
+            (vendor / "SNAPSHOT.sha256").write_text(
+                digest + "  payload.bi\n", encoding="ascii")
+
+            self.assertEqual(dependency_files(root), {
+                "vendor/omaGui/DEPENDENCY.md",
+                "vendor/omaGui/SNAPSHOT.sha256",
+                "vendor/omaGui/payload.bi",
+            })
+
     def download(self, folder, payload, expected=b"compiler"):
         config = {"base_url": "https://example.invalid", "haiku": {"files": [{
             "name": "compiler.hpkg", "size": len(expected),
