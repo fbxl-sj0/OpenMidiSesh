@@ -56,10 +56,11 @@ Private Sub session_ShowDesktopMenu( _
         Exit Sub
     End If
     session_HideDesktopMenus()
-    menuWidget->x = menuLeft
-    menuWidget->y = SESSION_MENU_HEIGHT
-    menuWidget->visible = -1
-    gui_BringToFront menuWidget
+    ' Let omaGUI fit the popup to the usable viewport. The editor retains its
+    ' existing menu keyboard router, so preserve the previous widget focus.
+    Dim As Widget Ptr previousFocus = gui_GetFocus()
+    menu_ShowAt menuWidget, menuLeft, SESSION_MENU_HEIGHT, 0
+    gui_SetFocus previousFocus
 End Sub
 
 
@@ -124,6 +125,9 @@ Private Sub session_ShowDesktopMenuAt( _
             Exit Sub
     End Select
 
+    If screenWidth < 640 Then menuLeft = (menuIndex Mod 4) * (screenWidth \ 4)
+    If menuLeft > screenWidth - 210 Then menuLeft = screenWidth - 210
+    If menuLeft < 0 Then menuLeft = 0
     Dim As Widget Ptr menuWidget = session_DesktopMenuAt(menuIndex)
     session_ShowDesktopMenu menuWidget, menuLeft
     If menuWidget <> 0 AndAlso menuWidget->data <> 0 Then
@@ -287,7 +291,12 @@ Private Sub session_ProcessMenuBar()
         input_MouseY() >= 0 AndAlso input_MouseY() < SESSION_MENU_HEIGHT Then
         Dim As Integer mouseX = input_MouseX()
         session_MenuKeyboardAccess = 0
-        If mouseX >= SESSION_MENU_FILE_LEFT_X AndAlso _
+        If menuScreenWidth < 640 Then
+            Dim As Integer cellWidth = menuScreenWidth \ 4
+            Dim As Integer cellHeight = SESSION_MENU_HEIGHT \ 2
+            If cellWidth > 0 AndAlso mouseX >= 0 AndAlso mouseX < menuScreenWidth Then _
+                session_ShowDesktopMenuAt (input_MouseY() \ cellHeight) * 4 + (mouseX \ cellWidth), menuScreenWidth
+        ElseIf mouseX >= SESSION_MENU_FILE_LEFT_X AndAlso _
             mouseX < SESSION_MENU_FILE_RIGHT_X Then
             session_ShowDesktopMenuAt 0, menuScreenWidth
         ElseIf mouseX < SESSION_MENU_EDIT_RIGHT_X Then
@@ -456,6 +465,8 @@ Public Sub session_OnWindowMenu(ByVal selectedIndex As Integer)
             session_FitScoreTracks()
         Case SESSION_VIEW_MIDI_EVENTS
             session_OnAutomation 0
+        Case 7
+            session_CompactMixer = Not session_CompactMixer
     End Select
 End Sub
 
@@ -598,6 +609,19 @@ End Sub
 
 
 Private Sub session_LayoutToolbarWidgets(ByVal screenWidth As Integer)
+    uiInteraction_ViewportMetrics session_InteractionMetrics, session_InteractionMode, screenWidth
+    If session_MonitorButton <> 0 Then
+        session_MonitorButton->x = session_InteractionMetrics.monitorLeft
+        session_MonitorButton->y = session_InteractionMetrics.monitorTop
+        session_MonitorButton->h = SESSION_TOOLBAR_BUTTON_HEIGHT
+        If session_InteractionMode = OSE_UI_INTERACTION_FINE AndAlso _
+            session_InteractionMetrics.monitorTop = 1 Then _
+            session_MonitorButton->h = SESSION_MENU_HEIGHT - 2
+        Cast(ButtonData Ptr, session_MonitorButton->data)->text = IIf(session_MonitorEnabled <> 0, "Monitor on", "Monitor")
+    End If
+    If session_NoteToolsButton <> 0 Then session_NoteToolsButton->visible = IIf(screenWidth >= 800, -1, 0)
+    If session_DrumMachineButton <> 0 Then session_DrumMachineButton->visible = IIf(screenWidth >= 800, -1, 0)
+    If session_SongMeterButton <> 0 Then session_SongMeterButton->visible = IIf(screenWidth >= 800, -1, 0)
     If session_NoteToolsButton <> 0 Then
         session_NoteToolsButton->y = 1
         session_NoteToolsButton->h = SESSION_MENU_HEIGHT - 2
@@ -632,8 +656,8 @@ Private Sub session_LayoutToolbarWidgets(ByVal screenWidth As Integer)
         Dim As Widget Ptr fileButton = gui_FindWidget(fileNames(buttonIndex))
         If fileButton <> 0 Then
             fileButton->x = session_InteractionMetrics.fileButtonLeft(buttonIndex)
-            fileButton->y = SESSION_TOOLBAR_TOP + _
-                SESSION_TOOLBAR_BUTTON_TOP_INSET
+            fileButton->y = session_InteractionMetrics.fileButtonTop(buttonIndex)
+            fileButton->visible = IIf(session_InteractionMetrics.fileButtonWidth(buttonIndex) > 0, -1, 0)
             fileButton->w = session_InteractionMetrics.fileButtonWidth(buttonIndex)
             fileButton->h = SESSION_TOOLBAR_BUTTON_HEIGHT
         End If
@@ -650,8 +674,8 @@ Private Sub session_LayoutToolbarWidgets(ByVal screenWidth As Integer)
         If transportButton <> 0 Then
             transportButton->x = _
                 session_InteractionMetrics.transportButtonLeft(buttonIndex)
-            transportButton->y = SESSION_TOOLBAR_TOP + _
-                SESSION_TOOLBAR_BUTTON_TOP_INSET
+            transportButton->y = session_InteractionMetrics.transportButtonTop(buttonIndex)
+            transportButton->visible = IIf(session_InteractionMetrics.transportButtonWidth(buttonIndex) > 0, -1, 0)
             transportButton->w = _
                 session_InteractionMetrics.transportButtonWidth(buttonIndex)
             transportButton->h = SESSION_TOOLBAR_BUTTON_HEIGHT
@@ -661,6 +685,7 @@ Private Sub session_LayoutToolbarWidgets(ByVal screenWidth As Integer)
     Dim As Integer showSetupControls = Iif( _
         screenWidth >= SESSION_SCORE_WIDE_LAYOUT_MINIMUM_WIDTH AndAlso _
         session_InteractionMode = OSE_UI_INTERACTION_FINE, -1, 0)
+    If showSetupControls = 0 AndAlso gui_GetFocus() = session_TempoBox Then gui_SetFocus 0
     If session_TempoLabel <> 0 Then _
         session_TempoLabel->visible = showSetupControls
     If session_TempoBox <> 0 Then _
@@ -669,8 +694,13 @@ Private Sub session_LayoutToolbarWidgets(ByVal screenWidth As Integer)
         session_ApplyTempoButton->visible = showSetupControls
     If session_TempoMapButton <> 0 Then _
         session_TempoMapButton->visible = showSetupControls
-    If session_MidiInputButton <> 0 Then _
-        session_MidiInputButton->visible = showSetupControls
+    If session_MidiInputButton <> 0 Then
+        session_MidiInputButton->visible = -1
+        session_MidiInputButton->x = session_InteractionMetrics.inputLeft
+        session_MidiInputButton->y = session_InteractionMetrics.inputTop
+        session_MidiInputButton->w = IIf(showSetupControls <> 0, 62, 76)
+        session_MidiInputButton->h = SESSION_TOOLBAR_BUTTON_HEIGHT
+    End If
     If session_MidiOutputButton <> 0 Then _
         session_MidiOutputButton->visible = showSetupControls
 End Sub
@@ -680,6 +710,19 @@ Private Sub session_LayoutPaneScrollbars( _
     ByVal screenWidth As Integer, _
     ByVal screenHeight As Integer _
 )
+    Dim As Integer previousCompactLayout = session_CompactLayout
+    Dim As Integer previousMixerVisible = session_MixerVisible
+    session_CompactLayout = IIf(screenHeight < SESSION_TOP_HEIGHT + _
+        OSE_MIXER_HEIGHT + SESSION_SCORE_VIEW_MINIMUM_HEIGHT, -1, 0)
+    session_MixerVisible = IIf(session_CompactLayout = 0 OrElse session_CompactMixer <> 0, -1, 0)
+    ' Menu callbacks request the next pane after this frame's layout. Apply
+    ' geometry here, then invalidate both pages using the new visibility.
+    If previousCompactLayout <> session_CompactLayout OrElse _
+        previousMixerVisible <> session_MixerVisible Then session_InvalidateInterfaceCaches()
+    If session_ScoreHorizontalScrollbar <> 0 Then _
+        session_ScoreHorizontalScrollbar->visible = IIf(session_CompactLayout <> 0 AndAlso session_MixerVisible <> 0, 0, -1)
+    If session_ScoreVerticalScrollbar <> 0 Then _
+        session_ScoreVerticalScrollbar->visible = IIf(session_CompactLayout <> 0 AndAlso session_MixerVisible <> 0, 0, -1)
     Dim As Integer scoreWidth = screenWidth - SESSION_SCORE_LEFT - 4
     Dim As Integer scoreHeight = screenHeight - SESSION_TOP_HEIGHT - _
         SESSION_MIXER_HEIGHT - 8

@@ -37,6 +37,10 @@
 
 #include once "src/widgets/combobox.bi"
 #include once "src/backend/theme.bi"
+#include once "src/widgets/control_keyevents.bi"
+
+' A nested GUI update must not recursively notify this combo callback family.
+Dim Shared As Integer combobox_key_event_depth
 
 Const COMBOBOX_MINIMUM_WIDTH As Integer = 40
 Const COMBOBOX_MINIMUM_HEIGHT As Integer = 18
@@ -595,7 +599,7 @@ Sub combobox_Activate(ByVal combo_widget As Widget Ptr)
 End Sub
 
 
-Sub combobox_Update(ByVal combo_widget As Widget Ptr)
+Private Sub combobox_UpdateBody(ByVal combo_widget As Widget Ptr)
     Dim As ComboBoxData Ptr combo_data
     Dim As Integer pointer_buttons
     Dim As Integer pointer_target
@@ -993,6 +997,8 @@ Function combobox_Create( _
     combo_data->type_ahead_text = ""
     combo_data->type_ahead_clock = 0.0
     combo_data->type_ahead_clock_initialized = 0
+    combo_data->key_down_handler = 0
+    combo_data->key_up_handler = 0
     combo_widget->data = combo_data
     Return combo_widget
 End Function
@@ -1438,5 +1444,45 @@ Function combobox_SetText( _
     combo_data->pending_index = combo_data->selected_index
     Return -1
 End Function
+
+
+' -------------------------------------------------------------------------
+' Keyboard notification API
+' -------------------------------------------------------------------------
+
+Function combobox_SetKeyDownHandler(ByVal w As Widget Ptr, _
+    ByVal handler As Sub(ByVal As Widget Ptr, ByRef As Integer, ByRef As Integer)) As Integer
+    If w = 0 OrElse w->data = 0 OrElse w->destroy <> @combobox_Destroy Then Return 0
+    Cast(ComboBoxData Ptr, w->data)->key_down_handler = handler
+    Return -1
+End Function
+
+Function combobox_SetKeyUpHandler(ByVal w As Widget Ptr, _
+    ByVal handler As Sub(ByVal As Widget Ptr, ByRef As Integer, ByRef As Integer)) As Integer
+    If w = 0 OrElse w->data = 0 OrElse w->destroy <> @combobox_Destroy Then Return 0
+    Cast(ComboBoxData Ptr, w->data)->key_up_handler = handler
+    Return -1
+End Function
+
+Sub combobox_Update(ByVal w As Widget Ptr)
+    ' Withdrawing handlers inside a callback must not bypass its active batch
+    ' guard and process the same navigation edge through a nested update.
+    If combobox_key_event_depth <> 0 Then Exit Sub
+    If w = 0 OrElse w->data = 0 Then Exit Sub
+    Dim As ComboBoxData Ptr d = w->data
+    ' Preserve the existing pointer/unfocused path when there is no keyboard
+    ' owner here. A callback installed later does not inherit an old batch.
+    If (d->key_down_handler = 0 AndAlso d->key_up_handler = 0) OrElse gui_GetFocus() <> w Then
+        combobox_UpdateBody w
+        Exit Sub
+    End If
+    Dim As ULongInt registry_id = w->registry_id
+    Dim As ULongInt frame_serial = input_FrameSerial()
+    If control_KeyTargetIsCurrent(w, d, registry_id, frame_serial) = 0 Then Exit Sub
+    If control_KeyNotifications(w, d, d->key_down_handler, 0, combobox_key_event_depth) = 0 Then Exit Sub
+    combobox_UpdateBody w
+    If control_KeyTargetIsCurrent(w, d, registry_id, frame_serial) = 0 Then Exit Sub
+    control_KeyNotifications w, d, d->key_up_handler, -1, combobox_key_event_depth
+End Sub
 
 /' end of combobox.bas '/

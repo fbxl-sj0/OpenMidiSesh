@@ -67,12 +67,19 @@ Type OseUiInteractionMetrics
     As Integer fileButtonWidth(0 To OSE_UI_FILE_BUTTON_COUNT - 1)
     As Integer transportButtonLeft(0 To OSE_UI_TRANSPORT_BUTTON_COUNT - 1)
     As Integer transportButtonWidth(0 To OSE_UI_TRANSPORT_BUTTON_COUNT - 1)
+    As Integer fileButtonTop(0 To OSE_UI_FILE_BUTTON_COUNT - 1)
+    As Integer transportButtonTop(0 To OSE_UI_TRANSPORT_BUTTON_COUNT - 1)
+    As Integer monitorLeft, monitorTop, inputLeft, inputTop
+    As Integer scoreNoteLeft
 End Type
 
 Declare Sub uiInteraction_Metrics( _
     ByRef metrics As OseUiInteractionMetrics, _
     ByVal interactionMode As Integer _
 )
+
+Declare Sub uiInteraction_ViewportMetrics(ByRef metrics As OseUiInteractionMetrics, _
+    ByVal interactionMode As Integer, ByVal viewportWidth As Integer)
 
 Declare Function uiInteraction_Parse( _
     ByVal modeText As String, _

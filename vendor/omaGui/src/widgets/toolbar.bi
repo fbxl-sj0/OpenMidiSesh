@@ -80,6 +80,19 @@ Declare Function toolbar_GetItemEnabled( _
 Declare Function toolbar_GetItemCount( _
     ByVal bar_widget As Widget Ptr _
 ) As Integer
+' Return the command button currently highlighted by pointer motion.
+Declare Function toolbar_GetHotItem( _
+    ByVal bar_widget As Widget Ptr _
+) As Integer
+' Return a command button's absolute bounds, clipped to the toolbar widget.
+Declare Function toolbar_GetItemBounds( _
+    ByVal bar_widget As Widget Ptr, _
+    ByVal item_index As Integer, _
+    ByRef left_position As Integer, _
+    ByRef top_position As Integer, _
+    ByRef width_value As Integer, _
+    ByRef height_value As Integer _
+) As Integer
 Declare Function toolbar_GetItemLabel( _
     ByVal bar_widget As Widget Ptr, _
     ByVal item_index As Integer _

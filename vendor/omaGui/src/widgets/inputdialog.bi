@@ -64,6 +64,10 @@ Declare Function inputdialog_GetOption( _
     ByVal dialog_widget As Widget Ptr, _
     ByVal option_index As Integer _
 ) As Integer
+' Borrowed widgets remain owned by the dialog registry. Action 0 is OK,
+' action 1 is Cancel; callers must not destroy or retain these after removal.
+Declare Function inputdialog_GetFieldWidget(ByVal dialog_widget As Widget Ptr, ByVal field_index As Integer) As Widget Ptr
+Declare Function inputdialog_GetActionButton(ByVal dialog_widget As Widget Ptr, ByVal action_index As Integer) As Widget Ptr
 Declare Function inputdialog_SetColors( _
     ByVal dialog_widget As Widget Ptr, _
     ByVal foreground_color As ULong, _

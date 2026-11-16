@@ -15,6 +15,7 @@
 
         - expose printable ASCII glyph pointers
         - expose the bundled heading font pointers
+        - expose the small Latin-1 fallback on non-DOS targets
         - expose pointer initialization after glyph data is linked
 
     This file intentionally does NOT contain:
@@ -53,6 +54,10 @@ Extern font_liberation_serif_18_regular_chars(32 To 126) As UByte Ptr
 #endif
 
 Declare Sub font_init_pointers()
+#ifndef __FB_DOS__
+' Returns a built-in Latin-1 glyph, or null when the code point is not covered.
+Declare Function font_latin1_glyph(ByVal codepoint As Integer) As UByte Ptr
+#endif
 
 #endif
 

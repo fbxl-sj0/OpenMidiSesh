@@ -182,6 +182,10 @@ Const TEXTBOX_SYNTAX_COLOR_CONSTANT As Integer = 10
 Const TEXTBOX_SYNTAX_COLOR_MEMBER As Integer = 11
 Const TEXTBOX_SYNTAX_COLOR_LABEL As Integer = 12
 Const TEXTBOX_SYNTAX_COLOR_OBJECT As Integer = 13
+' Bound the per-editor semantic symbol index for DOS and memory-constrained hosts.
+Const TEXTBOX_SYNTAX_LOOKUP_CAPACITY As Integer = 256
+' Long tokens are still colored normally, but are not retained in the index.
+Const TEXTBOX_SYNTAX_LOOKUP_MAX_TOKEN_LENGTH As Integer = 255
 
 Type TextBoxHistoryEntry
     As String text
@@ -302,8 +306,8 @@ Type TextBoxData
     As Integer caret_visible
     ' Borrowed application lexer checkpoint; called only on the GUI thread.
     As TextBoxRenderStateHandler render_state_handler
-    ' Exact layout observations avoid rescanning unchanged documents. Strings
-    ' belong to this textbox and are released by its normal Delete lifetime.
+    ' Exact or compact layout observations avoid rescanning unchanged documents.
+    ' Strings belong to this textbox and follow its normal Delete lifetime.
     As String metrics_key
     As Integer metrics_valid, metrics_maximum_width
     ' A visibility callback may depend on external state. Caching that layout
@@ -326,6 +330,43 @@ Type TextBoxData
     As Integer rendered_caret_w, rendered_caret_h
     ' VBDOS BorderStyle affects the frame without changing editor metrics.
     As Integer border_style
+    ' Index source-wide semantic names once per text revision. The table is
+    ' GUI-thread-owned and bounded; incomplete indexes use the exact scan path.
+    As ULong syntax_lookup_serial
+    As Integer syntax_lookup_valid, syntax_lookup_count, syntax_lookup_next
+    As Integer syntax_lookup_complete
+    As String syntax_lookup_tokens(0 To TEXTBOX_SYNTAX_LOOKUP_CAPACITY - 1)
+    As Integer syntax_lookup_checked(0 To TEXTBOX_SYNTAX_LOOKUP_CAPACITY - 1)
+    As Integer syntax_lookup_kinds(0 To TEXTBOX_SYNTAX_LOOKUP_CAPACITY - 1)
+    ' Cursor status is queried by more than one IDE control per frame. Retain
+    ' byte-indexed location across same-row motion and known local text edits;
+    ' bulk changes and line-boundary motion rebuild it from the exact source.
+    As Integer line_column_valid, line_column_cursor
+    As ULong line_column_change_serial
+    As Integer line_column_line, line_column_column
+    ' Source revision used by the retained scroll-metric snapshot. Direct text
+    ' replacements must advance change_serial, as documented above.
+    As ULong metrics_change_serial
+    ' Opt-out for editor clients that keep lexical colors but skip symbol scans.
+    As Integer syntax_semantic_lookup_enabled
+    ' Appended to preserve the offsets of existing public TextBoxData fields.
+    ' Built-in syntax state is bounded; invalid suffix entries rebuild as viewed.
+    As UByte metrics_row_comment_state(0 To 31)
+    As UByte metrics_row_string_state(0 To 31)
+    As UByte metrics_row_comment_valid(0 To 31)
+    ' Opt-in for clients that route all source writes through TextBox APIs.
+    As Integer render_observation_serial_tracking
+    ' Source edits may retain row damage only for one bounded, non-structural edit.
+    As ULong render_observation_change_from_serial
+    As Integer render_observation_single_line_edit
+    ' Tracked metrics keep a compact key and one bounded edit's old row width.
+    As Integer metrics_compact_key
+    As ULong metrics_edit_from_serial
+    As Integer metrics_edit_single_line
+    As Integer metrics_edit_line_start, metrics_edit_old_line_end
+    As Integer metrics_edit_old_line_width
+    ' Latches refresh once per sampled input frame, including released presses.
+    As ULongInt key_latch_frame
 End Type
 Declare Function textbox_Create( _
     ByVal nm As String, ByVal txt As String, _
@@ -337,6 +378,8 @@ Declare Function textbox_Create( _
 Declare Sub textbox_Render(ByVal w As Widget Ptr)
 ' Applications using visual callbacks must append their external model state
 ' before assigning this observation to Widget.render_observation.
+' Treat the returned bytes as opaque. Serial tracking produces a compact key
+' that records source length and revision without copying the source text.
 Declare Function textbox_GetRenderObservation(ByVal w As Widget Ptr) As String
 Declare Function textbox_RenderObservationMatches(ByVal w As Widget Ptr, _
     ByRef previousKey As Const String, ByVal observationOffset As Integer) As Integer
@@ -345,13 +388,36 @@ Declare Function textbox_GetRenderDamage(ByVal w As Widget Ptr, _
     ByRef x As Integer, ByRef y As Integer, _
     ByRef widthValue As Integer, ByRef heightValue As Integer) As Integer
 
-' Opt-in row damage requires an observation of every callback-owned dependency.
+' Opt-in damage requires an observation of every callback-owned dependency.
+' Unwrapped single-line edits return that row; nearby cursor moves may return
+' the old and new rows together. Structural edits and long jumps fall back.
 Declare Function textbox_GetCursorRowRenderDamage(ByVal w As Widget Ptr, _
     ByRef previousKey As Const String, ByRef nextKey As Const String, _
     ByRef x As Integer, ByRef y As Integer, _
     ByRef widthValue As Integer, ByRef heightValue As Integer) As Integer
+' Cursor and viewport redraws update fixed fields in place. Serial-tracked
+' observations omit source bytes; one bounded non-structural edit can still
+' report row damage. Default TextBoxes keep exact source-byte validation.
+' A changed revision or malformed key returns 0 without altering the key.
+Declare Function textbox_AdvanceRenderObservation( _
+    ByVal w As Widget Ptr, ByRef observation As String, _
+    ByRef x As Integer, ByRef y As Integer, _
+    ByRef widthValue As Integer, ByRef heightValue As Integer _
+) As Integer
 Declare Sub textbox_Update(ByVal w As Widget Ptr)
 Declare Function textbox_GetText(ByVal w As Widget Ptr) As String
+' Length is in source bytes. These read-only helpers avoid copying text when
+' callers only need its size, revision, or equality with another string.
+Declare Function textbox_GetTextLength(ByVal w As Widget Ptr) As Integer
+Declare Function textbox_GetChangeSerial(ByVal w As Widget Ptr) As ULong
+' Enable only when all source changes use TextBox APIs or advance change_serial.
+' The default keeps exact source bytes for callers with legacy direct writes.
+Declare Function textbox_SetRenderObservationSerialTracking( _
+    ByVal w As Widget Ptr, ByVal enabled As Integer _
+) As Integer
+Declare Function textbox_TextEquals( _
+    ByVal w As Widget Ptr, ByRef text_value As Const String _
+) As Integer
 ' Zero clears mask mode; visible ASCII bytes 33..126 select its glyph.
 ' Only single-line TextBoxes accept a mask. Text/selection queries stay real.
 Declare Function textbox_SetPasswordChar( _
@@ -467,6 +533,10 @@ Declare Function textbox_SetSyntaxMode( _
     ByVal w As Widget Ptr, ByVal syntax_mode As Integer _
 ) As Integer
 Declare Function textbox_GetSyntaxMode(ByVal w As Widget Ptr) As Integer
+Declare Function textbox_SetSyntaxSemanticLookup( _
+    ByVal w As Widget Ptr, ByVal enabled As Integer _
+) As Integer
+Declare Function textbox_GetSyntaxSemanticLookup(ByVal w As Widget Ptr) As Integer
 Declare Function textbox_SetSyntaxColor( _
     ByVal w As Widget Ptr, _
     ByVal color_kind As Integer, _
@@ -534,6 +604,7 @@ Declare Sub textbox_SetLineNumberGutter( _
 )
 Declare Sub textbox_SetLineNumberTextStyle(ByVal w As Widget Ptr, ByVal styleFlags As Integer)
 Declare Sub textbox_SetLineNumberVisibility(ByVal w As Widget Ptr, ByVal visible As Integer)
+Declare Function textbox_GetLineNumberVisibility(ByVal w As Widget Ptr) As Integer
 Declare Sub textbox_SetIndentBehavior( _
     ByVal w As Widget Ptr, ByVal indentWidth As Integer, _
     ByVal autoIndent As Integer, ByVal useTabs As Integer = 0 _

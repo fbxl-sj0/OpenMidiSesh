@@ -61,8 +61,8 @@ if (-not (Test-Path -LiteralPath $packageParent -PathType Container)) {
 $versionInfo = (Get-Item -LiteralPath $executable).VersionInfo
 $version = $versionInfo.FileVersion
 if ($versionInfo.ProductName -ne 'OpenMidiSesh' -or
-    $version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+-[A-Za-z0-9.]+$') {
-    throw 'Windows executable has no valid development product version.'
+    $version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.]+)?$') {
+    throw 'Windows executable has no valid product version.'
 }
 $expectedSourceName = "OpenMidiSesh-source-$version.zip"
 if ([System.IO.Path]::GetFileName($sourceArchive) -ne $expectedSourceName) {

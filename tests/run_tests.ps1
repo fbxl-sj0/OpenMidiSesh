@@ -268,6 +268,19 @@ $tests = @(
         Arguments = @()
     },
     [pscustomobject]@{
+        Name = 'midi_monitor_audio_smoke'
+        Sources = @('tests\midi_monitor_audio_smoke.bas', 'src\software_synth.bas',
+            'src\soundfont_synth.bas', 'src\soundfont_bank.bas', 'src\playback_mix.bas', 'src\sfx_runtime.bas')
+        Defines = @()
+        Arguments = @()
+    },
+    [pscustomobject]@{
+        Name = 'midi_input_stream_smoke'
+        Sources = @('tests\midi_input_stream_smoke.bas', 'src\midi_input_stream.bas', 'src\midi_input_protocol.bas')
+        Defines = @()
+        Arguments = @()
+    },
+    [pscustomobject]@{
         Name = 'midi_input_protocol_smoke'
         Sources = @(
             'tests\midi_input_protocol_smoke.bas',
@@ -784,18 +797,18 @@ else {
         $uiReportText = Get-Content -LiteralPath $uiContractReport -Raw
         $requiredReportLines = @(
             'status=ok',
-            'widget_actions=117',
+            'widget_actions=119',
             'text_controls=29',
             'list_controls=5',
             'scroll_controls=2',
             'custom_controls=171',
-            'behavior_checks=508',
+            'behavior_checks=517',
             'score_render_checks=70',
             'startup_theme=Dark',
             'startup_interaction=Desktop',
             'persisted_theme=Dark',
             'persisted_interaction=Desktop',
-            'total_controls=324'
+            'total_controls=326'
         )
         foreach ($requiredLine in $requiredReportLines) {
             if ($uiReportText -notmatch [regex]::Escape($requiredLine)) {
@@ -803,8 +816,11 @@ else {
             }
         }
         $versionInfo = (Get-Item -LiteralPath $uiContractExecutable).VersionInfo
-        if ($versionInfo.FileVersion -ne '0.9.0-dev' -or
-            $versionInfo.ProductVersion -ne '0.9.0-dev' -or
+        $versionSource = Get-Content -LiteralPath (Join-Path $projectRoot 'src/version.bi') -Raw
+        $displayVersion = [regex]::Match($versionSource,
+            '(?m)^Const OSE_VERSION_TEXT As String = "([^"\r\n]+)"').Groups[1].Value
+        if ($versionInfo.FileVersion -ne $displayVersion -or
+            $versionInfo.ProductVersion -ne $displayVersion -or
             $versionInfo.ProductName -ne 'OpenMidiSesh') {
             throw 'Windows executable version metadata is missing or inconsistent.'
         }
@@ -882,18 +898,18 @@ try {
         -LiteralPath $uiTouchContractReport -Raw
     foreach ($requiredLine in @(
             'status=ok',
-            'widget_actions=117',
+            'widget_actions=119',
             'text_controls=29',
             'list_controls=5',
             'scroll_controls=2',
             'custom_controls=171',
-            'behavior_checks=508',
+            'behavior_checks=517',
             'score_render_checks=70',
             'startup_theme=Light',
             'startup_interaction=Touch',
             'persisted_theme=Light',
             'persisted_interaction=Touch',
-            'total_controls=324')) {
+            'total_controls=326')) {
         if ($uiTouchReportText -notmatch [regex]::Escape($requiredLine)) {
             throw "Touch UI control report is missing: $requiredLine"
         }

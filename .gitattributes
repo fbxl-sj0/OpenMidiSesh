@@ -18,4 +18,5 @@ vendor/** -text -eol
 # unified patches. Application source still receives normal whitespace checks.
 vendor/omaGui/LICENSES/* -whitespace
 tools/fblint/*.patch -whitespace
+tools/patches/*.patch -whitespace
 # end of .gitattributes

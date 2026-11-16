@@ -90,6 +90,7 @@ Type SoundFontSynthVoice
     As OseSoundFontVoiceRegion region
     As Double samplePosition
     As Double sampleIncrement
+    As Integer pitchBend
     As ULongInt noteFramesRemaining
     As Integer envelopeStage
     As ULongInt envelopeFrame
@@ -754,6 +755,7 @@ Public Function soundfontSynth_PlayMidiNote( _
             CDbl(region->tuneCents) / 100.0 + bendSemitones
         voiceState->sampleIncrement = (CDbl(region->sampleRate) / _
             CDbl(sampleRate)) * (2.0 ^ (semitones / 12.0))
+        voiceState->pitchBend = pitchBend
         If voiceState->sampleIncrement <= 0.0 OrElse _
             voiceState->sampleIncrement > 256.0 Then
             soundfontSynth_ClearVoice *voiceState
@@ -894,6 +896,35 @@ Public Sub soundfontSynth_StopChannel(ByVal channelIndex As Integer)
     MutexUnlock soundfontSynth_Mutex
 End Sub
 
+
+Public Sub soundfontSynth_SetPitchBend(ByVal channelIndex As Integer, ByVal pitchBend As Integer)
+    If soundfontSynth_Mutex = 0 OrElse channelIndex < 0 OrElse channelIndex > 15 OrElse _
+        pitchBend < 0 OrElse pitchBend > 16383 Then Exit Sub
+    MutexLock soundfontSynth_Mutex
+    For voiceIndex As Integer = 0 To SOUNDFONT_SYNTH_VOICE_COUNT - 1
+        Dim As SoundFontSynthVoice Ptr voiceState = @soundfontSynth_Voices(voiceIndex)
+        If voiceState->active = 0 OrElse voiceState->channelIndex <> channelIndex Then Continue For
+        ' The existing two-semitone bend range is shared with note startup.
+        Dim As Double semitoneDelta = (pitchBend - voiceState->pitchBend) * (2.0 / 8192.0)
+        voiceState->sampleIncrement *= 2.0 ^ (semitoneDelta / 12.0)
+        voiceState->pitchBend = pitchBend
+    Next
+    MutexUnlock soundfontSynth_Mutex
+End Sub
+
+Public Sub soundfontSynth_StopMidiNote(ByVal channelIndex As Integer, ByVal keyNumber As Integer)
+    If soundfontSynth_Mutex = 0 OrElse channelIndex < 0 OrElse channelIndex > 15 OrElse _
+        keyNumber < 0 OrElse keyNumber > 127 Then Exit Sub
+    MutexLock soundfontSynth_Mutex
+    For voiceIndex As Integer = 0 To SOUNDFONT_SYNTH_VOICE_COUNT - 1
+        If soundfontSynth_Voices(voiceIndex).active <> 0 AndAlso _
+            soundfontSynth_Voices(voiceIndex).channelIndex = channelIndex AndAlso _
+            soundfontSynth_Voices(voiceIndex).keyNumber = keyNumber Then
+            soundfontSynth_BeginRelease soundfontSynth_Voices(voiceIndex)
+        End If
+    Next
+    MutexUnlock soundfontSynth_Mutex
+End Sub
 
 Public Sub soundfontSynth_StopAll()
     If soundfontSynth_Mutex = 0 Then

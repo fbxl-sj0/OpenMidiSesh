@@ -21,6 +21,9 @@
         - font selection or rendering logic
 
     This file is an include fragment used inside font_init_pointers.
+
+    Targets: FreeBASIC fb dialect; the including module selects the build profile.
+    Module API: Include fragment inside font_init_pointers; no standalone entry point.
 '/
 
     font_chars(32) = @font_char_32_data(0)

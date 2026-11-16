@@ -51,7 +51,7 @@ Const SESSION_MENU_SETUP_RIGHT_X As Integer = 252
 Const SESSION_MENU_TOOLS_RIGHT_X As Integer = 306
 Const SESSION_MENU_HELP_RIGHT_X As Integer = 370
 Const SESSION_MENU_SYSTEM_RIGHT_MARGIN As Integer = 54
-Const SESSION_MIXER_HEIGHT As Integer = OSE_MIXER_HEIGHT
+#define SESSION_MIXER_HEIGHT IIf(session_MixerVisible <> 0, OSE_MIXER_HEIGHT, 0)
 Const SESSION_CHANNEL_COUNT As Integer = OSE_MIXER_CHANNEL_COUNT
 Const SESSION_MIDI_MAX_KEY As Integer = OSE_MIDI_NOTE_NUMBER_MAX
 Const SESSION_TEMPO_MIN_BPM As Integer = 20
@@ -95,7 +95,7 @@ Const SESSION_DRUM_MACHINE_SCREEN_HEIGHT_LIMIT As Integer = 780
 Const SESSION_SCORE_BEATS As Integer = 16
 Const SESSION_SCORE_MINIMUM_VIEW_BEATS As Integer = 4
 Const SESSION_SCORE_ZOOM_STEP As Integer = 4
-Const SESSION_SCORE_NOTE_LEFT As Integer = 174
+#define SESSION_SCORE_NOTE_LEFT (session_InteractionMetrics.scoreNoteLeft)
 Const SESSION_SCORE_NOTE_RIGHT As Integer = 20
 Const SESSION_SCORE_TRACK_LABEL_CHARACTERS As Integer = 19
 Const SESSION_DEFAULT_FONT_CHARACTER_WIDTH As Integer = 8
@@ -286,6 +286,8 @@ Dim Shared session_PreferencesEnabled As Integer
 Dim Shared session_PreferencesUseDefaultPath As Integer
 Dim Shared session_SoundFontPath As String
 Dim Shared session_MenuLastMouseButtons As Integer
+' A popup owns its closing frame as well as frames where it remains visible.
+Dim Shared session_MenuInputActive As Integer
 Dim Shared session_MenuEscapeConsumed As Integer
 Dim Shared session_MenuKeyboardAccess As Integer
 Dim Shared session_MenuKeyboardSelection As Integer
@@ -318,6 +320,9 @@ Dim Shared session_SongMeterTick As ULongInt
 Dim Shared session_SongMeterViewTick As ULongInt
 Dim Shared session_SongMeterCloseRequested As Integer
 Dim Shared session_MidiInputButton As Widget Ptr
+Dim Shared session_MixerVisible As Integer = -1
+Dim Shared session_CompactLayout As Integer
+Dim Shared session_CompactMixer As Integer
 Dim Shared session_MidiOutputButton As Widget Ptr
 Dim Shared session_TempoMapWindow As Widget Ptr
 Dim Shared session_TempoMapList As Widget Ptr
@@ -576,6 +581,18 @@ Dim Shared session_LiveMidiNoteStartTick(0 To 2047) As ULongInt
 Dim Shared session_LiveMidiNoteReleased(0 To 2047) As Integer
 Dim Shared session_LiveMidiSustain(0 To SESSION_CHANNEL_COUNT - 1) As Integer
 Dim Shared session_LiveInputProgram(0 To SESSION_CHANNEL_COUNT - 1) As Integer
+' Monitor state belongs to the GUI thread and never changes the document.
+Dim Shared session_MonitorEnabled As Integer
+Dim Shared session_MonitorInputWasOpen As Integer
+Dim Shared session_MonitorAutoOpened As Integer
+Dim Shared session_MonitorButton As Widget Ptr
+Dim Shared session_MonitorHeld(0 To 15, 0 To 127) As Integer
+Dim Shared session_MonitorReleased(0 To 15, 0 To 127) As Integer
+Dim Shared session_MonitorSustain(0 To 15) As Integer
+Dim Shared session_MonitorVolume(0 To 15) As Integer
+Dim Shared session_MonitorExpression(0 To 15) As Integer
+Dim Shared session_MonitorPan(0 To 15) As Integer
+Dim Shared session_MonitorBend(0 To 15) As Integer
 Dim Shared session_MidiInputDeviceIndex As Integer
 Dim Shared session_MidiInputAutoOpened As Integer
 Dim Shared session_LastMidiInputDroppedCount As ULongInt
@@ -629,6 +646,8 @@ Declare Sub session_OnPlay(ByVal source As Widget Ptr)
 Declare Sub session_OnPlaySelectedNotes(ByVal source As Widget Ptr)
 Declare Sub session_OnPause(ByVal source As Widget Ptr)
 Declare Sub session_OnStop(ByVal source As Widget Ptr)
+Declare Sub session_OnMonitor(ByVal source As Widget Ptr)
+Declare Sub session_ResetInputMonitor()
 Declare Sub session_OnRewind(ByVal source As Widget Ptr)
 Declare Sub session_OnFastForward(ByVal source As Widget Ptr)
 Declare Sub session_OnStepRecord(ByVal source As Widget Ptr)

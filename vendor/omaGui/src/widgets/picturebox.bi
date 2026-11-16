@@ -17,6 +17,7 @@
         - retain optional caller-supplied client and text colors
         - expose flat, single-line, and sunken border styles
         - provide a clipped client area for child widgets
+        - expose optional focused KeyDown/KeyUp notifications
 
     Targets:
 
@@ -30,7 +31,7 @@
 
         - bitmap decoding or drawing algorithms
         - application-specific drawing callbacks
-        - pointer or keyboard behavior
+        - pointer behavior or application keyboard actions
 '/
 
 #ifndef __PICTUREBOX_BI__
@@ -62,7 +63,14 @@ Type PictureBoxData
     As Integer pixel_tracks_client
     ' Owned copy, drawn below retained pixels and text on the GUI thread.
     As RasterImage Ptr display_image
+    ' Borrowed GUI-thread callbacks use portable scan codes, not virtual keys.
+    As Any Ptr key_down_handler, key_up_handler
 End Type
+
+Declare Function picturebox_SetKeyDownHandler(ByVal w As Widget Ptr, _
+    ByVal handler As Sub(ByVal As Widget Ptr, ByRef As Integer, ByRef As Integer)) As Integer
+Declare Function picturebox_SetKeyUpHandler(ByVal w As Widget Ptr, _
+    ByVal handler As Sub(ByVal As Widget Ptr, ByRef As Integer, ByRef As Integer)) As Integer
 
 ' Copy decoded pixels; the caller keeps ownership and may release its image
 ' immediately. Null clears the image. Failed replacement preserves the old

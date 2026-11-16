@@ -12,6 +12,9 @@
     while BOOL, UINT and MMRESULT remain 32-bit on both Windows architectures.
     These declarations match winuser.bi, winbase.bi and mmsystem.bi. Clipboard
     allocations transfer to Windows only after SetClipboardData succeeds.
+
+    Targets: FreeBASIC fb dialect; optional Windows native backend only.
+    Module API: Windows ABI declarations in omaGUI_NativeWindows for native backend implementations.
 '/
 #ifndef __OMAGUI_BACKEND_WINDOWS_BI__
 #define __OMAGUI_BACKEND_WINDOWS_BI__

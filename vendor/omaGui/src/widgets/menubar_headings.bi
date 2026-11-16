@@ -36,6 +36,21 @@ Private Function menubar_HeadingAvailable(ByVal bar_data As MenuBarData Ptr, ByV
     Return -1
 End Function
 
+Function menubar_SetMenuCommand(ByVal bar_widget As Widget Ptr, ByVal menu_index As Integer, ByVal command_value As Integer) As Integer
+    Dim As MenuBarData Ptr bar_data = menubar_HeadingData(bar_widget, menu_index)
+    If bar_data = 0 Then Return 0
+    If command_value AndAlso (bar_data->item_count(menu_index) OrElse bar_data->menu_popups(menu_index) <> 0) Then Return 0
+    menubar_CancelInput(bar_widget)
+    bar_data->menu_commands(menu_index) = IIf(command_value, -1, 0)
+    Return -1
+End Function
+
+Function menubar_GetMenuCommand(ByVal bar_widget As Widget Ptr, ByVal menu_index As Integer) As Integer
+    Dim As MenuBarData Ptr bar_data = menubar_HeadingData(bar_widget, menu_index)
+    If bar_data = 0 Then Return 0
+    Return bar_data->menu_commands(menu_index)
+End Function
+
 Private Function menubar_NextHeading(ByVal bar_data As MenuBarData Ptr, ByVal current_menu As Integer, ByVal direction As Integer) As Integer
     If bar_data = 0 OrElse bar_data->menu_count = 0 Then Return -1
     ' The loop counter bounds repeated work; the cursor or stream state supplies each value.

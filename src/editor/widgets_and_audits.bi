@@ -1201,6 +1201,8 @@ Private Sub session_AuditMidiRecordingDispatch( _
 )
     ' Run the actual recorder with complete synthetic messages and monitoring
     ' disabled. No input endpoint, MIDI output, or synthesizer is involved.
+    Dim As Integer originalRecording = session_LiveRecording
+    session_LiveRecording = -1
     Dim As ULongInt originalStartTick = session_LiveRecordingStartTick
     Dim As ULong originalOrigin = session_LiveRecordingStartMidiTimestamp
     Dim As Integer originalHasOrigin = session_LiveRecordingHasMidiTimestamp
@@ -1350,6 +1352,7 @@ Private Sub session_AuditMidiRecordingDispatch( _
     session_LiveRecordingStartMidiTimestamp = originalOrigin
     session_LiveRecordingHasMidiTimestamp = originalHasOrigin
     session_Dirty = originalDirty
+    session_LiveRecording = originalRecording
     session_PlaybackChannelOrderDirty = -1
 End Sub
 
@@ -2849,7 +2852,7 @@ Private Sub session_AuditSemanticMidiDevices( _
                 behaviorCheckCount, errorText
         Else
             session_AuditBehavior session_StatusText = _
-                "No Windows MIDI input devices are available.", _
+                "No MIDI input devices are available.", _
                 "MIDI Input Open did not report unavailable hardware", _
                 behaviorCheckCount, errorText
         End If
@@ -4245,6 +4248,82 @@ Private Sub session_AuditScoreRendering( _
 End Sub
 
 
+Private Sub session_AuditInputMonitor(ByRef checks As Integer, ByRef errorText As String)
+    Dim As Integer originalDirty = session_Dirty
+    Dim As Integer originalEvents = session_Summary.eventCount
+    session_ResetInputMonitor()
+    Dim As OseMidiInputMessage message
+    message.status = &H90
+    message.data1 = 60
+    message.data2 = 100
+    session_ProcessRecordedMidiMessage message, -1
+    session_AuditBehavior session_MonitorHeld(0, 60) <> 0, _
+        "monitor did not start a held note", checks, errorText
+    message.status = &HB0
+    message.data1 = 64
+    message.data2 = 127
+    session_MonitorMidiInput message
+    message.status = &H80
+    message.data1 = 60
+    message.data2 = 0
+    session_MonitorMidiInput message
+    session_AuditBehavior session_MonitorHeld(0, 60) <> 0 AndAlso _
+        session_MonitorReleased(0, 60) <> 0, "sustain did not retain released note", checks, errorText
+    message.status = &HB0
+    message.data1 = 64
+    session_MonitorMidiInput message
+    session_AuditBehavior session_MonitorHeld(0, 60) = 0 AndAlso _
+        session_MonitorReleased(0, 60) = 0, "pedal release did not stop note", checks, errorText
+    message.status = &H91
+    message.data1 = 67
+    message.data2 = 90
+    session_MonitorMidiInput message
+    message.data2 = 0
+    session_MonitorMidiInput message
+    session_AuditBehavior session_MonitorHeld(1, 67) = 0, _
+        "zero-velocity note-on did not stop note", checks, errorText
+    message.status = &HC1
+    message.data1 = 40
+    session_MonitorMidiInput message
+    session_AuditBehavior session_LiveInputProgram(1) = 40, _
+        "monitor ignored program change", checks, errorText
+    message.status = &H91
+    message.data1 = 69
+    message.data2 = 100
+    session_MonitorMidiInput message
+    message.status = &HB1
+    message.data1 = 123
+    message.data2 = 0
+    session_MonitorMidiInput message
+    session_AuditBehavior session_MonitorHeld(1, 69) = 0, _
+        "all-notes-off left a held note", checks, errorText
+    Dim As Integer originalKeyboardOnly = session_LiveRecordingKeyboardOnly
+    session_LiveRecording = -1
+    session_LiveRecordingKeyboardOnly = -1
+    message.status = &H90
+    message.data1 = 60
+    message.data2 = 100
+    session_AuditBehavior session_ProcessRecordedMidiMessage(message, -1) = 0 AndAlso _
+        session_MonitorHeld(0, 60) <> 0 AndAlso session_Summary.eventCount = originalEvents, _
+        "monitor input entered a keyboard-only take", checks, errorText
+    session_LiveRecording = 0
+    session_LiveRecordingKeyboardOnly = originalKeyboardOnly
+    message.status = &H90
+    message.data1 = 60
+    message.data2 = 100
+    session_MonitorMidiInput message
+    midiInput_Close()
+    session_MonitorInputWasOpen = -1
+    session_ProcessMidiInput()
+    session_AuditBehavior session_MonitorHeld(0, 60) = 0 AndAlso _
+        session_MonitorInputWasOpen = 0, "disconnection left a monitor voice held", checks, errorText
+    session_AuditBehavior session_Dirty = originalDirty AndAlso _
+        session_Summary.eventCount = originalEvents AndAlso session_LiveRecording = 0, _
+        "monitor changed the document or started recording", checks, errorText
+    session_ResetInputMonitor()
+End Sub
+
+
 Private Function session_WriteControlAudit(ByVal reportFilename As String) As Integer
     reportFilename = Left(Trim(reportFilename), 4096)
     If reportFilename = "" Then
@@ -4260,17 +4339,17 @@ Private Function session_WriteControlAudit(ByVal reportFilename As String) As In
     Dim As Integer listControlCount = 0
     Dim As Integer behaviorCheckCount = 0
     Dim As Integer renderCheckCount = 0
-    Dim As String buttonNames(0 To 16) = { _
+    Dim As String buttonNames(0 To 17) = { _
         "new", "open", "save", "stop", "pause", "rewind", "play", _
         "fast_forward", "live_record", "step_record", "apply_tempo", _
-        "tempo_map", "midi_input", "midi_output", "drum_machine_button", "song_meter_button", "note_tools_button" _
+        "tempo_map", "midi_input", "midi_output", "drum_machine_button", "song_meter_button", "note_tools_button", "monitor" _
     }
-    Dim As Any Ptr buttonHandlers(0 To 16) = { _
+    Dim As Any Ptr buttonHandlers(0 To 17) = { _
         @session_OnNewDocument, @session_OnOpen, @session_OnSave, _
         @session_OnStop, @session_OnPause, @session_OnRewind, _
         @session_OnPlay, @session_OnFastForward, @session_OnLiveRecord, _
         @session_OnStepRecord, @session_OnApplyTempo, @session_OnTempoMap, _
-        @session_OnMidiInput, @session_OnMidiOutput, @session_OnDrumMachine, @session_OnSongMeter, @session_OnNoteTools _
+        @session_OnMidiInput, @session_OnMidiOutput, @session_OnDrumMachine, @session_OnSongMeter, @session_OnNoteTools, @session_OnMonitor _
     }
     For buttonIndex As Integer = LBound(buttonNames) To UBound(buttonNames)
         session_AuditActionButton buttonNames(buttonIndex), _
@@ -4282,7 +4361,7 @@ Private Function session_WriteControlAudit(ByVal reportFilename As String) As In
         session_SetupMenu, session_WindowMenu, session_TrackMenu, _
         session_MusicMenu, session_HelpMenu _
     }
-    Dim As Integer expectedMenuItems(0 To 7) = {7, 11, 11, 5, 7, 3, 7, 2}
+    Dim As Integer expectedMenuItems(0 To 7) = {7, 11, 11, 5, 8, 3, 7, 2}
     Dim As Any Ptr expectedMenuCallbacks(0 To 7) = { _
         @session_OnFileMenu, @session_OnEditMenu, @session_OnOptionsMenu, _
         @session_OnSetupMenu, @session_OnWindowMenu, @session_OnTrackMenu, _
@@ -4395,6 +4474,7 @@ Private Function session_WriteControlAudit(ByVal reportFilename As String) As In
     session_AuditSemanticMenuRoutes behaviorCheckCount, errorText
     session_AuditSemanticViewWorkflow behaviorCheckCount, errorText
     session_AuditSemanticKeyboardNavigation behaviorCheckCount, errorText
+    session_AuditInputMonitor behaviorCheckCount, errorText
     session_AuditMidiRecordingClock behaviorCheckCount, errorText
     session_AuditMidiRecordingDispatch behaviorCheckCount, errorText
     session_AuditSemanticKeyboardPointerControls _

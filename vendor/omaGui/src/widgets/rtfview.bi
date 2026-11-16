@@ -78,6 +78,8 @@ Type RtfViewRun
     As Integer font_percent, bold, italic
     As Integer automatic_color
     As Integer underline
+    ' Retain the source RTF values so importers can rebuild editable formats.
+    As Integer source_font_number, source_font_halfpoints
 End Type
 
 Type RtfViewLineFragment

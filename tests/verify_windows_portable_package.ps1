@@ -49,7 +49,7 @@ foreach ($requiredFile in @($package, $executable, $sourceArchive)) {
 $versionInfo = (Get-Item -LiteralPath $executable).VersionInfo
 $version = $versionInfo.FileVersion
 if ($versionInfo.ProductName -ne 'OpenMidiSesh' -or
-    $version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+-[A-Za-z0-9.]+$') {
+    $version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.]+)?$') {
     throw 'Portable executable version metadata is invalid.'
 }
 $rootName = "OpenMidiSesh-$version-windows-portable"

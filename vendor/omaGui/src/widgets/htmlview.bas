@@ -17,7 +17,7 @@
         - resolve named fragments for application-routed local navigation
         - resolve application-owned image schemes through a checked callback
         - build replacement documents cooperatively on the GUI thread
-        - scroll through pointer, wheel, scrollbar, and keyboard input
+        - scroll through drag, wheel, scrollbar, and keyboard input
         - report activated links without opening them
 
     Targets:
@@ -2978,7 +2978,7 @@ Private Sub htmlview_InitializeParseContext( _
 End Sub
 
 
-' This bounded step advances markup and style-stack state together.
+' fblint: disable-next-line FBL110,FBL111 -- This bounded step advances markup and style-stack state together.
 Private Function htmlview_ParseContextStep( _
     ByRef parseContext As HtmlViewParseContext, _
     ByVal timeBudgetMilliseconds As Integer _
@@ -3707,6 +3707,7 @@ Private Sub htmlview_CommitLoad( _
     viewData->scrollY = 0
     viewData->pendingLink = ""
     viewData->armedLink = ""
+    input_ResetVerticalScrollGesture viewData->scrollGesture
 
     /'
         The item list is transferred, not copied.  Clearing the staging
@@ -4329,6 +4330,9 @@ Sub htmlview_Update(ByVal htmlWidget As Widget Ptr)
     Dim As Integer leftButtonDown
     Dim As Integer wheelDelta
     Dim As Integer viewportHeight
+    Dim As Integer viewportWidth
+    Dim As Integer maximumScroll
+    Dim As Integer dragConsumed
     Dim As String hoveredLink
 
     viewData = htmlview_Data(htmlWidget)
@@ -4361,11 +4365,26 @@ Sub htmlview_Update(ByVal htmlWidget As Widget Ptr)
     leftButtonDown = mouseButtons And 1
     viewportHeight = htmlview_ViewportHeight(htmlWidget)
 
+    maximumScroll = viewData->contentHeight - viewportHeight
+    If maximumScroll < 0 Then maximumScroll = 0
+    viewportWidth = htmlWidget->w - HTMLVIEW_SCROLLBAR_WIDTH - _
+        viewData->padding * 2 - 2
+    dragConsumed = 0
+    dragConsumed = input_UpdateVerticalScrollGesture( _
+        viewData->scrollGesture, _
+        htmlWidget->ax + viewData->padding + 1, _
+        htmlWidget->ay + viewData->padding + 1, _
+        viewportWidth, viewportHeight, viewData->scrollY, maximumScroll _
+    )
     If wheelDelta <> 0 AndAlso mouseX >= htmlWidget->ax AndAlso _
        mouseX < htmlWidget->ax + htmlWidget->w - HTMLVIEW_SCROLLBAR_WIDTH AndAlso _
        mouseY >= htmlWidget->ay AndAlso mouseY < htmlWidget->ay + htmlWidget->h Then
-        viewData->scrollY -= wheelDelta * HTMLVIEW_WHEEL_PIXELS
+        input_ApplyVerticalScrollDelta( _
+            viewData->scrollGesture, viewData->scrollY, _
+            -CLngInt(wheelDelta) * HTMLVIEW_WHEEL_PIXELS, maximumScroll _
+        )
     End If
+    If dragConsumed <> 0 Then viewData->armedLink = ""
 
     hoveredLink = htmlview_LinkAt(htmlWidget, mouseX, mouseY)
     If leftButtonDown AndAlso viewData->mouseLatch = 0 Then

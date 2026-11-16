@@ -33,7 +33,17 @@
 #include once "src/widgets/widgets.bi"
 
 Const MENUBAR_MAX_MENUS As Integer = 16
-Const MENUBAR_MAX_ITEMS As Integer = 32
+' Keep the shared menu-bar record modest unless a client needs legacy limits.
+#ifndef OMAGUI_MENUBAR_MAX_ITEMS
+#define OMAGUI_MENUBAR_MAX_ITEMS 32
+#endif
+#if OMAGUI_MENUBAR_MAX_ITEMS < 1
+#error OMAGUI_MENUBAR_MAX_ITEMS must be from 1 to 256
+#endif
+#if OMAGUI_MENUBAR_MAX_ITEMS > 256
+#error OMAGUI_MENUBAR_MAX_ITEMS must be from 1 to 256
+#endif
+Const MENUBAR_MAX_ITEMS As Integer = OMAGUI_MENUBAR_MAX_ITEMS
 
 Type MenuBarData
     As String menu_labels(0 To MENUBAR_MAX_MENUS - 1)
@@ -85,7 +95,13 @@ Type MenuBarData
     ' Heading state is independent of the saved state of its child commands.
     As Integer menu_enabled(0 To MENUBAR_MAX_MENUS - 1)
     As Integer menu_visible(0 To MENUBAR_MAX_MENUS - 1)
+    ' A command heading activates directly and never opens an empty popup.
+    As Integer menu_commands(0 To MENUBAR_MAX_MENUS - 1)
 End Type
+
+Declare Function menubar_SetMenuCommand(ByVal bar_widget As Widget Ptr, ByVal menu_index As Integer, ByVal command_value As Integer) As Integer
+Declare Function menubar_GetMenuCommand(ByVal bar_widget As Widget Ptr, ByVal menu_index As Integer) As Integer
+Declare Function menubar_ActivateMenu(ByVal bar_widget As Widget Ptr, ByVal menu_index As Integer) As Integer
 
 Declare Function menubar_SetMenuLabel( _
     ByVal bar_widget As Widget Ptr, ByVal menu_index As Integer, _
@@ -150,6 +166,19 @@ Declare Function menubar_SetOpenMenu( _
 ) As Integer
 Declare Function menubar_GetOpenMenu( _
     ByVal bar_widget As Widget Ptr _
+) As Integer
+' Return the heading currently highlighted by pointer or keyboard navigation.
+Declare Function menubar_GetHotMenu( _
+    ByVal bar_widget As Widget Ptr _
+) As Integer
+' Return a visible heading's absolute bounds, clipped to the menu bar widget.
+Declare Function menubar_GetHeadingBounds( _
+    ByVal bar_widget As Widget Ptr, _
+    ByVal menu_index As Integer, _
+    ByRef left_position As Integer, _
+    ByRef top_position As Integer, _
+    ByRef width_value As Integer, _
+    ByRef height_value As Integer _
 ) As Integer
 Declare Function menubar_GetMenuCount( _
     ByVal bar_widget As Widget Ptr _

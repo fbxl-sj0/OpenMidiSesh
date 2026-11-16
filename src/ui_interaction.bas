@@ -150,6 +150,7 @@ Public Sub uiInteraction_Metrics( _
 )
     Dim As OseUiInteractionMetrics emptyMetrics
     metrics = emptyMetrics
+    metrics.scoreNoteLeft = 174
 
     If interactionMode = OSE_UI_INTERACTION_TOUCH Then
         uiInteraction_TouchMetrics metrics
@@ -158,6 +159,83 @@ Public Sub uiInteraction_Metrics( _
     End If
 End Sub
 
+
+Public Sub uiInteraction_ViewportMetrics(ByRef metrics As OseUiInteractionMetrics, _
+    ByVal interactionMode As Integer, ByVal viewportWidth As Integer)
+    uiInteraction_Metrics metrics, interactionMode
+    Dim As Integer firstTop = metrics.toolbarTop + metrics.toolbarButtonTopInset
+    For i As Integer = 0 To OSE_UI_FILE_BUTTON_COUNT - 1
+        metrics.fileButtonTop(i) = firstTop
+    Next
+    For i As Integer = 0 To OSE_UI_TRANSPORT_BUTTON_COUNT - 1
+        metrics.transportButtonTop(i) = firstTop
+    Next
+    metrics.monitorLeft = 516
+    metrics.monitorTop = firstTop
+    metrics.inputLeft = 852
+    metrics.inputTop = firstTop
+    If interactionMode = OSE_UI_INTERACTION_FINE AndAlso viewportWidth >= 1040 Then
+        ' Keep the desktop's musical-position readout. Wide windows fit the
+        ' monitor after device setup; smaller desktop windows use the menu row.
+        metrics.monitorLeft = 734
+        metrics.monitorTop = 1
+        If viewportWidth >= 1180 Then
+            metrics.monitorLeft = 996
+            metrics.monitorTop = firstTop
+        End If
+        Exit Sub
+    End If
+
+    ' Keep primary transport and device controls reachable without reducing
+    ' touch targets. File commands and secondary transport remain in the menus.
+    If viewportWidth < 320 Then viewportWidth = 320
+    Dim As Integer oldTop = metrics.scoreTop
+    Dim As Integer rowHeight = metrics.toolbarButtonHeight + 6
+    If viewportWidth < 640 Then
+        metrics.scoreNoteLeft = 112
+        metrics.menuHeight *= 2
+        metrics.toolbarTop = metrics.menuHeight + 2
+    End If
+    firstTop = metrics.toolbarTop + metrics.toolbarButtonTopInset
+    Dim As Integer leftValue = 8
+    Dim As Integer topValue = firstTop
+    For i As Integer = 0 To OSE_UI_FILE_BUTTON_COUNT - 1
+        metrics.fileButtonWidth(i) = 0
+    Next
+    For i As Integer = 0 To OSE_UI_TRANSPORT_BUTTON_COUNT - 1
+        Dim As Integer widthValue = metrics.transportButtonWidth(i)
+        If viewportWidth < 800 AndAlso (i = 2 OrElse i = 4 OrElse i = 6) Then
+            metrics.transportButtonWidth(i) = 0
+            Continue For
+        End If
+        If leftValue + widthValue > viewportWidth - 8 Then
+            leftValue = 8
+            topValue += rowHeight
+        End If
+        metrics.transportButtonLeft(i) = leftValue
+        metrics.transportButtonTop(i) = topValue
+        leftValue += widthValue + 6
+    Next
+    If leftValue + 92 > viewportWidth - 8 Then
+        leftValue = 8
+        topValue += rowHeight
+    End If
+    metrics.monitorLeft = leftValue
+    metrics.monitorTop = topValue
+    leftValue += 98
+    If leftValue + 76 > viewportWidth - 8 Then
+        leftValue = 8
+        topValue += rowHeight
+    End If
+    metrics.inputLeft = leftValue
+    metrics.inputTop = topValue
+    metrics.toolbarHeight = topValue + metrics.toolbarButtonHeight + 6 - metrics.toolbarTop
+    metrics.topHeight = metrics.toolbarTop + metrics.toolbarHeight + 2
+    metrics.scoreTop = metrics.topHeight + 4
+    Dim As Integer delta = metrics.scoreTop - oldTop
+    metrics.scoreRailFirstTop += delta
+    metrics.scorePaletteTop += delta
+End Sub
 
 Public Function uiInteraction_Parse( _
     ByVal modeText As String, _

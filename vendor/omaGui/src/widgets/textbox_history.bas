@@ -91,7 +91,19 @@ Private Sub textboxHistory_Restore( _
     ByRef entryData As TextBoxHistoryEntry _
 )
 
-    If textData.text <> entryData.text Then textData.change_serial += 1
+    Dim As ULong previousSerial
+    If textData.text <> entryData.text Then
+        previousSerial = textData.change_serial
+        textData.change_serial += 1
+        textData.render_observation_change_from_serial = previousSerial
+        textData.render_observation_single_line_edit = 0
+        textData.metrics_edit_from_serial = previousSerial
+        textData.metrics_edit_single_line = 0
+        textData.metrics_edit_line_start = -1
+        textData.metrics_edit_old_line_end = -1
+        textData.metrics_edit_old_line_width = -1
+        textData.line_column_valid = 0
+    End If
     textData.text = entryData.text
     textData.cursor_pos = textboxHistory_ClampPosition( _
         textData.text, entryData.cursor_pos _
@@ -436,6 +448,7 @@ Function textbox_SetText( _
 ) As Integer
 
     Dim textData As TextBoxData Ptr
+    Dim As ULong previousSerial
 
     textbox_SetText = 0
 
@@ -445,7 +458,18 @@ Function textbox_SetText( _
     If resetHistory = 0 AndAlso textData->text <> textValue Then _
         textbox_BeginEdit w, TEXTBOX_HISTORY_GROUP_NONE
 
-    If textData->text <> textValue Then textData->change_serial += 1
+    If textData->text <> textValue Then
+        previousSerial = textData->change_serial
+        textData->change_serial += 1
+        textData->render_observation_change_from_serial = previousSerial
+        textData->render_observation_single_line_edit = 0
+        textData->metrics_edit_from_serial = previousSerial
+        textData->metrics_edit_single_line = 0
+        textData->metrics_edit_line_start = -1
+        textData->metrics_edit_old_line_end = -1
+        textData->metrics_edit_old_line_width = -1
+        textData->line_column_valid = 0
+    End If
     textData->text = textValue
     textData->cursor_pos = Len(textData->text)
     textData->sel_start = textData->cursor_pos

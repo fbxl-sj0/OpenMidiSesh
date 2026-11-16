@@ -34,9 +34,9 @@
 
 Const OSE_VERSION_MAJOR As Integer = 0
 Const OSE_VERSION_MINOR As Integer = 9
-Const OSE_VERSION_PATCH As Integer = 0
+Const OSE_VERSION_PATCH As Integer = 1
 Const OSE_VERSION_BUILD As Integer = 0
-Const OSE_VERSION_TEXT As String = "0.9.0-dev"
+Const OSE_VERSION_TEXT As String = "0.9.1"
 Const OSE_PRODUCT_NAME As String = "OpenMidiSesh"
 Const OSE_COPYRIGHT_TEXT As String = _
     "Copyright (C) 2026 OpenMidiSesh contributors"

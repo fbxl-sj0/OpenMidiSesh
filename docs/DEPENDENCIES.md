@@ -31,6 +31,8 @@ before redistributing a combined package.
 | Android FreeBASIC wrapper and Android SDK/NDK | Build and sign a development APK. |
 
 Build instructions are in [Building OpenMidiSesh](BUILDING.md).
+Android sfxlib additionally requires the fixes described in
+[Android audio runtime](ANDROID_AUDIO.md), including the generated-note release export.
 
 ## User-provided media and devices
 
@@ -39,7 +41,8 @@ packages. OpenMidiSesh project files store WAV paths rather than embedding the
 recordings. A system audio output is used for software playback.
 
 Native MIDI input and output are available on Windows and Linux. The current
-FreeBSD, NetBSD, OpenBSD, Haiku, and Android builds use a software-only MIDI
-adapter; their editor, built-in sound, and file export remain available.
+FreeBSD, NetBSD, OpenBSD and Haiku builds use a software-only MIDI adapter.
+Android uses its system MIDI service for input, including USB MIDI 1.0 ports,
+and retains built-in sound for playback. External output on Android is unavailable.
 
 <!-- end of docs/DEPENDENCIES.md -->

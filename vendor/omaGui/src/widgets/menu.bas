@@ -549,6 +549,61 @@ Function menu_SetItemVisible( _
 End Function
 
 
+Function menu_GetItemLabel(ByVal m As Widget Ptr, ByVal itemIndex As Integer) As String
+    If m = 0 OrElse m->render <> @menu_Render OrElse m->data = 0 Then Return ""
+    Dim As MenuData Ptr d = m->data
+    If itemIndex < 0 OrElse itemIndex >= d->count Then Return ""
+    If d->item_kinds(itemIndex) = MENU_ITEM_KIND_SEPARATOR Then Return "-"
+    Return d->items(itemIndex)
+End Function
+
+Function menu_GetItemEnabled(ByVal m As Widget Ptr, ByVal itemIndex As Integer) As Integer
+    If m = 0 OrElse m->render <> @menu_Render OrElse m->data = 0 Then Return 0
+    Dim As MenuData Ptr d = m->data
+    If itemIndex < 0 OrElse itemIndex >= d->count Then Return 0
+    Return d->item_enabled(itemIndex)
+End Function
+
+Function menu_GetItemChecked(ByVal m As Widget Ptr, ByVal itemIndex As Integer) As Integer
+    If m = 0 OrElse m->render <> @menu_Render OrElse m->data = 0 Then Return 0
+    Dim As MenuData Ptr d = m->data
+    If itemIndex < 0 OrElse itemIndex >= d->count Then Return 0
+    Return d->item_checked(itemIndex)
+End Function
+
+Function menu_GetItemShortcutText(ByVal m As Widget Ptr, ByVal itemIndex As Integer) As String
+    If m = 0 OrElse m->render <> @menu_Render OrElse m->data = 0 Then Return ""
+    Dim As MenuData Ptr d = m->data
+    If itemIndex < 0 OrElse itemIndex >= d->count Then Return ""
+    Return d->shortcuts(itemIndex)
+End Function
+
+Function menu_GetItemShortcut(ByVal m As Widget Ptr, ByVal itemIndex As Integer, ByRef scanCode As Integer, ByRef modifiers As Integer) As Integer
+    scanCode = 0: modifiers = INPUT_MODIFIER_NONE
+    If m = 0 OrElse m->render <> @menu_Render OrElse m->data = 0 Then Return 0
+    Dim As MenuData Ptr d = m->data
+    If itemIndex < 0 OrElse itemIndex >= d->count Then Return 0
+    scanCode = d->shortcut_scan_codes(itemIndex): modifiers = d->shortcut_modifiers(itemIndex)
+    Return IIf(scanCode, -1, 0)
+End Function
+
+Function menu_SetItemSeparator(ByVal m As Widget Ptr, ByVal itemIndex As Integer, ByVal separatorValue As Integer) As Integer
+    If m = 0 OrElse m->render <> @menu_Render OrElse m->data = 0 Then Return 0
+    Dim As MenuData Ptr d = m->data
+    If itemIndex < 0 OrElse itemIndex >= d->count Then Return 0
+    Dim As Integer nextKind = IIf(separatorValue, MENU_ITEM_KIND_SEPARATOR, MENU_ITEM_KIND_NORMAL)
+    If nextKind = d->item_kinds(itemIndex) Then Return -1
+    ' A separator cannot retain command state or own descendants. Callers must
+    ' explicitly remove those responsibilities before changing the row kind.
+    If separatorValue AndAlso (d->submenus(itemIndex) <> 0 OrElse d->item_checked(itemIndex) OrElse _
+        Len(d->shortcuts(itemIndex)) OrElse d->shortcut_scan_codes(itemIndex)) Then Return 0
+    menu_CancelInput(m)
+    d->item_kinds(itemIndex) = nextKind
+    d->item_enabled(itemIndex) = IIf(separatorValue, 0, -1)
+    menu_UpdateHeight(m): menu_UpdateWidth(m)
+    Return -1
+End Function
+
 Function menu_SetItemLabel( _
     ByVal m As Widget Ptr, ByVal itemIndex As Integer, _
     ByVal itemText As String _

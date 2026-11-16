@@ -117,6 +117,26 @@ If uiInteraction_Name(OSE_UI_INTERACTION_FINE) <> "Desktop" OrElse _
     uiInteraction_Name(OSE_UI_INTERACTION_TOUCH) <> "Touch" Then _
     test_Fail "interaction display names changed"
 
+For viewportWidth As Integer = 320 To 1280 Step 40
+    For modeIndex As Integer = 0 To 1
+        Dim As OseUiInteractionMetrics responsive
+        uiInteraction_ViewportMetrics responsive, modeIndex, viewportWidth
+        If responsive.monitorLeft < 0 OrElse responsive.monitorLeft + 92 > viewportWidth OrElse _
+            responsive.inputLeft < 0 OrElse responsive.inputLeft + 76 > viewportWidth OrElse _
+            responsive.monitorTop + responsive.toolbarButtonHeight >= responsive.scoreTop OrElse _
+            responsive.inputTop + responsive.toolbarButtonHeight >= responsive.scoreTop Then _
+            test_Fail "monitor or input control is outside viewport"
+        For buttonIndex As Integer = 0 To OSE_UI_TRANSPORT_BUTTON_COUNT - 1
+            If responsive.transportButtonWidth(buttonIndex) = 0 Then Continue For
+            If responsive.transportButtonLeft(buttonIndex) < 0 OrElse _
+                responsive.transportButtonLeft(buttonIndex) + responsive.transportButtonWidth(buttonIndex) > viewportWidth Then _
+                test_Fail "transport control clipped"
+            If responsive.transportButtonTop(buttonIndex) = responsive.monitorTop AndAlso _
+                responsive.transportButtonLeft(buttonIndex) + responsive.transportButtonWidth(buttonIndex) > responsive.monitorLeft Then _
+                test_Fail "transport overlaps monitor"
+        Next
+    Next
+Next
 Print "ui_interaction=ok"
 Print "profiles=2 touch_minimum_target=44 aliases=4"
 End 0

@@ -46,24 +46,53 @@ Private Sub spinbutton_ChangeValue( _
 )
     Dim As SpinButtonData Ptr spin_data
     Dim As LongInt next_value
+    Dim As ULongInt available_distance
+    Dim As ULongInt requested_distance
+    Dim As Integer lower_bound, upper_bound
     Dim As Integer value_changed
 
     If w = 0 OrElse w->data = 0 Then Exit Sub
     spin_data = Cast(SpinButtonData Ptr, w->data)
 
-    next_value = CLngInt(spin_data->current_value) + _
-        CLngInt(directionValue) * spin_data->increment_value
-    If next_value > spin_data->maximum_value Then
-        If spin_data->wrap_enabled Then
-            next_value = spin_data->minimum_value
+    ' VBDOS stores Min and Max in their declared order. A descending range is
+    ' still a bounded numeric interval, so the arrows use its sorted endpoints.
+    If spin_data->minimum_value < spin_data->maximum_value Then
+        lower_bound = spin_data->minimum_value
+        upper_bound = spin_data->maximum_value
+    Else
+        lower_bound = spin_data->maximum_value
+        upper_bound = spin_data->minimum_value
+    End If
+
+    requested_distance = CULngInt(spin_data->increment_value)
+    If directionValue > 0 Then
+        ' Unsigned subtraction preserves the exact distance across zero. Do
+        ' not add until the step is known to fit, since LongInt is not wider
+        ' than Integer on 64-bit targets.
+        available_distance = CULngInt(upper_bound) - _
+            CULngInt(spin_data->current_value)
+        If requested_distance > available_distance Then
+            If spin_data->wrap_enabled Then
+                next_value = lower_bound
+            Else
+                next_value = upper_bound
+            End If
         Else
-            next_value = spin_data->maximum_value
+            next_value = CLngInt(spin_data->current_value) + _
+                CLngInt(spin_data->increment_value)
         End If
-    ElseIf next_value < spin_data->minimum_value Then
-        If spin_data->wrap_enabled Then
-            next_value = spin_data->maximum_value
+    Else
+        available_distance = CULngInt(spin_data->current_value) - _
+            CULngInt(lower_bound)
+        If requested_distance > available_distance Then
+            If spin_data->wrap_enabled Then
+                next_value = upper_bound
+            Else
+                next_value = lower_bound
+            End If
         Else
-            next_value = spin_data->minimum_value
+            next_value = CLngInt(spin_data->current_value) - _
+                CLngInt(spin_data->increment_value)
         End If
     End If
 
@@ -295,10 +324,16 @@ Function spinbutton_Create( _
 ) As Widget Ptr
     Dim As Widget Ptr result_widget
     Dim As SpinButtonData Ptr spin_data
+    Dim As Integer lower_bound, upper_bound
 
-    If minimumValue > maximumValue Then Return 0
-    If initialValue < minimumValue OrElse initialValue > maximumValue Then _
-        Return 0
+    If minimumValue < maximumValue Then
+        lower_bound = minimumValue
+        upper_bound = maximumValue
+    Else
+        lower_bound = maximumValue
+        upper_bound = minimumValue
+    End If
+    If initialValue < lower_bound OrElse initialValue > upper_bound Then Return 0
     If orientation <> SPINBUTTON_VERTICAL AndAlso _
        orientation <> SPINBUTTON_HORIZONTAL Then Return 0
     If w < SPINBUTTON_MINIMUM_SIZE Then w = SPINBUTTON_MINIMUM_SIZE
@@ -352,11 +387,19 @@ Function spinbutton_SetValue( _
     ByVal w As Widget Ptr, ByVal newValue As Integer _
 ) As Integer
     Dim As SpinButtonData Ptr spin_data
+    Dim As Integer lower_bound, upper_bound
 
     If w = 0 OrElse w->data = 0 Then Return 0
     spin_data = Cast(SpinButtonData Ptr, w->data)
-    If newValue < spin_data->minimum_value OrElse _
-       newValue > spin_data->maximum_value Then Return 0
+    lower_bound = IIf( _
+        spin_data->minimum_value < spin_data->maximum_value, _
+        spin_data->minimum_value, spin_data->maximum_value _
+    )
+    upper_bound = IIf( _
+        spin_data->minimum_value > spin_data->maximum_value, _
+        spin_data->minimum_value, spin_data->maximum_value _
+    )
+    If newValue < lower_bound OrElse newValue > upper_bound Then Return 0
     spin_data->current_value = newValue
     Return -1
 End Function
@@ -367,17 +410,24 @@ Function spinbutton_SetRange( _
     ByVal minimumValue As Integer, ByVal maximumValue As Integer _
 ) As Integer
     Dim As SpinButtonData Ptr spin_data
+    Dim As Integer lower_bound, upper_bound
 
     If w = 0 OrElse w->data = 0 Then Return 0
-    If minimumValue > maximumValue Then Return 0
 
     spin_data = Cast(SpinButtonData Ptr, w->data)
+    If minimumValue < maximumValue Then
+        lower_bound = minimumValue
+        upper_bound = maximumValue
+    Else
+        lower_bound = maximumValue
+        upper_bound = minimumValue
+    End If
     spin_data->minimum_value = minimumValue
     spin_data->maximum_value = maximumValue
-    If spin_data->current_value < minimumValue Then _
-        spin_data->current_value = minimumValue
-    If spin_data->current_value > maximumValue Then _
-        spin_data->current_value = maximumValue
+    If spin_data->current_value < lower_bound Then _
+        spin_data->current_value = lower_bound
+    If spin_data->current_value > upper_bound Then _
+        spin_data->current_value = upper_bound
     Return -1
 End Function
 

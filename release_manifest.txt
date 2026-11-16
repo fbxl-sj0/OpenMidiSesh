@@ -26,6 +26,7 @@ docs/ARCHITECTURE.md
 docs/BUILDING.md
 docs/CI.md
 docs/DEPENDENCIES.md
+docs/ANDROID_AUDIO.md
 docs/LINTING.md
 docs/RELEASE_CHECKLIST.md
 docs/USER_GUIDE.md
@@ -33,6 +34,8 @@ fblint.toml
 prepare_source_release.ps1
 prepare_windows_portable_package.ps1
 release_manifest.txt
+src/android/OpenMidiBridge.java
+src/android/midi_bridge.c
 src/atomic_file_internal.bi
 src/audio_sample_slots.bas
 src/audio_sample_slots.bi
@@ -41,6 +44,7 @@ src/audio_tracks.bi
 src/binary_file_internal.bi
 src/capture_paths.bas
 src/capture_paths.bi
+src/display_profile.bi
 src/document_history.bas
 src/document_history.bi
 src/document_save_routing.bi
@@ -53,6 +57,7 @@ src/editor/dialog_commands.bi
 src/editor/document_commands.bi
 src/editor/drum_machine.bi
 src/editor/drums.bi
+src/editor/input_monitor.bi
 src/editor/keyboard.bi
 src/editor/menus.bi
 src/editor/microphone.bi
@@ -78,6 +83,9 @@ src/general_midi_instruments.bi
 src/midi_input.bi
 src/midi_input_protocol.bas
 src/midi_input_protocol.bi
+src/midi_input_android.bas
+src/midi_input_stream.bas
+src/midi_input_stream.bi
 src/midi_input_win.bas
 src/midi_model.bas
 src/midi_model.bi
@@ -173,11 +181,13 @@ tests/master_effect_smoke.bas
 tests/midi_history_smoke.bas
 tests/midi_input_protocol_smoke.bas
 tests/midi_thread_timing_smoke.bas
+tests/midi_input_stream_smoke.bas
 tests/midi_input_smoke.bas
 tests/midi_loopback_smoke.bas
 tests/midi_model_fuzz_smoke.bas
 tests/midi_model_malformed_smoke.bas
 tests/midi_model_smoke.bas
+tests/midi_monitor_audio_smoke.bas
 tests/midi_null_smoke.bas
 tests/midi_output_smoke.bas
 tests/midi_output_stop_smoke.bas
@@ -321,6 +331,7 @@ tools/fblint/test_boolean_index_cache.bas
 tools/fblint/test_boolean_index_cache.py
 tools/fblint/test_wire_copy.bas
 tools/fetch_ci_toolchain.py
+tools/patches/android-sfx-audio.patch
 tools/install_ci_freebasic.sh
 tools/install_ci_unix.sh
 tools/install_ci_windows.ps1

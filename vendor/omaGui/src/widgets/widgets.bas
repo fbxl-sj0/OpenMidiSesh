@@ -11,6 +11,7 @@
         - own the widget registry and bounded modal-root stack
         - resolve parent-relative coordinates
         - route pointer input to the topmost eligible widget
+        - reuse stable pointer-motion hit tests for redraw decisions
         - maintain movable-window stacking and keyboard focus traversal
         - keep keyboard dispatch bound to its pre-callback widget identities
         - show focus cues only while the user is navigating by keyboard
@@ -21,7 +22,11 @@
         - clip child rendering and hit testing to parent client areas
         - suspend descendant input for collapsed container widgets
         - react to drawable-area changes through reusable anchor constraints
+        - share one live viewport sample across application and widget layout
+        - publish bounded, clipped editable regions to the platform keyboard
         - dispatch widget updates and rendering in registry order
+        - render inherited VBDOS-compatible cursor shapes through gfxlib
+        - allow applications to keep the host cursor for remote desktop use
         - cancel private input state when controls become ineligible
         - tolerate callbacks which remove or replace their own widget tree
 
@@ -56,22 +61,60 @@ Dim Shared As Widget Ptr widget_modal_root_stack( _
 Dim Shared As Integer widget_modal_root_stack_count
 Dim Shared As Widget Ptr widget_pointer_capture = 0
 Dim Shared As Widget Ptr widget_last_pointer_target = 0
+Private Dim Shared As Widget Ptr gui_LastUpdateCursorTarget
+Private Dim Shared As Integer gui_LastUpdatePointerDetailsValid
+Private Dim Shared As Integer gui_LastUpdatePointerX, gui_LastUpdatePointerY
+Private Dim Shared As Integer gui_PointerDetailsSnapshotActive
 Dim Shared As Widget Ptr widget_focus = 0
 Dim Shared As Widget Ptr widget_pending_front = 0
 Dim Shared As Integer gui_UpdateInProgress
+Private Dim Shared As Sub(ByVal As Any Ptr) gui_InputRouteHandler
+Private Dim Shared As Any Ptr gui_InputRouteContext
 Dim Shared As Any Ptr gui_TextTransformHandler
 Dim Shared As Integer gui_PreviousMouseButtons
 Dim Shared As Integer gui_KeyboardFocusVisible
 Dim Shared As Integer gui_ViewportWidth
 Dim Shared As Integer gui_ViewportHeight
+/'
+    The GUI thread may pan absolute widget coordinates while a soft keyboard
+    leaves too little room for a focused text field. Design coordinates remain
+    unchanged, so the pan can be removed without drift.
+'/
+Dim Shared As Integer gui_ResponsivePanY
+Private Dim Shared As Integer gui_PreparedViewportValid
+Private Dim Shared As Integer gui_PreparedViewportChanged
 Dim Shared As UInteger gui_LayoutGeneration
 Dim Shared As ULongInt gui_NextRegistryId
 ' The GUI thread advances this serial whenever registry membership changes.
 ' Keep it across initialization so callbacks cannot hide a registry reset.
 Private Dim Shared As ULongInt gui_RegistryMutationSerial
+' Cursor visibility and retained cursor bounds are GUI-thread state. The
+' positive-style count skips widget hit testing while every cursor is default.
+Private Dim Shared As Integer gui_NativeCursorHidden
+Private Dim Shared As Integer gui_NativeCursorHideUnsupported
+Private Dim Shared As Integer gui_MouseCursorStyleCount
+Private Dim Shared As Integer gui_SoftwareMouseCursorEnabled = -1
+' An application-wide request precedes widget inheritance without changing
+' the stored styles. Disabled software drawing still selects the host cursor.
+Private Dim Shared As Integer gui_MouseCursorOverride = GUI_MOUSE_CURSOR_INHERIT
+Private Dim Shared As Integer gui_RetainedCursorValid
+Private Dim Shared As Integer gui_RetainedCursorX, gui_RetainedCursorY
+Private Dim Shared As Integer gui_RetainedCursorStyle
+Private Dim Shared As ULongInt gui_SoftKeyboardRegionsHash
+Private Dim Shared As Integer gui_SoftKeyboardRegionsValid
+Private Const GUI_MOUSE_CURSOR_PAINT_WIDTH As Integer = 32
+Private Const GUI_MOUSE_CURSOR_PAINT_HEIGHT As Integer = 28
+
+' Backend drawing coordinates are signed 32-bit values on every gfxlib target.
+Private Const GUI_MOUSE_CURSOR_COORDINATE_MAXIMUM As LongInt = &h7FFFFFFF
 
 #Ifdef OMAGUI_PROFILE_REGISTRY
 Private Dim Shared As ULongInt gui_ProfileRegistryLookups
+Private Dim Shared As ULongInt gui_ProfileLayoutResolves
+Private Dim Shared As ULongInt gui_ProfileViewportSamples
+Private Dim Shared As ULongInt gui_ProfilePointerTargetSearches
+Private Dim Shared As ULongInt gui_ProfilePointerDetailsCacheFrames
+Private Dim Shared As ULongInt gui_ProfilePointerDetailsInvalidations
 #EndIf
 
 Const GUI_LAYOUT_PARENT_GUARD As Integer = 64
@@ -88,6 +131,25 @@ Private Sub gui_ResetModalRootStack()
     widget_modal_root_stack_count = 0
     widget_modal_root = 0
 End Sub
+
+Private Sub gui_ShowNativeCursor()
+    If gui_NativeCursorHidden = 0 Then Exit Sub
+    If SetMouse(-1, -1, 1) = 0 Then gui_NativeCursorHidden = 0
+End Sub
+
+
+Private Function gui_HideNativeCursor() As Integer
+    If gui_NativeCursorHideUnsupported <> 0 Then Return 0
+    If gui_NativeCursorHidden <> 0 Then Return -1
+    If SetMouse(-1, -1, 0) = 0 Then
+        gui_NativeCursorHidden = -1
+        Return -1
+    End If
+
+    ' Drivers without native pointer control keep their normal system cursor.
+    gui_NativeCursorHideUnsupported = -1
+    Return 0
+End Function
 
 ' -------------------------------------------------------------------------
 ' Access-key captions
@@ -218,7 +280,15 @@ End Sub
 ' Registry Management
 ' -------------------------------------------------------------------------
 
+Private Sub gui_InvalidatePointerDetailsSnapshot()
+#Ifdef OMAGUI_PROFILE_REGISTRY
+    gui_ProfilePointerDetailsInvalidations += 1
+#EndIf
+    gui_LastUpdatePointerDetailsValid = 0
+End Sub
+
 Private Sub gui_AdvanceRegistrySerial()
+    gui_InvalidatePointerDetailsSnapshot()
     gui_RegistryMutationSerial += 1
     If gui_RegistryMutationSerial = 0 Then gui_RegistryMutationSerial = 1
 End Sub
@@ -235,12 +305,34 @@ End Function
 
 
 Sub gui_Init()
+    clipboard_Initialize
+#If Defined(OMAGUI_CLIPBOARD_BROWSER)
+    ' This GUI owns key dispatch. Clipboard-only users keep their own handlers.
+    clipboard_BrowserScript("Module.omaGUIClipboard.captureKeys=true;0")
+#EndIf
+#ifndef __FB_DOS__
+    backend_SetResponsiveDisplay -1
+    gui_SetResponsiveWindows -1
+#endif
+    gui_ShowNativeCursor
+    backend_ClearSoftKeyboardRegions()
+    gui_SoftKeyboardRegionsValid = 0
+    gui_NativeCursorHideUnsupported = 0
+    gui_MouseCursorStyleCount = 0
+    gui_MouseCursorOverride = GUI_MOUSE_CURSOR_INHERIT
+    gui_SoftwareMouseCursorEnabled = -1
+    gui_RetainedCursorValid = 0
     gui_AdvanceRegistrySerial
+    gui_InputRouteHandler = 0
+    gui_InputRouteContext = 0
     widget_list_head = 0
     widget_list_tail = 0
     gui_ResetModalRootStack()
     widget_pointer_capture = 0
     widget_last_pointer_target = 0
+    gui_LastUpdateCursorTarget = 0
+    gui_LastUpdatePointerDetailsValid = 0
+    gui_PointerDetailsSnapshotActive = 0
     widget_focus = 0
     widget_pending_front = 0
     gui_UpdateInProgress = 0
@@ -248,6 +340,9 @@ Sub gui_Init()
     gui_KeyboardFocusVisible = 0
     gui_LayoutGeneration = 0
     gui_NextRegistryId = 0
+    gui_ResponsivePanY = 0
+    gui_PreparedViewportValid = 0
+    gui_PreparedViewportChanged = 0
     backend_GetSize gui_ViewportWidth, gui_ViewportHeight
 
     If gui_ViewportWidth < GUI_LAYOUT_MINIMUM_SIZE Then _
@@ -299,6 +394,7 @@ Private Sub gui_AppendWidget(ByVal w As Widget Ptr)
     If w = 0 Then Exit Sub
     ' Never link one widget pointer into the registry more than once.
     If gui_IsRegisteredWidget(w) <> 0 Then Exit Sub
+    w->mouse_cursor_style = GUI_MOUSE_CURSOR_INHERIT
     ' Registering a hidden popup changes no pixels. Its first visible frame
     ' supplies damage through retained observation or conservative repainting.
     If w->visible <> 0 Then gui_InvalidateAll
@@ -397,6 +493,7 @@ Sub gui_SetParent(ByVal child As Widget Ptr, ByVal parent As Widget Ptr)
     Wend
 
     If current <> 0 Then Exit Sub
+    gui_InvalidatePointerDetailsSnapshot()
     child->parent = parent
 End Sub
 
@@ -597,6 +694,7 @@ Sub gui_BringToFront(ByVal w As Widget Ptr)
         earlier request in this frame may already be waiting to replace it.
     '/
     If gui_UpdateInProgress <> 0 Then
+        gui_InvalidatePointerDetailsSnapshot()
         widget_pending_front = stackRoot
         Exit Sub
     End If
@@ -611,6 +709,7 @@ Sub gui_BringToFront(ByVal w As Widget Ptr)
     Wend
     ' Repeated activation of the already foremost tree changes no paint order.
     If needsReorder = 0 Then Exit Sub
+    gui_InvalidatePointerDetailsSnapshot()
     Dim As Integer paintX, paintY, paintWidth, paintHeight
     If stackRoot->render_observation <> 0 AndAlso _
        gui_GetRetainedPaintBounds(stackRoot, paintX, paintY, paintWidth, paintHeight) <> 0 Then
@@ -672,10 +771,14 @@ End Sub
 Sub gui_SetFocus(ByVal w As Widget Ptr)
     If w <> 0 AndAlso w->accepts_focus = 0 Then w = 0
     If widget_focus = w Then Exit Sub
+#If Defined(OMAGUI_CLIPBOARD_BROWSER)
+    clipboard_CancelRead
+#EndIf
 
     If widget_focus <> 0 Then widget_focus->has_focus = 0
     widget_focus = w
     If widget_focus <> 0 Then widget_focus->has_focus = -1
+    backend_SetSoftKeyboard IIf(widget_focus <> 0 AndAlso widget_focus->text_input <> 0, -1, 0)
 End Sub
 
 Function gui_CaretBlinkVisible(ByVal secondsValue As Double) As Integer
@@ -1148,6 +1251,7 @@ End Function
 
 
 Function gui_TrySetModalRoot(ByVal root As Widget Ptr) As Integer
+    gui_InvalidatePointerDetailsSnapshot()
     If root = 0 Then
         gui_ResetModalRootStack()
         Return -1
@@ -1190,6 +1294,7 @@ End Sub
 
 
 Sub gui_ClearModalRoot(ByVal root As Widget Ptr)
+    gui_InvalidatePointerDetailsSnapshot()
     If root = 0 Then
         gui_ResetModalRootStack()
         Exit Sub
@@ -1209,6 +1314,31 @@ Function gui_IsModalOpen() As Integer
 End Function
 
 
+Function gui_SetEnabled( _
+    ByVal w As Widget Ptr, ByVal enabledState As Integer _
+) As Integer
+    Dim As Integer nextEnabled = IIf(enabledState <> 0, -1, 0)
+
+    If gui_IsRegisteredWidget(w) = 0 Then Return 0
+    If w->enabled <> nextEnabled Then gui_InvalidatePointerDetailsSnapshot()
+
+    If nextEnabled = 0 Then
+        If widget_focus <> 0 AndAlso _
+           gui_IsWithinTree(widget_focus, w) Then gui_SetFocus 0
+        gui_CancelInput w
+    End If
+
+    w->enabled = nextEnabled
+    Return -1
+End Function
+
+
+Function gui_GetEnabled(ByVal w As Widget Ptr) As Integer
+    If gui_IsRegisteredWidget(w) = 0 Then Return 0
+    Return IIf(w->enabled <> 0, -1, 0)
+End Function
+
+
 Function gui_SetVisible( _
     ByVal w As Widget Ptr, ByVal visibleState As Integer _
 ) As Integer
@@ -1216,6 +1346,7 @@ Function gui_SetVisible( _
 
     If gui_IsRegisteredWidget(w) = 0 Then Return 0
     If w->visible = nextVisible Then Return -1
+    gui_InvalidatePointerDetailsSnapshot()
 
     If nextVisible = 0 Then
         /'
@@ -1358,9 +1489,34 @@ Sub gui_SetViewportSize(ByVal w As Integer, ByVal h As Integer)
 
     gui_ViewportWidth = w
     gui_ViewportHeight = h
+    If gui_PreparedViewportValid <> 0 Then _
+        gui_PreparedViewportChanged = -1
     gui_ApplyReactiveLayout
 
 End Sub
+
+
+Function gui_PrepareUpdateFrame() As Integer
+    Dim As Integer previousWidth, previousHeight
+    Dim As Integer viewportWidth, viewportHeight
+    Dim As Integer viewportChanged
+
+    backend_PollResponsiveDisplay()
+    gui_GetViewportSize previousWidth, previousHeight
+    #ifdef OMAGUI_PROFILE_REGISTRY
+    gui_ProfileViewportSamples += 1
+    #endif
+    backend_GetSize viewportWidth, viewportHeight
+    gui_SetViewportSize viewportWidth, viewportHeight
+    viewportChanged = IIf( _
+        viewportWidth <> previousWidth OrElse _
+        viewportHeight <> previousHeight OrElse _
+        gui_PreparedViewportChanged <> 0, -1, 0 _
+    )
+    gui_PreparedViewportChanged = viewportChanged
+    gui_PreparedViewportValid = -1
+    Return viewportChanged
+End Function
 
 
 Sub gui_GetViewportSize(ByRef w As Integer, ByRef h As Integer)
@@ -1538,36 +1694,61 @@ Private Function gui_FindTopmostWindowAt( _
 End Function
 
 
-Private Function gui_FindTopmostPointerWidget( _
-    ByVal pointerX As Integer, _
-    ByVal pointerY As Integer _
-) As Widget Ptr
+Private Sub gui_FindTopmostPointerTargets( _
+    ByVal pointerX As Integer, ByVal pointerY As Integer, _
+    ByRef pointerTarget As Widget Ptr, ByRef cursorTarget As Widget Ptr, _
+    ByVal findPointerTarget As Integer, ByVal findCursorTarget As Integer _
+)
+#Ifdef OMAGUI_PROFILE_REGISTRY
+    gui_ProfilePointerTargetSearches += 1
+#EndIf
     Dim As Widget Ptr current = widget_list_head
     Dim As Widget Ptr owningWindow
-    Dim As Widget Ptr result
     Dim As Widget Ptr topWindow
+    Dim As Integer pointIsEligible
 
+    pointerTarget = 0
+    cursorTarget = 0
+    If findPointerTarget = 0 AndAlso findCursorTarget = 0 Then Exit Sub
+
+    ' One traversal can produce both results while preserving their different
+    ' eligibility rules. Cursor lookup includes disabled and static controls.
     topWindow = gui_FindTopmostWindowAt(pointerX, pointerY)
 
     While current <> 0
-        If current->update <> 0 AndAlso current->evis <> 0 AndAlso _
-           current->een <> 0 AndAlso _
+        If current->evis <> 0 AndAlso _
            gui_IsWithinTree(current, widget_modal_root) <> 0 Then
             owningWindow = gui_FindOwningWindow(current)
 
             If (topWindow = 0 AndAlso owningWindow = 0) OrElse _
                owningWindow = topWindow OrElse current->pointer_global <> 0 Then
-                If current->pointer_global <> 0 OrElse _
-                   (gui_PointWithinWidget( _
-                       current, pointerX, pointerY _
-                   ) <> 0 AndAlso _
-                   gui_PointWithinParentClients( _
-                       current, pointerX, pointerY _
-                   ) <> 0) Then
-                    If current->pointer_test = 0 Then
-                        result = current
-                    ElseIf current->pointer_test(current, pointerX, pointerY) <> 0 Then
-                        result = current
+                pointIsEligible = current->pointer_global
+                If pointIsEligible = 0 AndAlso _
+                   gui_PointWithinWidget(current, pointerX, pointerY) <> 0 AndAlso _
+                   gui_PointWithinParentClients(current, pointerX, pointerY) <> 0 Then
+                    pointIsEligible = -1
+                End If
+
+                If pointIsEligible <> 0 Then
+                    If findPointerTarget <> 0 AndAlso _
+                       current->update <> 0 AndAlso current->een <> 0 Then
+                        If current->pointer_test = 0 Then
+                            pointerTarget = current
+                        ElseIf current->pointer_test( _
+                            current, pointerX, pointerY _
+                        ) <> 0 Then
+                            pointerTarget = current
+                        End If
+                    End If
+
+                    If findCursorTarget <> 0 Then
+                        If current->pointer_test = 0 Then
+                            cursorTarget = current
+                        ElseIf current->pointer_test( _
+                            current, pointerX, pointerY _
+                        ) <> 0 Then
+                            cursorTarget = current
+                        End If
                     End If
                 End If
             End If
@@ -1575,9 +1756,277 @@ Private Function gui_FindTopmostPointerWidget( _
 
         current = current->next_widget
     Wend
+End Sub
 
-    Return result
+
+Function gui_IsPointerTargetAt(ByVal w As Widget Ptr, _
+    ByVal pointerX As Integer, ByVal pointerY As Integer) As Integer
+    If w = 0 Then Return 0
+    Dim As Widget Ptr pointer_target, cursor_target
+    gui_FindTopmostPointerTargets(pointerX, pointerY, pointer_target, cursor_target, -1, 0)
+    Return IIf(pointer_target = w, -1, 0)
 End Function
+
+
+Private Function gui_FindTopmostPointerWidget( _
+    ByVal pointerX As Integer, ByVal pointerY As Integer _
+) As Widget Ptr
+    Dim As Widget Ptr pointerTarget, cursorTarget
+    gui_FindTopmostPointerTargets _
+        pointerX, pointerY, pointerTarget, cursorTarget, -1, 0
+    Return pointerTarget
+End Function
+
+
+' -------------------------------------------------------------------------
+' Mouse cursor styles
+' -------------------------------------------------------------------------
+Private Function gui_FindTopmostCursorWidget( _
+    ByVal pointerX As Integer, ByVal pointerY As Integer _
+) As Widget Ptr
+    Dim As Widget Ptr pointerTarget, cursorTarget
+    gui_FindTopmostPointerTargets _
+        pointerX, pointerY, pointerTarget, cursorTarget, 0, -1
+    Return cursorTarget
+End Function
+
+
+Function gui_SetWidgetMouseCursorStyle( _
+    ByVal w As Widget Ptr, ByVal style As Integer _
+) As Integer
+    If gui_IsRegisteredWidget(w) = 0 OrElse _
+       style < GUI_MOUSE_CURSOR_INHERIT OrElse style > GUI_MOUSE_CURSOR_SIZE_ALL_ALT Then _
+        Return 0
+    If w->mouse_cursor_style > GUI_MOUSE_CURSOR_DEFAULT AndAlso _
+       gui_MouseCursorStyleCount > 0 Then gui_MouseCursorStyleCount -= 1
+    w->mouse_cursor_style = style
+    If style > GUI_MOUSE_CURSOR_DEFAULT Then gui_MouseCursorStyleCount += 1
+    Return -1
+End Function
+
+
+Function gui_SetSoftwareMouseCursorEnabled( _
+    ByVal enabled As Integer _
+) As Integer
+    Dim As Integer next_enabled = IIf(enabled <> 0, -1, 0)
+    If gui_SoftwareMouseCursorEnabled = next_enabled Then Return -1
+
+    gui_SoftwareMouseCursorEnabled = next_enabled
+    If gui_SoftwareMouseCursorEnabled = 0 Then
+        ' The OS cursor is cheaper to move over remote desktop transports.
+        gui_ShowNativeCursor
+        gui_RetainedCursorValid = 0
+    End If
+    gui_InvalidatePointerDetailsSnapshot()
+    Return -1
+End Function
+
+Function gui_SetMouseCursorOverride(ByVal style As Integer) As Integer
+    If style < GUI_MOUSE_CURSOR_INHERIT OrElse style > GUI_MOUSE_CURSOR_SIZE_ALL_ALT Then Return 0
+    If style = gui_MouseCursorOverride Then Return -1
+    gui_MouseCursorOverride = style
+    gui_InvalidatePointerDetailsSnapshot()
+    Return -1
+End Function
+
+Function gui_GetMouseCursorOverride() As Integer
+    Return gui_MouseCursorOverride
+End Function
+
+
+Private Function gui_ResolveMouseCursor( _
+    ByRef pointerX As Integer, ByRef pointerY As Integer _
+) As Integer
+    If gui_SoftwareMouseCursorEnabled = 0 Then
+        gui_ShowNativeCursor
+        Return GUI_MOUSE_CURSOR_DEFAULT
+    End If
+    input_GetPointerPosition pointerX, pointerY
+    If pointerX < 0 OrElse pointerY < 0 OrElse _
+       CLngInt(pointerX) + GUI_MOUSE_CURSOR_PAINT_WIDTH > _
+           GUI_MOUSE_CURSOR_COORDINATE_MAXIMUM OrElse _
+       CLngInt(pointerY) + GUI_MOUSE_CURSOR_PAINT_HEIGHT > _
+           GUI_MOUSE_CURSOR_COORDINATE_MAXIMUM OrElse _
+       (gui_MouseCursorStyleCount = 0 AndAlso gui_MouseCursorOverride <= GUI_MOUSE_CURSOR_DEFAULT) Then
+        gui_ShowNativeCursor
+        Return GUI_MOUSE_CURSOR_DEFAULT
+    End If
+
+    Dim As Integer style = gui_GetMouseCursorStyleAt(pointerX, pointerY)
+    If style = GUI_MOUSE_CURSOR_DEFAULT Then
+        gui_ShowNativeCursor
+        Return GUI_MOUSE_CURSOR_DEFAULT
+    End If
+
+    If gui_HideNativeCursor() = 0 Then _
+        Return GUI_MOUSE_CURSOR_DEFAULT
+    Return style
+End Function
+
+
+Function gui_GetMouseCursorPaintBounds( _
+    ByVal pointerX As Integer, ByVal pointerY As Integer, _
+    ByRef boundsX As Integer, ByRef boundsY As Integer, _
+    ByRef boundsWidth As Integer, ByRef boundsHeight As Integer _
+) As Integer
+    boundsX = 0
+    boundsY = 0
+    boundsWidth = 0
+    boundsHeight = 0
+    If gui_SoftwareMouseCursorEnabled = 0 OrElse _
+       pointerX < 0 OrElse pointerY < 0 OrElse _
+       CLngInt(pointerX) + GUI_MOUSE_CURSOR_PAINT_WIDTH > _
+            GUI_MOUSE_CURSOR_COORDINATE_MAXIMUM OrElse _
+       CLngInt(pointerY) + GUI_MOUSE_CURSOR_PAINT_HEIGHT > _
+            GUI_MOUSE_CURSOR_COORDINATE_MAXIMUM Then Return 0
+
+    boundsX = pointerX
+    boundsY = pointerY
+    boundsWidth = GUI_MOUSE_CURSOR_PAINT_WIDTH
+    boundsHeight = GUI_MOUSE_CURSOR_PAINT_HEIGHT
+    Return -1
+End Function
+
+
+Private Sub gui_CursorEdge( _
+    ByVal x1 As Integer, ByVal y1 As Integer, _
+    ByVal x2 As Integer, ByVal y2 As Integer _
+)
+    ' A narrow white center and black outline stay legible on classic forms.
+    backend_LineEx x1, y1, x2, y2, RGB(0, 0, 0), 3
+    backend_LineEx x1, y1, x2, y2, RGB(255, 255, 255), 1
+End Sub
+
+
+Private Sub gui_DrawCursorArrow(ByVal x As Integer, ByVal y As Integer)
+    gui_CursorEdge x, y, x, y + 17
+    gui_CursorEdge x, y, x + 11, y + 10
+    gui_CursorEdge x + 11, y + 10, x + 7, y + 10
+    gui_CursorEdge x + 7, y + 10, x + 11, y + 17
+    gui_CursorEdge x + 11, y + 17, x + 8, y + 19
+    gui_CursorEdge x + 8, y + 19, x + 4, y + 12
+    gui_CursorEdge x + 4, y + 12, x + 2, y + 17
+    gui_CursorEdge x + 2, y + 17, x, y + 17
+End Sub
+
+
+Private Sub gui_DrawCursorResize(ByVal style As Integer, ByVal x As Integer, ByVal y As Integer)
+    Dim As Integer centerX = x + 9
+    Dim As Integer centerY = y + 9
+
+    Select Case style
+    Case GUI_MOUSE_CURSOR_SIZE_NS
+        gui_CursorEdge centerX, y + 2, centerX, y + 16
+        gui_CursorEdge centerX, y + 2, centerX - 3, y + 6
+        gui_CursorEdge centerX, y + 2, centerX + 3, y + 6
+        gui_CursorEdge centerX, y + 16, centerX - 3, y + 12
+        gui_CursorEdge centerX, y + 16, centerX + 3, y + 12
+    Case GUI_MOUSE_CURSOR_SIZE_WE
+        gui_CursorEdge x + 2, centerY, x + 16, centerY
+        gui_CursorEdge x + 2, centerY, x + 6, centerY - 3
+        gui_CursorEdge x + 2, centerY, x + 6, centerY + 3
+        gui_CursorEdge x + 16, centerY, x + 12, centerY - 3
+        gui_CursorEdge x + 16, centerY, x + 12, centerY + 3
+    Case GUI_MOUSE_CURSOR_SIZE_NE_SW
+        gui_CursorEdge x + 2, y + 16, x + 16, y + 2
+        gui_CursorEdge x + 16, y + 2, x + 12, y + 3
+        gui_CursorEdge x + 16, y + 2, x + 15, y + 6
+        gui_CursorEdge x + 2, y + 16, x + 6, y + 15
+        gui_CursorEdge x + 2, y + 16, x + 3, y + 12
+    Case GUI_MOUSE_CURSOR_SIZE_NW_SE
+        gui_CursorEdge x + 2, y + 2, x + 16, y + 16
+        gui_CursorEdge x + 2, y + 2, x + 6, y + 3
+        gui_CursorEdge x + 2, y + 2, x + 3, y + 6
+        gui_CursorEdge x + 16, y + 16, x + 12, y + 15
+        gui_CursorEdge x + 16, y + 16, x + 15, y + 12
+    Case Else
+        ' Both VBDOS all-direction values share the same four-way glyph.
+        gui_CursorEdge centerX, y + 2, centerX, y + 16
+        gui_CursorEdge x + 2, centerY, x + 16, centerY
+        gui_CursorEdge centerX, y + 2, centerX - 3, y + 6
+        gui_CursorEdge centerX, y + 2, centerX + 3, y + 6
+        gui_CursorEdge centerX, y + 16, centerX - 3, y + 12
+        gui_CursorEdge centerX, y + 16, centerX + 3, y + 12
+        gui_CursorEdge x + 2, centerY, x + 6, centerY - 3
+        gui_CursorEdge x + 2, centerY, x + 6, centerY + 3
+        gui_CursorEdge x + 16, centerY, x + 12, centerY - 3
+        gui_CursorEdge x + 16, centerY, x + 12, centerY + 3
+    End Select
+End Sub
+
+
+Private Sub gui_DrawCursorHourglass(ByVal x As Integer, ByVal y As Integer)
+    gui_CursorEdge x + 2, y + 1, x + 14, y + 1
+    gui_CursorEdge x + 2, y + 1, x + 8, y + 8
+    gui_CursorEdge x + 14, y + 1, x + 8, y + 8
+    gui_CursorEdge x + 8, y + 8, x + 2, y + 16
+    gui_CursorEdge x + 8, y + 8, x + 14, y + 16
+    gui_CursorEdge x + 2, y + 16, x + 14, y + 16
+End Sub
+
+
+Private Sub gui_DrawMouseCursor(ByVal x As Integer, ByVal y As Integer, ByVal style As Integer)
+    Select Case style
+    Case GUI_MOUSE_CURSOR_ARROW, GUI_MOUSE_CURSOR_ARROW_HOURGLASS, _
+         GUI_MOUSE_CURSOR_ARROW_QUESTION
+        gui_DrawCursorArrow x, y
+        If style = GUI_MOUSE_CURSOR_ARROW_HOURGLASS Then
+            gui_DrawCursorHourglass x + 12, y + 7
+        ElseIf style = GUI_MOUSE_CURSOR_ARROW_QUESTION Then
+            gui_CursorEdge x + 15, y + 5, x + 18, y + 3
+            gui_CursorEdge x + 18, y + 3, x + 20, y + 5
+            gui_CursorEdge x + 20, y + 5, x + 18, y + 8
+            gui_CursorEdge x + 18, y + 8, x + 18, y + 10
+            backend_Circle x + 18, y + 13, 1, RGB(0, 0, 0), -1
+        End If
+    Case GUI_MOUSE_CURSOR_CROSS
+        gui_CursorEdge x + 1, y + 9, x + 17, y + 9
+        gui_CursorEdge x + 9, y + 1, x + 9, y + 17
+        backend_Circle x + 9, y + 9, 2, RGB(0, 0, 0), 0
+        backend_Circle x + 9, y + 9, 1, RGB(255, 255, 255), 0
+    Case GUI_MOUSE_CURSOR_IBEAM
+        gui_CursorEdge x + 9, y + 2, x + 9, y + 17
+        gui_CursorEdge x + 4, y + 2, x + 14, y + 2
+        gui_CursorEdge x + 4, y + 17, x + 14, y + 17
+    Case GUI_MOUSE_CURSOR_ICON
+        backend_RectEx x + 2, y + 2, 14, 14, RGB(0, 0, 0), 0, 3
+        backend_RectEx x + 2, y + 2, 14, 14, RGB(255, 255, 255), 0, 1
+        backend_Circle x + 9, y + 9, 2, RGB(255, 255, 255), -1
+    Case GUI_MOUSE_CURSOR_SIZE_ALL, GUI_MOUSE_CURSOR_SIZE_ALL_ALT, _
+         GUI_MOUSE_CURSOR_SIZE_NE_SW, GUI_MOUSE_CURSOR_SIZE_NS, _
+         GUI_MOUSE_CURSOR_SIZE_NW_SE, GUI_MOUSE_CURSOR_SIZE_WE
+        gui_DrawCursorResize style, x, y
+    Case GUI_MOUSE_CURSOR_UP_ARROW
+        gui_CursorEdge x + 9, y + 17, x + 9, y + 2
+        gui_CursorEdge x + 9, y + 2, x + 3, y + 8
+        gui_CursorEdge x + 9, y + 2, x + 15, y + 8
+        gui_CursorEdge x + 3, y + 8, x + 15, y + 8
+    Case GUI_MOUSE_CURSOR_HOURGLASS
+        gui_DrawCursorHourglass x, y
+    Case GUI_MOUSE_CURSOR_NO_DROP
+        backend_Circle x + 9, y + 9, 8, RGB(0, 0, 0), 0
+        backend_Circle x + 9, y + 9, 6, RGB(255, 255, 255), 0
+        gui_CursorEdge x + 3, y + 15, x + 15, y + 3
+    End Select
+End Sub
+
+
+Private Sub gui_RenderMouseCursor()
+    Dim As Integer pointerX, pointerY
+    Dim As Integer clipX, clipY, clipWidth, clipHeight
+    Dim As Integer style = gui_ResolveMouseCursor(pointerX, pointerY)
+    If style <= GUI_MOUSE_CURSOR_DEFAULT Then Exit Sub
+
+    backend_GetClip clipX, clipY, clipWidth, clipHeight
+    If clipWidth <= 0 OrElse clipHeight <= 0 Then Exit Sub
+    Dim As LongInt cursorRight = CLngInt(pointerX) + GUI_MOUSE_CURSOR_PAINT_WIDTH
+    Dim As LongInt cursorBottom = CLngInt(pointerY) + GUI_MOUSE_CURSOR_PAINT_HEIGHT
+    If cursorRight <= clipX OrElse cursorBottom <= clipY OrElse _
+       pointerX >= CLngInt(clipX) + clipWidth OrElse _
+       pointerY >= CLngInt(clipY) + clipHeight Then Exit Sub
+
+    gui_DrawMouseCursor pointerX, pointerY, style
+End Sub
 
 
 Private Function gui_FindGlobalKeyboardWidget( _
@@ -1615,7 +2064,9 @@ Private Function gui_GetWidgetRenderClip( _
     ByRef clipX As Integer, _
     ByRef clipY As Integer, _
     ByRef clipWidth As Integer, _
-    ByRef clipHeight As Integer _
+    ByRef clipHeight As Integer, _
+    ByVal screenWidth As Integer, _
+    ByVal screenHeight As Integer _
 ) As Integer
     Dim As Integer clipBottom
     Dim As Integer clipRight
@@ -1626,7 +2077,12 @@ Private Function gui_GetWidgetRenderClip( _
     Dim As Widget Ptr parent
     Dim As Integer parentDepth
 
-    backend_GetSize clipWidth, clipHeight
+    /'
+        Render callers already captured the drawable size for this pass. Reuse
+        that snapshot instead of querying the backend once for every widget.
+    '/
+    clipWidth = screenWidth
+    clipHeight = screenHeight
     clipX = 0
     clipY = 0
 
@@ -1666,7 +2122,115 @@ Private Function gui_GetWidgetRenderClip( _
 End Function
 
 
+Private Function gui_GetSoftKeyboardRegion( _
+    ByVal target As Widget Ptr, _
+    ByRef regionX As Integer, _
+    ByRef regionY As Integer, _
+    ByRef regionWidth As Integer, _
+    ByRef regionHeight As Integer _
+) As Integer
+#If Defined(__FB_LINUX__) And Not Defined(__FB_JS__)
+    If target <> widget_focus Then Return 0
+#EndIf
+    If target = 0 OrElse target->is_text_input = 0 OrElse _
+       target->accepts_focus = 0 OrElse target->evis = 0 OrElse _
+       target->een = 0 OrElse target->w <= 0 OrElse target->h <= 0 Then _
+        Return 0
+
+    Dim As LongInt leftEdge = target->ax
+    Dim As LongInt topEdge = target->ay
+    Dim As LongInt rightEdge = leftEdge + target->w
+    Dim As LongInt bottomEdge = topEdge + target->h
+
+    If target->escape_parent_clip = 0 Then
+        Dim As Widget Ptr parent = target->parent
+        Dim As Integer parentDepth
+        While parent <> 0 AndAlso parentDepth < GUI_LAYOUT_PARENT_GUARD
+            If parent->clip_children <> 0 Then
+                Dim As LongInt clipLeft = Cast(LongInt, parent->ax) + _
+                    parent->child_clip_x
+                Dim As LongInt clipTop = Cast(LongInt, parent->ay) + _
+                    parent->child_clip_y
+                Dim As LongInt clipRight = Cast(LongInt, parent->ax) + _
+                    parent->w - parent->child_clip_right
+                Dim As LongInt clipBottom = Cast(LongInt, parent->ay) + _
+                    parent->h - parent->child_clip_bottom
+                If leftEdge < clipLeft Then leftEdge = clipLeft
+                If topEdge < clipTop Then topEdge = clipTop
+                If rightEdge > clipRight Then rightEdge = clipRight
+                If bottomEdge > clipBottom Then bottomEdge = clipBottom
+            End If
+            parent = parent->parent
+            parentDepth += 1
+        Wend
+        If parent <> 0 Then Return 0
+    End If
+
+    If leftEdge < 0 Then leftEdge = 0
+    If topEdge < 0 Then topEdge = 0
+    If rightEdge > gui_ViewportWidth Then rightEdge = gui_ViewportWidth
+    If bottomEdge > gui_ViewportHeight Then bottomEdge = gui_ViewportHeight
+    If leftEdge >= rightEdge OrElse topEdge >= bottomEdge Then Return 0
+
+    regionX = Cast(Integer, leftEdge)
+    regionY = Cast(Integer, topEdge)
+    regionWidth = Cast(Integer, rightEdge - leftEdge)
+    regionHeight = Cast(Integer, bottomEdge - topEdge)
+    Return -1
+End Function
+
+
+Private Sub gui_PublishSoftKeyboardRegions()
+    ' The browser keyboard bridge keeps at most this many editable rectangles.
+    Const SOFT_KEYBOARD_REGION_LIMIT As Integer = 256
+    ' FNV-1a avoids resending unchanged geometry on each layout pass.
+    ' Its unsigned 64-bit multiplication intentionally wraps at the type width.
+    Const HASH_OFFSET_BASIS As ULongInt = &hCBF29CE484222325ULL
+    Const HASH_PRIME As ULongInt = 1099511628211ULL
+    Dim As ULongInt regionHash = HASH_OFFSET_BASIS
+    Dim As Integer regionCount
+    Dim As Integer regionX, regionY, regionWidth, regionHeight
+    Dim As Widget Ptr current = widget_list_head
+
+    While current <> 0 AndAlso regionCount < SOFT_KEYBOARD_REGION_LIMIT
+        If gui_GetSoftKeyboardRegion(current, regionX, regionY, _
+            regionWidth, regionHeight) <> 0 Then
+            regionHash = (regionHash Xor Cast(ULongInt, regionX)) * HASH_PRIME
+            regionHash = (regionHash Xor Cast(ULongInt, regionY)) * HASH_PRIME
+            regionHash = (regionHash Xor Cast(ULongInt, regionWidth)) * HASH_PRIME
+            regionHash = (regionHash Xor Cast(ULongInt, regionHeight)) * HASH_PRIME
+            regionCount += 1
+        End If
+        current = current->next_widget
+    Wend
+
+    regionHash = (regionHash Xor Cast(ULongInt, regionCount)) * HASH_PRIME
+    If gui_SoftKeyboardRegionsValid <> 0 AndAlso _
+       regionHash = gui_SoftKeyboardRegionsHash Then Exit Sub
+
+    backend_ClearSoftKeyboardRegions()
+    current = widget_list_head
+    regionCount = 0
+    While current <> 0 AndAlso regionCount < SOFT_KEYBOARD_REGION_LIMIT
+        If gui_GetSoftKeyboardRegion(current, regionX, regionY, _
+            regionWidth, regionHeight) <> 0 Then
+            backend_SetSoftKeyboardRegion _
+                regionX, regionY, regionWidth, regionHeight
+            regionCount += 1
+        End If
+        current = current->next_widget
+    Wend
+
+    gui_SoftKeyboardRegionsHash = regionHash
+    gui_SoftKeyboardRegionsValid = -1
+End Sub
+
+
 Private Sub gui_ResolveLayout()
+    gui_InvalidatePointerDetailsSnapshot()
+#Ifdef OMAGUI_PROFILE_REGISTRY
+    gui_ProfileLayoutResolves += 1
+#EndIf
     Dim As Widget Ptr current = widget_list_head
     Dim As Integer guard
 
@@ -1692,7 +2256,7 @@ Private Sub gui_ResolveLayout()
             Dim As Widget Ptr parent = current->parent
             While parent <> 0 AndAlso guard < GUI_LAYOUT_PARENT_GUARD
                 current->ax += parent->x
-                current->ay += parent->y
+                current->ay += parent->y - parent->content_scroll_y
                 current->evis = current->evis And parent->visible
                 current->een = current->een And parent->enabled
                 If parent->suspend_children <> 0 Then current->een = 0
@@ -1706,8 +2270,13 @@ Private Sub gui_ResolveLayout()
             End If
         End If
 
+        Dim pannedY As LongInt = CLngInt(current->ay) - gui_ResponsivePanY
+        If pannedY < -2147483647LL - 1 Then pannedY = -2147483647LL - 1
+        current->ay = CInt(pannedY)
         current = current->next_widget
     Wend
+
+    gui_PublishSoftKeyboardRegions()
 End Sub
 
 
@@ -1749,6 +2318,9 @@ Private Sub gui_DeleteWidget(ByVal target As Widget Ptr)
     While current <> 0
         If current = target Then
             gui_AdvanceRegistrySerial
+            If current->mouse_cursor_style > GUI_MOUSE_CURSOR_DEFAULT AndAlso _
+               gui_MouseCursorStyleCount > 0 Then _
+                gui_MouseCursorStyleCount -= 1
             If previous = 0 Then
                 widget_list_head = current->next_widget
             Else
@@ -1817,10 +2389,19 @@ Private Sub gui_DeleteWidgetTree(ByVal target As Widget Ptr)
 End Sub
 
 Sub gui_ResetForTest()
+    gui_ShowNativeCursor
+    backend_ClearSoftKeyboardRegions()
+    gui_SoftKeyboardRegionsValid = 0
+    gui_NativeCursorHideUnsupported = 0
+    gui_SoftwareMouseCursorEnabled = -1
+    gui_MouseCursorOverride = GUI_MOUSE_CURSOR_INHERIT
+    gui_RetainedCursorValid = 0
 #ifdef OMAGUI_NAVIGATION_EXTENSIONS
     gui_NavigationReset
 #endif
     gui_InvalidateAll
+    gui_InputRouteHandler = 0
+    gui_InputRouteContext = 0
     gui_TextTransformHandler = 0
     While widget_list_head <> 0
         gui_DeleteWidgetTree widget_list_head
@@ -1830,12 +2411,27 @@ Sub gui_ResetForTest()
     widget_list_tail = 0
     widget_pointer_capture = 0
     widget_last_pointer_target = 0
+    gui_LastUpdateCursorTarget = 0
+    gui_LastUpdatePointerDetailsValid = 0
+    gui_PointerDetailsSnapshotActive = 0
     widget_pending_front = 0
     gui_UpdateInProgress = 0
     gui_PreviousMouseButtons = 0
     gui_KeyboardFocusVisible = 0
+    gui_PreparedViewportValid = 0
+    gui_PreparedViewportChanged = 0
     gui_SetFocus 0
+    gui_ResponsivePanY = 0
 End Sub
+
+
+Sub gui_SetInputRouteHandler( _
+    ByVal handler As Sub(ByVal As Any Ptr), ByVal context As Any Ptr _
+)
+    gui_InputRouteHandler = handler
+    gui_InputRouteContext = context
+End Sub
+
 
 Function gui_RemoveWidgetPtr(ByVal target As Widget Ptr) As Integer
     If target = 0 Then Return 0
@@ -1909,13 +2505,34 @@ End Sub
 ' Processing Loops
 ' -------------------------------------------------------------------------
 
-Sub gui_UpdateAll()
+Sub gui_UpdateAll( _
+    ByVal updateIdleWidgets As Integer, _
+    ByVal skipUnchangedIdleLayout As Integer, _
+    ByVal viewportAlreadySampled As Integer, _
+    ByVal skipUnchangedPointerMotionLayout As Integer _
+)
+    ' Keep the historical four-argument call boundary intact for consumers
+    ' compiled against earlier omaGUI headers.
+    gui_UpdateAllWithKeyboardLayoutSkip _
+        updateIdleWidgets, skipUnchangedIdleLayout, _
+        viewportAlreadySampled, skipUnchangedPointerMotionLayout, 0
+End Sub
+
+
+Sub gui_UpdateAllWithKeyboardLayoutSkip( _
+    ByVal updateIdleWidgets As Integer, _
+    ByVal skipUnchangedIdleLayout As Integer, _
+    ByVal viewportAlreadySampled As Integer, _
+    ByVal skipUnchangedPointerMotionLayout As Integer, _
+    ByVal skipUnchangedKeyboardLayout As Integer _
+)
     Dim As Integer allowKeyboard
     Dim As Integer allowPointer
     Dim As Integer mouseButtons
     Dim As Integer mouseX
     Dim As Integer mouseY
     Dim As Widget Ptr pointerTarget
+    Dim As Widget Ptr cursorTarget
     Dim As Widget Ptr releasedCapture
     Dim As Widget Ptr topWindow
     Dim As Widget Ptr keyboardScope
@@ -1928,6 +2545,9 @@ Sub gui_UpdateAll()
     Dim As Widget Ptr curr
     Dim As Integer viewportWidth
     Dim As Integer viewportHeight
+    Dim As Integer previousViewportWidth
+    Dim As Integer previousViewportHeight
+    Dim As Integer viewportChanged
     Dim As Integer previousX
     Dim As Integer previousY
     Dim As Integer previousWidth
@@ -1935,6 +2555,12 @@ Sub gui_UpdateAll()
     Dim As Integer previousEnabled
     Dim As Integer previousVisible
     Dim As Integer tabCaptured
+    Dim As Integer idleCallbackSkipPermitted
+    Dim As Integer idleLayoutSkipPermitted
+    Dim As Integer idleFrame
+    Dim As Integer skipPointerMotionLayout
+    Dim As Integer skipKeyboardLayout
+    Dim As UInteger frameActivityFlags
     Dim As ULongInt currentRegistryId
     Dim As ULongInt currentRegistrySerial
     Dim As ULongInt pointerTargetRegistryId
@@ -1949,6 +2575,9 @@ Sub gui_UpdateAll()
     Dim As Integer keyboardFocusCapturesReturn
     Dim As Integer keyboardFocusCapturesEscape
 
+    gui_LastUpdateCursorTarget = 0
+    gui_LastUpdatePointerDetailsValid = 0
+    gui_PointerDetailsSnapshotActive = 0
     defaultActionTarget = 0
     cancelActionTarget = 0
     mnemonicSource = 0
@@ -1964,16 +2593,28 @@ Sub gui_UpdateAll()
     keyboardFocusCapturesReturn = 0
     keyboardFocusCapturesEscape = 0
 
+    backend_PollResponsiveDisplay()
     input_Update()
-    backend_GetSize viewportWidth, viewportHeight
-    gui_SetViewportSize viewportWidth, viewportHeight
-
-    gui_ResolveLayout()
-
-    If widget_focus <> 0 AndAlso gui_CanFocus(widget_focus) = 0 Then _
-        gui_SetFocus 0
-    If widget_modal_root <> 0 AndAlso widget_focus = 0 Then _
-        gui_MoveFocus 0
+    frameActivityFlags = input_FrameActivityFlags()
+    gui_GetViewportSize previousViewportWidth, previousViewportHeight
+    If viewportAlreadySampled <> 0 AndAlso _
+       gui_PreparedViewportValid <> 0 Then
+        viewportWidth = previousViewportWidth
+        viewportHeight = previousViewportHeight
+        viewportChanged = gui_PreparedViewportChanged
+    Else
+        #ifdef OMAGUI_PROFILE_REGISTRY
+        gui_ProfileViewportSamples += 1
+        #endif
+        backend_GetSize viewportWidth, viewportHeight
+        gui_SetViewportSize viewportWidth, viewportHeight
+        viewportChanged = IIf( _
+            viewportWidth <> previousViewportWidth OrElse _
+            viewportHeight <> previousViewportHeight, -1, 0 _
+        )
+    End If
+    gui_PreparedViewportValid = 0
+    gui_PreparedViewportChanged = 0
 
     /'
         Read the unmasked frame input once. Each widget update below receives
@@ -1988,6 +2629,74 @@ Sub gui_UpdateAll()
 
     gui_UpdateFocusCueMode mouseButtons
 
+    idleCallbackSkipPermitted = IIf(updateIdleWidgets = 0, -1, 0)
+    idleLayoutSkipPermitted = IIf(skipUnchangedIdleLayout <> 0, -1, 0)
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    ' Controller transitions and repeat ticks use the semantic action layer,
+    ' not core keyboard activity flags. Keep its normal callback path active.
+    idleCallbackSkipPermitted = 0
+    idleLayoutSkipPermitted = 0
+#endif
+
+    /'
+        Timers, held-input repeats, and animated controls depend on idle update
+        callbacks, so preserve the original behavior by default. Static screens
+        can opt out after input and viewport state have been sampled. A held
+        mouse button, key, or touch contact keeps the ordinary dispatch path.
+    '/
+    idleFrame = IIf( _
+        idleCallbackSkipPermitted <> 0 AndAlso _
+        frameActivityFlags = 0 AndAlso mouseButtons = 0 AndAlso _
+        input_AnyKeyPressed() = 0 AndAlso input_TouchCount() = 0, _
+        -1, 0 _
+    )
+
+    If idleFrame <> 0 AndAlso idleLayoutSkipPermitted <> 0 AndAlso _
+       viewportChanged = 0 Then
+        input_SetDispatchMask -1, -1
+        gui_PreviousMouseButtons = mouseButtons
+        Exit Sub
+    End If
+
+    ' Static screens may dispatch pointer motion or keyboard/text input against
+    ' the synchronized layout from the previous frame. Geometry, visibility,
+    ' and enabled-state changes made by callbacks are still detected below and
+    ' followed by a fresh resolve.
+    skipPointerMotionLayout = IIf( _
+        idleCallbackSkipPermitted <> 0 AndAlso _
+        skipUnchangedPointerMotionLayout <> 0 AndAlso _
+        viewportChanged = 0 AndAlso _
+        frameActivityFlags = INPUT_ACTIVITY_POINTER_MOTION AndAlso _
+        input_TouchCount() = 0, _
+        -1, 0 _
+    )
+    skipKeyboardLayout = IIf( _
+        idleCallbackSkipPermitted <> 0 AndAlso _
+        skipUnchangedKeyboardLayout <> 0 AndAlso _
+        viewportChanged = 0 AndAlso input_TouchCount() = 0 AndAlso _
+        (frameActivityFlags = INPUT_ACTIVITY_KEYBOARD OrElse _
+         frameActivityFlags = INPUT_ACTIVITY_TEXT OrElse _
+         frameActivityFlags = _
+             (INPUT_ACTIVITY_KEYBOARD Or INPUT_ACTIVITY_TEXT)), _
+        -1, 0 _
+    )
+    If skipPointerMotionLayout = 0 AndAlso skipKeyboardLayout = 0 Then
+        gui_ResponsiveWindowsLayout()
+        gui_ResolveLayout()
+        If gui_ResponsiveFocusVisible() <> 0 Then gui_ResolveLayout()
+    End If
+
+    If widget_focus <> 0 AndAlso gui_CanFocus(widget_focus) = 0 Then _
+        gui_SetFocus 0
+    If widget_modal_root <> 0 AndAlso widget_focus = 0 Then _
+        gui_MoveFocus 0
+
+    If idleFrame <> 0 Then
+        input_SetDispatchMask -1, -1
+        gui_PreviousMouseButtons = mouseButtons
+        Exit Sub
+    End If
+
     If widget_pointer_capture <> 0 Then
         pointerTarget = widget_pointer_capture
 
@@ -1996,7 +2705,24 @@ Sub gui_UpdateAll()
             widget_pointer_capture = 0
         End If
     Else
-        pointerTarget = gui_FindTopmostPointerWidget(mouseX, mouseY)
+        If input_FrameActivityFlags() = INPUT_ACTIVITY_POINTER_MOTION AndAlso _
+           mouseButtons = 0 Then
+            ' Static screens often need the same details after dispatch.
+            ' Resolve pointer and cursor targets in this one search.
+            gui_FindTopmostPointerTargets _
+                mouseX, mouseY, pointerTarget, cursorTarget, _
+                -1, gui_SoftwareMouseCursorEnabled
+            gui_LastUpdateCursorTarget = cursorTarget
+            gui_LastUpdatePointerDetailsValid = -1
+            gui_PointerDetailsSnapshotActive = -1
+            gui_LastUpdatePointerX = mouseX
+            gui_LastUpdatePointerY = mouseY
+#Ifdef OMAGUI_PROFILE_REGISTRY
+            gui_ProfilePointerDetailsCacheFrames += 1
+#EndIf
+        Else
+            pointerTarget = gui_FindTopmostPointerWidget(mouseX, mouseY)
+        End If
 
         /'
             Pointer capture begins only on a button transition. Without this
@@ -2016,8 +2742,18 @@ Sub gui_UpdateAll()
 
             widget_pointer_capture = pointerTarget
 
+
             If pointerTarget->accepts_focus <> 0 Then
-                gui_SetFocus pointerTarget
+                ' Hiding the IME on press can move this captured control before
+                ' release, cancelling Send or another action. Non-editor touch
+                ' targets retain the current editor until their action runs.
+                Dim keepTextFocus As Integer = 0
+                If widget_focus <> 0 AndAlso widget_focus->text_input <> 0 AndAlso pointerTarget->text_input = 0 Then _
+                    keepTextFocus = backend_SoftKeyboardActive()
+                If keepTextFocus = 0 Then gui_SetFocus pointerTarget
+                ' A second tap after Back dismissed the IME must reopen it,
+                ' even though logical focus never left this text field.
+                If pointerTarget->text_input <> 0 Then backend_SetSoftKeyboard -1
             Else
                 gui_SetFocus 0
             End If
@@ -2030,6 +2766,11 @@ Sub gui_UpdateAll()
     widget_last_pointer_target = pointerTarget
     If pointerTarget <> 0 Then _
         pointerTargetRegistryId = pointerTarget->registry_id
+
+    ' Route application focus after native input, before keyboard ownership is
+    ' captured for this update. The input batch remains manager-owned.
+    If gui_InputRouteHandler <> 0 Then _
+        gui_InputRouteHandler(gui_InputRouteContext)
 
     /'
         Tab normally belongs to the manager. A focused editor can explicitly
@@ -2224,10 +2965,13 @@ Sub gui_UpdateAll()
         widget_pending_front = 0
         gui_BringToFront pendingFront
     End If
+    gui_PointerDetailsSnapshotActive = 0
 End Sub
 
 Private Function gui_FindOpaqueCover(ByVal x As Integer, ByVal y As Integer, _
-    ByVal widthValue As Integer, ByVal heightValue As Integer) As Widget Ptr
+    ByVal widthValue As Integer, ByVal heightValue As Integer, _
+    ByVal screenWidth As Integer, ByVal screenHeight As Integer _
+) As Widget Ptr
 #Ifdef OMAGUI_DISABLE_OPAQUE_CULLING
     ' Keep a reference path for complete-framebuffer comparisons.
     Return 0
@@ -2246,7 +2990,10 @@ Private Function gui_FindOpaqueCover(ByVal x As Integer, ByVal y As Integer, _
                    CLngInt(opaqueX) + opaqueWidth >= CLngInt(x) + widthValue AndAlso _
                    CLngInt(opaqueY) + opaqueHeight >= CLngInt(y) + heightValue Then
                     Dim As Integer clipX, clipY, clipWidth, clipHeight
-                    If gui_GetWidgetRenderClip(current, clipX, clipY, clipWidth, clipHeight) <> 0 AndAlso _
+                    If gui_GetWidgetRenderClip( _
+                        current, clipX, clipY, clipWidth, clipHeight, _
+                        screenWidth, screenHeight _
+                    ) <> 0 AndAlso _
                        clipX <= x AndAlso clipY <= y AndAlso _
                        CLngInt(clipX) + clipWidth >= CLngInt(x) + widthValue AndAlso _
                        CLngInt(clipY) + clipHeight >= CLngInt(y) + heightValue Then result = current
@@ -2277,7 +3024,6 @@ Private Sub gui_RenderLayer(ByVal renderWindows As Integer)
     backend_GetClip damageX, damageY, damageWidth, damageHeight
     Dim As Widget Ptr curr = widget_list_head
 
-    gui_ResolveLayout()
     backend_GetSize screenWidth, screenHeight
 
     /'
@@ -2287,7 +3033,10 @@ Private Sub gui_RenderLayer(ByVal renderWindows As Integer)
         callbacks after the covering root still run in their normal order.
         Bounds callbacks are read-only and cannot change registry membership.
     '/
-    Dim As Widget Ptr opaqueCover = gui_FindOpaqueCover(damageX, damageY, damageWidth, damageHeight)
+    Dim As Widget Ptr opaqueCover = gui_FindOpaqueCover( _
+        damageX, damageY, damageWidth, damageHeight, _
+        screenWidth, screenHeight _
+    )
     If opaqueCover <> 0 Then
         If renderWindows = 0 Then Exit Sub
         curr = opaqueCover
@@ -2326,7 +3075,8 @@ Private Sub gui_RenderLayer(ByVal renderWindows As Integer)
                topEdge < damageY + damageHeight AndAlso _
                rightEdge > damageX AndAlso bottomEdge > damageY Then
                 If gui_GetWidgetRenderClip( _
-                    curr, clipX, clipY, clipWidth, clipHeight _
+                        curr, clipX, clipY, clipWidth, clipHeight, _
+                        screenWidth, screenHeight _
                 ) Then
                     backend_SetClip clipX, clipY, clipWidth, clipHeight
                     savedTheme = current_theme
@@ -2366,6 +3116,74 @@ Function gui_GetPointerWidgetNameAt(ByVal x As Integer, ByVal y As Integer) As S
     Return target->name
 End Function
 
+
+Private Function gui_MouseCursorStyleForWidget(ByVal current As Widget Ptr) As Integer
+    If gui_SoftwareMouseCursorEnabled = 0 Then _
+        Return GUI_MOUSE_CURSOR_DEFAULT
+    If gui_MouseCursorOverride <> GUI_MOUSE_CURSOR_INHERIT Then Return gui_MouseCursorOverride
+    Dim As Integer parentDepth
+
+    While current <> 0 AndAlso parentDepth < GUI_LAYOUT_PARENT_GUARD
+        ' Parent links are borrowed; verify registry identity before reading.
+        If gui_IsRegisteredWidget(current) = 0 Then Exit While
+        If current->mouse_cursor_style <> GUI_MOUSE_CURSOR_INHERIT Then _
+            Return current->mouse_cursor_style
+        current = current->parent
+        parentDepth += 1
+    Wend
+    Return GUI_MOUSE_CURSOR_DEFAULT
+End Function
+
+Function gui_GetMouseCursorStyleAt( _
+    ByVal x As Integer, ByVal y As Integer _
+) As Integer
+    If gui_SoftwareMouseCursorEnabled = 0 OrElse x < 0 OrElse y < 0 Then Return GUI_MOUSE_CURSOR_DEFAULT
+    gui_ResolveLayout()
+    Return gui_MouseCursorStyleForWidget(gui_FindTopmostCursorWidget(x, y))
+End Function
+
+Sub gui_GetPointerDetailsAt( _
+    ByVal x As Integer, ByVal y As Integer, _
+    ByRef pointerWidgetName As String, ByRef cursorStyle As Integer, _
+    ByVal layoutAlreadyResolved As Integer _
+)
+    Dim As Widget Ptr pointerTarget, cursorTarget
+
+    pointerWidgetName = ""
+    cursorStyle = GUI_MOUSE_CURSOR_DEFAULT
+    If layoutAlreadyResolved = 0 Then gui_ResolveLayout()
+
+    gui_FindTopmostPointerTargets _
+        x, y, pointerTarget, cursorTarget, _
+        -1, gui_SoftwareMouseCursorEnabled
+    If pointerTarget <> 0 Then pointerWidgetName = pointerTarget->name
+
+    If x >= 0 AndAlso y >= 0 Then cursorStyle = gui_MouseCursorStyleForWidget(cursorTarget)
+End Sub
+
+
+Function gui_GetLastUpdatePointerDetails( _
+    ByRef pointerWidgetName As String, ByRef cursorStyle As Integer _
+) As Integer
+    pointerWidgetName = ""
+    cursorStyle = GUI_MOUSE_CURSOR_DEFAULT
+    If gui_LastUpdatePointerDetailsValid = 0 Then Return 0
+
+    If widget_last_pointer_target <> 0 Then _
+        pointerWidgetName = widget_last_pointer_target->name
+
+    If gui_LastUpdatePointerX >= 0 AndAlso gui_LastUpdatePointerY >= 0 Then _
+        cursorStyle = gui_MouseCursorStyleForWidget(gui_LastUpdateCursorTarget)
+
+    Return -1
+End Function
+
+
+Sub gui_InvalidateLastUpdatePointerDetails()
+    gui_InvalidatePointerDetailsSnapshot()
+End Sub
+
+
 Function gui_GetPointerCaptureName() As String
     If gui_IsRegisteredWidget(widget_pointer_capture) = 0 Then Return ""
     Return widget_pointer_capture->name
@@ -2373,18 +3191,32 @@ End Function
 
 
 Sub gui_RenderDesktop()
+    gui_ResolveLayout()
     gui_RenderLayer 0
 End Sub
 
 
 Sub gui_RenderWindows()
+    gui_ResolveLayout()
     gui_RenderLayer -1
+    gui_RenderMouseCursor
 End Sub
 
 
 Sub gui_RenderAll()
-    gui_RenderDesktop
-    gui_RenderWindows
+    ' One resolved geometry snapshot serves both z-order layers. Render
+    ' callbacks paint that snapshot; layout changes belong in update handlers.
+    gui_ResolveLayout()
+    gui_RenderAllResolved()
+End Sub
+
+
+Sub gui_RenderAllResolved()
+    ' Clipped callers can replay several damage regions from one stable layout
+    ' snapshot instead of resolving every widget once for each region.
+    gui_RenderLayer 0
+    gui_RenderLayer -1
+    gui_RenderMouseCursor
 End Sub
 
 

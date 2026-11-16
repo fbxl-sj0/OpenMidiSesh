@@ -92,6 +92,7 @@ Type HtmlViewData
     As HtmlViewAnchor anchors(0 To HTMLVIEW_MAX_ANCHORS - 1)
     As Integer contentHeight
     As Integer scrollY
+    As InputVerticalScrollGesture scrollGesture
     As Integer layoutWidth
     As Integer mouseLatch
     As Integer keyLatch

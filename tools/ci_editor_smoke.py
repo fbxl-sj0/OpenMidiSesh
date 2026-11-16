@@ -54,7 +54,7 @@ def check_editor(executable: Path, output: Path) -> None:
                                stdout=stream, stderr=subprocess.STDOUT,
                                timeout=60, check=True)
             lines = set(report.read_text().splitlines())
-            required = {"status=ok", "total_controls=324", "behavior_checks=508",
+            required = {"status=ok", "total_controls=326", "behavior_checks=517",
                         "score_render_checks=70",
                         "startup_interaction=" + mode, "persisted_interaction=" + mode}
             if not required <= lines:
@@ -82,11 +82,11 @@ def check_editor(executable: Path, output: Path) -> None:
             raise ValueError("; ".join(failures))
         (output / "editor-smoke.json").write_text(json.dumps({
             "status": "pass", "native_editor_launches": 3,
-            "control_contracts": 648, "behavior_checks": 1016,
+            "control_contracts": 652, "behavior_checks": 1034,
             "score_render_checks": 140,
             "framebuffer": "800x600x24", "frame_pacing_qualification": "not_run"
         }, indent=2) + "\n")
-    print("native_editor_smoke=pass controls=648 behaviors=1016 "
+    print("native_editor_smoke=pass controls=652 behaviors=1034 "
           "score_render_checks=140 launches=3", flush=True)
 
 

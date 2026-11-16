@@ -217,6 +217,7 @@ Private Function textboxIndent_Apply(ByVal w As Widget Ptr, ByVal remove_indent 
     If textbox_BeginEdit(w, TEXTBOX_HISTORY_GROUP_NONE) = 0 Then Return 0
     Swap textData->text, result_text
     textData->change_serial += 1
+    textData->line_column_valid = 0
     textData->selection_anchor = mapped.selection_anchor
     textbox_SetCursorPosition w, mapped.cursor_pos, -1
     textData->sel_start = mapped.sel_start

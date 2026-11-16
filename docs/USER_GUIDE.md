@@ -93,9 +93,28 @@ step recording. The master fader controls overall software playback; **Wet**
 and **Fbk** adjust the master echo.
 
 To record from a MIDI device, select **MIDI In**, choose an available input,
-and start recording. Native MIDI input is available on Windows and Linux. MIDI
+and start recording. Native MIDI input is available on Windows, Linux and
+Android 6.0 or later. MIDI
 output can be selected with **MIDI Out** on those platforms. The built-in
 synthesizer remains available alongside MIDI output.
+
+Press **Monitor** to listen to a connected MIDI input without recording or
+changing the document. It opens the selected input, or the first available one,
+and plays through the built-in synth and any open external MIDI output. Press
+it again to stop listening. Note-off, sustain, program changes and common mix
+controls are supported. **Stop** also releases held monitored notes.
+
+On Android, connect a class-compliant USB MIDI keyboard with a USB host/OTG
+adapter. Open **MIDI In** to choose a port. A port may take a moment to open;
+a failed or disconnected input switches monitoring off. Android supplies device
+access through its [MIDI service](https://developer.android.com/reference/android/media/midi/MidiManager).
+Devices requiring a vendor USB driver and MIDI 2.0 UMP-only ports are not handled.
+
+Monitor and MIDI In remain visible on narrow screens. Touch controls retain
+usable sizes as the toolbar wraps. File commands remain in **File**, and other
+transport commands retain their keyboard shortcuts. Short displays show the
+score first; **View > Switch Score / Mixer** changes the active pane. Larger
+screens show both panes. Android permits portrait and landscape rotation.
 
 Open **Options > Performance Keyboard** to play notes with the on-screen piano
 or the computer keyboard. Use Record to capture a played part. The **Hum /

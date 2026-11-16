@@ -12,6 +12,9 @@
 
     The navigation profile is opt-in through OMAGUI_NAVIGATION_EXTENSIONS.
     All state belongs to the GUI thread, like the core registry and input frame.
+
+    Targets: FreeBASIC fb dialect; use the owning project's selected build profile.
+    Module API: Implements the public interface declared in navigation_input.bi.
 '/
 
 #lang "fb"
@@ -57,7 +60,7 @@ Const INPUT_REPEAT_INTERVAL As Double = 0.11
 
 #ifdef __FB_JS__
 Extern "C"
-    Declare Function emscripten_run_script_int Alias "emscripten_run_script_int" (ByVal scriptText As Const ZString Ptr) As Integer
+    Declare Function navigation_emscripten_run_script_int Alias "emscripten_run_script_int" (ByVal scriptText As Const ZString Ptr) As Integer
 End Extern
 Const INPUT_BROWSER_GAMEPAD_SCRIPT As String = _
     "(()=>{const g=navigator.getGamepads?navigator.getGamepads():[];const p=g&&g[0];if(!p||!p.connected)return 0;" & _
@@ -174,7 +177,7 @@ Private Sub input_UpdateActions()
             mapping here and translate it directly into the same semantic bits
             used by native controllers.
         '/
-        packedBrowserGamepad = emscripten_run_script_int( _
+        packedBrowserGamepad = navigation_emscripten_run_script_int( _
             StrPtr(INPUT_BROWSER_GAMEPAD_SCRIPT))
         If (packedBrowserGamepad And 512) <> 0 Then
             omagui_nav_controller_connected = -1
@@ -236,7 +239,7 @@ End Sub
 
 
 Sub input_NavigationUpdate()
-    If useMockMouse = 0 Then
+    If useMockMouse = 0 AndAlso inputLogicalMappingActive = 0 Then
         mX = backend_PhysicalToLogicalX(mX): mY = backend_PhysicalToLogicalY(mY)
     End If
     For action As Integer = 0 To INPUT_ACTION_COUNT - 1
@@ -403,7 +406,7 @@ Sub input_NavigationTouchUpdate()
         omagui_nav_touch_id(index) = inputTouchId(index)
         omagui_nav_touch_x(index) = inputTouchX(index)
         omagui_nav_touch_y(index) = inputTouchY(index)
-        If useMockTouch = 0 Then
+        If useMockTouch = 0 AndAlso inputLogicalMappingActive = 0 Then
             omagui_nav_touch_x(index) = backend_PhysicalToLogicalX(inputTouchX(index))
             omagui_nav_touch_y(index) = backend_PhysicalToLogicalY(inputTouchY(index))
         End If

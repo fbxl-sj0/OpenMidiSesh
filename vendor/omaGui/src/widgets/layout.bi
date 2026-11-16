@@ -23,6 +23,9 @@
         - widget drawing
         - platform input handling
         - application-specific screen policy
+
+    Targets: FreeBASIC fb dialect; the including module selects the build profile.
+    Module API: Types, constants and procedure declarations for the including module.
 '/
 
 #ifndef __LAYOUT_BI__

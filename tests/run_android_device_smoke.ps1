@@ -13,9 +13,9 @@
 
         - build and install the current Android package
         - verify the device, API level, ABI, launch state, and framebuffer size
-        - exercise palette, note insertion, selection, drag, and playback input
-        - open the shared drum kit and change velocity through real touch input
-        - reject stale palette rendering, missing score changes, or fatal logs
+        - exercise Monitor and the MIDI input chooser at native display density
+        - verify portrait and landscape rotation and restore device settings
+        - reject unsolicited keyboards, unresponsive controls or fatal logs
         - retain screenshots and logcat output as reviewable device evidence
 
     This file intentionally does NOT contain:
@@ -209,8 +209,8 @@ $modelName = ([string] (Invoke-Adb -CommandArguments @(
     'shell', 'getprop', 'ro.product.model'))).Trim()
 $apiLevel = 0
 if (-not [int]::TryParse($apiLevelText.Trim(), [ref] $apiLevel) -or
-    $apiLevel -lt 21) {
-    throw "Android API 21 or newer is required; device reported $apiLevelText."
+    $apiLevel -lt 23) {
+    throw "Android API 23 or newer is required; device reported $apiLevelText."
 }
 if ($abiName -notmatch '^arm64-v8a$') {
     throw "The default Android package requires arm64-v8a; device reported $abiName."
@@ -246,188 +246,146 @@ if (($launchOutput -join "`n") -notmatch '(?m)^Status:\s+ok\s*$') {
 }
 Start-Sleep -Seconds 2
 
+# The physical controller check is separate: the USB socket may be occupied by
+# ADB. This smoke verifies the packaged bridge/UI and records no hardware claim.
 $initialPath = Join-Path $buildRoot '01-initial.png'
-$palettePath = Join-Path $buildRoot '02-palette.png'
-$notePath = Join-Path $buildRoot '03-note.png'
-$selectedPath = Join-Path $buildRoot '04-selected.png'
-$draggedPath = Join-Path $buildRoot '05-dragged.png'
-$drumPath = Join-Path $buildRoot '06-drums.png'
-$drumHardPath = Join-Path $buildRoot '07-drums-hard.png'
 Save-DeviceScreenshot -DestinationPath $initialPath
-
 $initialImage = [System.Drawing.Bitmap]::new($initialPath)
 try {
     $screenWidth = $initialImage.Width
     $screenHeight = $initialImage.Height
 }
+finally { $initialImage.Dispose() }
+if ($screenWidth -lt 320 -or $screenHeight -lt 240) {
+    throw "Display is too small: ${screenWidth}x${screenHeight}."
+}
+$imeState = (Invoke-Adb -CommandArguments @('shell', 'dumpsys', 'input_method')) -join "`n"
+if ($imeState -match 'mInputShown=true') { throw 'The software keyboard opened without a text request.' }
+$densityText = (Invoke-Adb -CommandArguments @('shell', 'wm', 'density')) -join "`n"
+$densityMatches = [regex]::Matches($densityText, 'density:\s*(\d+)')
+if ($densityMatches.Count -eq 0) { throw 'Device density was not reported.' }
+$dpi = [int] $densityMatches[$densityMatches.Count - 1].Groups[1].Value
+$logicalWidth = [Math]::Max(320, [int] [Math]::Floor($screenWidth * 160.0 / $dpi))
+$logicalHeight = [Math]::Max(240, [int] [Math]::Floor($screenHeight * 160.0 / $dpi))
+$scaleX = $screenWidth / [double] $logicalWidth
+$scaleY = $screenHeight / [double] $logicalHeight
+$menuHeight = 38
+if ($logicalWidth -lt 640) { $menuHeight = 76 }
+$transportCount = 7
+if ($logicalWidth -lt 800) { $transportCount = 4 }
+$monitorLeft = 8 + 62 * $transportCount
+$monitorTop = $menuHeight + 7
+if ($monitorLeft + 92 -gt $logicalWidth - 8) { $monitorLeft = 8; $monitorTop += 62 }
+$inputLeft = $monitorLeft + 98
+$inputTop = $monitorTop
+if ($inputLeft + 76 -gt $logicalWidth - 8) { $inputLeft = 8; $inputTop += 62 }
+
+function Invoke-LogicalTap {
+    param([double] $X, [double] $Y, [int] $DurationMilliseconds = 280)
+    $pixelX = [int] [Math]::Round($X * $scaleX)
+    $pixelY = [int] [Math]::Round($Y * $scaleY)
+    Invoke-DeviceTouch -StartX $pixelX -StartY $pixelY -EndX $pixelX -EndY $pixelY -DurationMilliseconds $DurationMilliseconds
+}
+Invoke-LogicalTap ($monitorLeft + 46) ($monitorTop + 28)
+$monitorPath = Join-Path $buildRoot '02-monitor.png'
+Save-DeviceScreenshot -DestinationPath $monitorPath
+if ((Get-FileHash $initialPath).Hash -eq (Get-FileHash $monitorPath).Hash) {
+    throw 'Monitor produced no visible response.'
+}
+Invoke-LogicalTap ($inputLeft + 38) ($inputTop + 28)
+$inputPath = Join-Path $buildRoot '03-input.png'
+Save-DeviceScreenshot -DestinationPath $inputPath
+if ((Get-FileHash $inputPath).Hash -eq (Get-FileHash $monitorPath).Hash) {
+    throw 'MIDI In did not open its chooser.'
+}
+$chooserWidth = [Math]::Min(460, $logicalWidth - 16)
+$chooserLeft = ($logicalWidth - $chooserWidth) / 2
+$chooserTop = [Math]::Max(0, ($logicalHeight - 280) / 2)
+Invoke-LogicalTap ($chooserLeft + $chooserWidth - 12) ($chooserTop + 10)
+
+$savedAuto = ([string] (Invoke-Adb -CommandArguments @('shell', 'settings', 'get', 'system', 'accelerometer_rotation'))).Trim()
+$savedRotation = ([string] (Invoke-Adb -CommandArguments @('shell', 'settings', 'get', 'system', 'user_rotation'))).Trim()
+try {
+    Invoke-Adb -CommandArguments @('shell', 'settings', 'put', 'system', 'accelerometer_rotation', '0') -AllowEmptyOutput | Out-Null
+    foreach ($rotation in @(0, 1)) {
+        Invoke-Adb -CommandArguments @('shell', 'settings', 'put', 'system', 'user_rotation', [string] $rotation) -AllowEmptyOutput | Out-Null
+        # The compositor rotates before older NativeActivity runtimes finish
+        # replacing their input surface. Test controls after both have settled.
+        Start-Sleep -Seconds 5
+        $rotationPath = Join-Path $buildRoot ('04-rotation-' + $rotation + '.png')
+        Save-DeviceScreenshot -DestinationPath $rotationPath
+        $rotated = [System.Drawing.Bitmap]::new($rotationPath)
+        try {
+            if (($rotation -eq 0 -and $rotated.Width -ge $rotated.Height) -or
+                ($rotation -eq 1 -and $rotated.Width -le $rotated.Height)) {
+                throw 'The activity did not follow requested portrait/landscape rotation.'
+            }
+        }
+        finally { $rotated.Dispose() }
+        if ($rotation -eq 1 -and $logicalWidth -eq 360 -and $logicalHeight -eq 640) {
+            # The 360x640 phone profile rotates to a 640x360 viewport and uses the View menu's last command.
+            # A popup must fit all eight rows so a touch can reach that command.
+            # Hold menu gestures across the older runtime's idle input sampling.
+            Invoke-LogicalTap 225 19 650
+            Save-DeviceScreenshot -DestinationPath (Join-Path $buildRoot '05-view-menu.png')
+            Invoke-LogicalTap 225 336 650
+            $mixerPath = Join-Path $buildRoot '06-mixer.png'
+            Start-Sleep -Seconds 2
+            Save-DeviceScreenshot -DestinationPath $mixerPath
+            if ((Get-FileHash $mixerPath).Hash -eq (Get-FileHash $rotationPath).Hash) {
+                throw 'The compact Score/Mixer switch produced no visible change.'
+            }
+            Invoke-LogicalTap 225 19 650
+            Invoke-LogicalTap 225 336 650
+            $scorePath = Join-Path $buildRoot '07-score.png'
+            Start-Sleep -Seconds 2
+            Save-DeviceScreenshot -DestinationPath $scorePath
+            if ((Get-FileHash $mixerPath).Hash -eq (Get-FileHash $scorePath).Hash) {
+                throw 'The compact pane did not switch back to Score.'
+            }
+            $statusRegion = [Drawing.Rectangle]::new(0, 202, 500, 22)
+            if ((Get-RegionHash -ImagePath $rotationPath -Rectangle $statusRegion) -ne
+                (Get-RegionHash -ImagePath $scorePath -Rectangle $statusRegion)) {
+                throw 'A popup selection also activated a control underneath it.'
+            }
+            $scoreRegion = [Drawing.Rectangle]::new(230, 280, 960, 350)
+            if ((Get-RegionHash -ImagePath $rotationPath -Rectangle $scoreRegion) -ne
+                (Get-RegionHash -ImagePath $scorePath -Rectangle $scoreRegion)) {
+                throw 'Returning to Score left stale mixer pixels in the notation.'
+            }
+        }
+    }
+}
 finally {
-    $initialImage.Dispose()
+    foreach ($setting in @(@('user_rotation', $savedRotation), @('accelerometer_rotation', $savedAuto))) {
+        if ($setting[1] -eq 'null') {
+            Invoke-Adb -CommandArguments @('shell', 'settings', 'delete', 'system', $setting[0]) -AllowEmptyOutput | Out-Null
+        }
+        else {
+            Invoke-Adb -CommandArguments @('shell', 'settings', 'put', 'system', $setting[0], $setting[1]) -AllowEmptyOutput | Out-Null
+        }
+    }
 }
-if ($screenWidth -lt 800 -or $screenHeight -lt 600 -or
-    $screenWidth -le $screenHeight) {
-    throw ('The Android editor requires a landscape framebuffer of at least ' +
-        "800x600; device presented ${screenWidth}x${screenHeight}.")
-}
-
-$toolX = [int] [Math]::Round($screenWidth * 0.043)
-$selectY = [int] [Math]::Round($screenHeight * 0.226)
-$noteToolY = [int] [Math]::Round($screenHeight * 0.294)
-$noteX = [int] [Math]::Round($screenWidth * 0.390)
-$noteY = [int] [Math]::Round($screenHeight * 0.255)
-$dragX = [int] [Math]::Round($screenWidth * 0.484)
-$dragY = [int] [Math]::Round($screenHeight * 0.238)
-$playX = [int] [Math]::Round($screenWidth * 0.318)
-$playY = [int] [Math]::Round($screenHeight * 0.103)
-
-$paletteRegion = [System.Drawing.Rectangle]::new(
-    [int] [Math]::Round($screenWidth * 0.086),
-    [int] [Math]::Round($screenHeight * 0.196),
-    [int] [Math]::Round($screenWidth * 0.193),
-    [int] [Math]::Round($screenHeight * 0.400))
-$scoreRegion = [System.Drawing.Rectangle]::new(
-    [int] [Math]::Round($screenWidth * 0.280),
-    [int] [Math]::Round($screenHeight * 0.200),
-    [int] [Math]::Round($screenWidth * 0.420),
-    [int] [Math]::Round($screenHeight * 0.120))
-$initialPaletteHash = Get-RegionHash -ImagePath $initialPath `
-    -Rectangle $paletteRegion
-$initialScoreHash = Get-RegionHash -ImagePath $initialPath `
-    -Rectangle $scoreRegion
-
-Invoke-DeviceTouch -StartX $toolX -StartY $noteToolY `
-    -EndX $toolX -EndY $noteToolY
-Save-DeviceScreenshot -DestinationPath $palettePath
-$openPaletteHash = Get-RegionHash -ImagePath $palettePath `
-    -Rectangle $paletteRegion
-if ($openPaletteHash -eq $initialPaletteHash) {
-    throw 'Touching Note did not open the coarse-pointer note palette.'
-}
-
-Invoke-DeviceTouch -StartX $noteX -StartY $noteY `
-    -EndX $noteX -EndY $noteY
-Save-DeviceScreenshot -DestinationPath $notePath
-$noteScoreHash = Get-RegionHash -ImagePath $notePath -Rectangle $scoreRegion
-if ($noteScoreHash -eq $initialScoreHash) {
-    throw 'Touching the score did not produce a visible note change.'
-}
-
-Invoke-DeviceTouch -StartX $toolX -StartY $selectY `
-    -EndX $toolX -EndY $selectY
-Save-DeviceScreenshot -DestinationPath $selectedPath
-$closedPaletteHash = Get-RegionHash -ImagePath $selectedPath `
-    -Rectangle $paletteRegion
-if ($closedPaletteHash -ne $initialPaletteHash) {
-    throw 'Selecting the pointer tool left stale palette pixels on the score.'
-}
-
-Invoke-DeviceTouch -StartX $noteX -StartY $noteY `
-    -EndX $dragX -EndY $dragY -DurationMilliseconds 450
-Save-DeviceScreenshot -DestinationPath $draggedPath
-$draggedScoreHash = Get-RegionHash -ImagePath $draggedPath `
-    -Rectangle $scoreRegion
-if ($draggedScoreHash -eq $noteScoreHash) {
-    throw 'Dragging the inserted note did not produce a visible score change.'
-}
-
-Invoke-DeviceTouch -StartX $playX -StartY $playY `
-    -EndX $playX -EndY $playY
-$processIdText = ([string] (Invoke-Adb -CommandArguments @(
-    'shell', 'pidof', $packageName))).Trim()
-if ($processIdText -notmatch '^\d+(\s+\d+)*$') {
-    throw 'The Android editor process was not alive after touch playback.'
-}
-
-# The menu bar and generated drum buttons use the ordinary pointer stream,
-# while the pads consume independent touch contacts. Opening the kit and
-# changing one velocity therefore proves both sides of the shared adapter on
-# the physical device.
-$musicMenuX = 324
-$musicMenuY = [int] [Math]::Round($screenHeight * 0.031)
-$drumMenuItemX = 350
-$drumMenuItemY = [int] [Math]::Round($screenHeight * 0.392)
-Invoke-DeviceTouch -StartX $musicMenuX -StartY $musicMenuY `
-    -EndX $musicMenuX -EndY $musicMenuY
-Invoke-DeviceTouch -StartX $drumMenuItemX -StartY $drumMenuItemY `
-    -EndX $drumMenuItemX -EndY $drumMenuItemY
-Save-DeviceScreenshot -DestinationPath $drumPath
-
-$drumWindowWidth = [Math]::Min($screenWidth - 24, 920)
-$drumWindowHeight = [Math]::Min($screenHeight - 24, 650)
-if ($drumWindowWidth -lt 620) {
-    $drumWindowWidth = $screenWidth
-}
-if ($drumWindowHeight -lt 500) {
-    $drumWindowHeight = $screenHeight
-}
-$drumWindowX = [int] (($screenWidth - $drumWindowWidth) / 2)
-$drumWindowY = [int] (($screenHeight - $drumWindowHeight) / 2)
-$drumRegion = [System.Drawing.Rectangle]::new(
-    $drumWindowX,
-    $drumWindowY,
-    $drumWindowWidth,
-    $drumWindowHeight)
-$initialDrumRegionHash = Get-RegionHash -ImagePath $initialPath `
-    -Rectangle $drumRegion
-$openDrumRegionHash = Get-RegionHash -ImagePath $drumPath `
-    -Rectangle $drumRegion
-if ($openDrumRegionHash -eq $initialDrumRegionHash) {
-    throw 'Touching Drum Kit did not open its shared performance surface.'
-}
-
-$velocityRegion = [System.Drawing.Rectangle]::new(
-    $drumWindowX + 150,
-    $drumWindowY + 32,
-    350,
-    56)
-$mediumVelocityHash = Get-RegionHash -ImagePath $drumPath `
-    -Rectangle $velocityRegion
-$hardButtonX = $drumWindowX + 437
-$hardButtonY = $drumWindowY + 58
-Invoke-DeviceTouch -StartX $hardButtonX -StartY $hardButtonY `
-    -EndX $hardButtonX -EndY $hardButtonY
-Save-DeviceScreenshot -DestinationPath $drumHardPath
-$hardVelocityHash = Get-RegionHash -ImagePath $drumHardPath `
-    -Rectangle $velocityRegion
-if ($hardVelocityHash -eq $mediumVelocityHash) {
-    throw 'Touching Hard did not change the drum velocity selection.'
-}
-
-$drumSurfaceX = $drumWindowX + 18
-$drumSurfaceY = $drumWindowY + 142
-$drumSurfaceWidth = $drumWindowWidth - 36
-$drumSurfaceHeight = $drumWindowHeight - 160
-$drumPadWidth = [int] (($drumSurfaceWidth - 30) / 4)
-$drumPadHeight = [int] (($drumSurfaceHeight - 20) / 3)
-$kickX = $drumSurfaceX + [int] ($drumPadWidth / 2)
-$kickY = $drumSurfaceY + 2 * ($drumPadHeight + 10) + `
-    [int] ($drumPadHeight / 2)
-Invoke-DeviceTouch -StartX $kickX -StartY $kickY `
-    -EndX $kickX -EndY $kickY
-$processIdText = ([string] (Invoke-Adb -CommandArguments @(
-    'shell', 'pidof', $packageName))).Trim()
-if ($processIdText -notmatch '^\d+(\s+\d+)*$') {
-    throw 'The Android editor process was not alive after a drum strike.'
-}
-
+$processIdText = ([string] (Invoke-Adb -CommandArguments @('shell', 'pidof', $packageName))).Trim()
+if ($processIdText -notmatch '^\d+(\s+\d+)*$') { throw 'The editor exited during mobile input or rotation.' }
 $logPath = Join-Path $buildRoot 'logcat.txt'
 $logLines = Invoke-Adb -CommandArguments @('logcat', '-d', '-v', 'brief')
-[System.IO.File]::WriteAllLines($logPath, [string[]] $logLines)
+[IO.File]::WriteAllLines($logPath, [string[]] $logLines)
 $logText = $logLines -join "`n"
 if ($logText -match '(?i)FATAL EXCEPTION|Fatal signal|ANR in net\.fbxl\.openmidisesh') {
-    throw 'Fatal Android runtime output was found in the retained logcat file.'
+    throw 'Fatal Android runtime output was found in logcat.'
 }
-if ($logText -notmatch 'FreeBASIC Android sfx warmup complete') {
-    throw 'The Android audio backend did not report successful warmup.'
-}
-
+if ($logText -notmatch 'FreeBASIC Android sfx warmup complete') { throw 'Audio warmup did not complete.' }
 Write-Output ('android_device_serial=' + $script:SelectedDevice)
 Write-Output ('android_device_model=' + $modelName)
 Write-Output ('android_device_api=' + $apiLevel)
 Write-Output ('android_device_abi=' + $abiName)
 Write-Output ('android_framebuffer=' + $screenWidth + 'x' + $screenHeight)
-Write-Output ('android_touch_actions=9')
+Write-Output ('android_logical_viewport=' + $logicalWidth + 'x' + $logicalHeight)
 Write-Output ('android_screenshots=' + $buildRoot)
-Write-Output ('android_logcat=' + $logPath)
+Write-Output 'android_rotations=portrait,landscape settings=restored'
+if ($logicalWidth -eq 360 -and $logicalHeight -eq 640) { Write-Output 'android_compact_panes=score,mixer touch=pass' }
+Write-Output 'android_usb_midi_hardware=not_tested'
 Write-Output 'android_device_smoke=pass'
 
 # end of tests/run_android_device_smoke.ps1

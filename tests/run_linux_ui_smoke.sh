@@ -301,12 +301,12 @@ for required_report_line in \
     'list_controls=5' \
     'scroll_controls=2' \
     'custom_controls=171' \
-    'behavior_checks=508' \
+    'behavior_checks=517' \
     'startup_theme=Dark' \
     'startup_interaction=Desktop' \
     'persisted_theme=Dark' \
     'persisted_interaction=Desktop' \
-    'total_controls=324'; do
+    'total_controls=326'; do
     if ! grep -Fqx "$required_report_line" "$control_report"; then
         echo "Linux UI control report is missing: $required_report_line" >&2
         sed -n '1,120p' "$control_report" >&2
@@ -339,12 +339,12 @@ for required_report_line in \
     'list_controls=5' \
     'scroll_controls=2' \
     'custom_controls=171' \
-    'behavior_checks=508' \
+    'behavior_checks=517' \
     'startup_theme=Light' \
     'startup_interaction=Touch' \
     'persisted_theme=Light' \
     'persisted_interaction=Touch' \
-    'total_controls=324'; do
+    'total_controls=326'; do
     if ! grep -Fqx "$required_report_line" "$touch_control_report"; then
         echo "Linux touch UI report is missing: $required_report_line" >&2
         sed -n '1,120p' "$touch_control_report" >&2
@@ -376,8 +376,8 @@ esac
 echo 'linux_ui_runtime_status=pass'
 echo "linux_ui_visual_cases=$linux_ui_visual_launches"
 echo "linux_ui_process_launches=$((linux_ui_visual_launches + linux_ui_control_launches + smoothness_cases))"
-echo 'linux_ui_behavior_checks=1016'
-echo 'linux_ui_control_contracts=648'
+echo 'linux_ui_behavior_checks=1034'
+echo 'linux_ui_control_contracts=652'
 echo "linux_ui_smoothness_cases=$smoothness_cases"
 
 # end of tests/run_linux_ui_smoke.sh

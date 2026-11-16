@@ -15,6 +15,7 @@
         - expose scrollbar construction, rendering, pointer, and key handling
         - expose checked property setters for imported form metadata
         - expose repeat timing and private pointer-state cancellation
+        - expose optional focused KeyDown/KeyUp notifications
 
     This file intentionally does NOT contain:
         - list ownership
@@ -47,7 +48,12 @@ Type ScrollBarData
     ' Optional colors for a scrollbar embedded in a styled control.
     As Integer custom_colors_enabled
     As ULong track_color, thumb_color, thumb_border_color
+    As Any Ptr key_down_handler, key_up_handler
 End Type
+Declare Function scrollbar_SetKeyDownHandler(ByVal w As Widget Ptr, _
+    ByVal handler As Sub(ByVal As Widget Ptr, ByRef As Integer, ByRef As Integer)) As Integer
+Declare Function scrollbar_SetKeyUpHandler(ByVal w As Widget Ptr, _
+    ByVal handler As Sub(ByVal As Widget Ptr, ByRef As Integer, ByRef As Integer)) As Integer
 Declare Function scrollbar_Create(ByVal nm As String, ByVal x As Integer, ByVal y As Integer, ByVal w As Integer, ByVal h As Integer, ByVal mv As Integer, ByVal ps As Integer = 10, ByVal v As Integer = 1) As Widget Ptr
 Declare Sub scrollbar_Render(ByVal w As Widget Ptr)
 Declare Sub scrollbar_Update(ByVal w As Widget Ptr)

@@ -13,7 +13,8 @@
 
     Responsibilities:
 
-        - retain a checked integer range, value, increment, and wrap policy
+        - retain checked ascending or descending integer bounds, value,
+          increment, and wrap policy
         - expose pointer, keyboard, and programmatic value changes
         - invoke an optional change callback after user activation
         - opt into directional step notifications and held-input repetition
@@ -69,7 +70,7 @@ Declare Function spinbutton_GetValue(ByVal w As Widget Ptr) As Integer
 Declare Function spinbutton_SetValue( _
     ByVal w As Widget Ptr, ByVal newValue As Integer _
 ) As Integer
-Declare Function spinbutton_SetRange( _
+    Declare Function spinbutton_SetRange( _
     ByVal w As Widget Ptr, _
     ByVal minimumValue As Integer, ByVal maximumValue As Integer _
 ) As Integer

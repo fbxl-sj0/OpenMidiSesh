@@ -33,9 +33,9 @@
 
         Enumeration uses FreeBASIC's Dir runtime; matching is performed by the
         shared omaGUI wildcard helper because Dir case rules differ by host.
-        Windows roots additionally use the compiler-supplied C runtime
-        existence check because Dir has no dot entry at a root. No SDK or extra
-        library is required. Non-Windows builds expose the filesystem root
+        Windows roots have no dot entry for Dir. The portable profile queries
+        RTLib GetAttr; other profiles retain the C runtime existence check.
+        No SDK or extra library is required. Non-Windows builds expose the root
         because mount discovery is host-specific. Enumeration and widget
         mutation occur on the GUI thread.
 '/
@@ -45,7 +45,9 @@
 #include once "src/widgets/filesystemlistbox.bi"
 #include once "src/widgets/wildcard.bi"
 #include once "dir.bi"
-#If Defined(__FB_WIN32__)
+#If Defined(OMAGUI_PORTABLE_ONLY)
+#include once "file.bi"
+#ElseIf Defined(__FB_WIN32__)
 #include once "crt/io.bi"
 #EndIf
 
@@ -138,7 +140,17 @@ Private Function filesystemlistbox_IsDirectory(ByVal pathValue As String) As Int
             isRoot = -1
         End If
     End If
-    If isRoot Then Return IIf(_access(StrPtr(pathValue), 0) = 0, -1, 0)
+    If isRoot Then
+#If Defined(OMAGUI_PORTABLE_ONLY)
+        ' A failed query returns -1. Test it before the directory bit; otherwise
+        ' every absent drive would appear to be a directory. GetAttr may set
+        ' ERR on failure, following the ordinary RTLib file-operation contract.
+        Dim As Long rootAttributes = GetAttr(StrPtr(pathValue))
+        Return IIf(rootAttributes >= 0 AndAlso (rootAttributes And fbDirectory) <> 0, -1, 0)
+#Else
+        Return IIf(_access(StrPtr(pathValue), 0) = 0, -1, 0)
+#EndIf
+    End If
 #EndIf
     Return 0
 End Function
@@ -166,7 +178,8 @@ Private Function filesystemlistbox_AppendMatches( _
     ByRef snapshot As FilesystemListSnapshot, _
     ByRef directoryPath As Const String, _
     ByRef patternText As Const String, _
-    ByVal wantDirectories As Integer, ByVal multiplePatterns As Integer _
+    ByVal wantDirectories As Integer, ByVal multiplePatterns As Integer, _
+    ByVal excludedAttributes As Integer _
 ) As Integer
     Dim As String entryName
     Dim As String enumerationPattern = filesystemlistbox_JoinPath( _
@@ -185,6 +198,7 @@ Private Function filesystemlistbox_AppendMatches( _
         )
         includeEntry = IIf(wantDirectories, isDirectory AndAlso _
             entryName <> "." AndAlso entryName <> "..", isDirectory = 0)
+        If (entryAttributes And excludedAttributes) <> 0 Then includeEntry = 0
         If includeEntry AndAlso _
            filesystemlistbox_MatchesPattern( _
                entryName, patternText, multiplePatterns _
@@ -213,7 +227,7 @@ End Function
 Private Function filesystemlistbox_RefreshMatches( _
     ByVal w As Widget Ptr, ByRef pathValue As Const String, _
     ByRef patternText As Const String, ByVal wantDirectories As Integer, _
-    ByVal multiplePatterns As Integer = 0 _
+    ByVal multiplePatterns As Integer = 0, ByVal excludedAttributes As Integer = 0 _
 ) As Integer
     If w = 0 OrElse w->data = 0 OrElse w->destroy <> @listbox_Destroy Then _
         Return FILESYSTEMLISTBOX_REFRESH_INVALID_WIDGET
@@ -235,7 +249,7 @@ Private Function filesystemlistbox_RefreshMatches( _
         Next position
     End If
     Dim As Integer refreshResult = filesystemlistbox_AppendMatches(snapshot, _
-        pathValue, patternText, wantDirectories, multiplePatterns)
+        pathValue, patternText, wantDirectories, multiplePatterns, excludedAttributes)
     If refreshResult <> FILESYSTEMLISTBOX_REFRESH_OK Then Return refreshResult
     filesystemlistbox_Sort snapshot
     ' Enumeration and capacity checks completed without touching the widget.
@@ -314,6 +328,16 @@ Function filelistbox_TryRefreshPatterns( _
     Return filesystemlistbox_RefreshMatches(w, pathValue, patternText, 0, -1)
 End Function
 
+Function filelistbox_TryRefreshPatternsExcluding( _
+    ByVal w As Widget Ptr, ByVal pathValue As String, _
+    ByVal patternText As String, ByVal excludedAttributes As Integer _
+) As Integer
+    Dim As Integer allowedAttributes = fbReadOnly Or fbHidden Or fbSystem Or fbArchive
+    If excludedAttributes < 0 OrElse (excludedAttributes And Not allowedAttributes) <> 0 Then _
+        Return FILESYSTEMLISTBOX_REFRESH_INVALID_ATTRIBUTES
+    Return filesystemlistbox_RefreshMatches(w, pathValue, patternText, 0, -1, excludedAttributes)
+End Function
+
 
 Function filelistbox_Create( _
     ByVal nm As String, _
@@ -373,6 +397,43 @@ Function drivelistbox_Refresh(ByVal w As Widget Ptr) As Integer
     Next item_index
     If selected_index < 0 Then selected_index = 0
     listbox_SetSelectedIndex w, selected_index
+    Return -1
+End Function
+
+Function filesystemlistbox_LoadDriveCombo(ByVal w As Widget Ptr) As Integer
+    If w = 0 OrElse w->data = 0 OrElse w->destroy <> @combobox_Destroy Then Return 0
+    Dim As String drives(0 To 25)
+    Dim As Integer drive_count, selected_index = -1
+#If Defined(__FB_WIN32__)
+    Dim As String current_path = CurDir
+    Dim As String current_drive
+    If Len(current_path) >= 2 AndAlso Mid(current_path, 2, 1) = ":" Then _
+        current_drive = UCase(Left(current_path, 2))
+    For drive_code As Integer = Asc("A") To Asc("Z")
+        Dim As String drive_name = Chr(drive_code) & ":"
+        Dim As String root_path = drive_name & FILESYSTEMLISTBOX_PATH_SEPARATOR
+        If drive_name <> current_drive AndAlso filesystemlistbox_IsDirectory(root_path) = 0 Then Continue For
+        If drive_name = current_drive Then selected_index = drive_count
+        drives(drive_count) = drive_name
+        drive_count += 1
+    Next drive_code
+#Else
+    drives(0) = FILESYSTEMLISTBOX_PATH_SEPARATOR
+    drive_count = 1
+    selected_index = 0
+#EndIf
+    If drive_count < 1 OrElse drive_count > 26 Then Return 0
+    combobox_Clear(w)
+    For drive_index As Integer = 0 To drive_count - 1
+        If combobox_AddItem(w, drives(drive_index)) = 0 Then
+            combobox_Clear(w)
+            Return 0
+        End If
+    Next drive_index
+    If combobox_SetSelectedIndex(w, selected_index) = 0 Then
+        combobox_Clear(w)
+        Return 0
+    End If
     Return -1
 End Function
 

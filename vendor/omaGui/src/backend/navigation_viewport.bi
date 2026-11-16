@@ -3,12 +3,7 @@
     File: navigation_viewport.bi
     Purpose: Declare the opt-in logical display and accessibility profile.
     Responsibilities: Keep layout coordinates independent of physical pixels.
-    Targets: FreeBASIC fb dialect; gfxlib with OMAGUI_NAVIGATION_EXTENSIONS.
-    Module API boundary: declares logical display options and physical/logical mapping.
-
-    This file intentionally does NOT contain:
-        - widget policy
-        - window-system input polling
+    This file does not contain widget policy or window-system input polling.
 
     The GUI thread owns viewport state. Legacy games select this profile before
     initialization. Applications without that opt-in keep the native pixel path.
@@ -24,6 +19,13 @@ Declare Function backend_PhysicalToLogicalY(ByVal y As Integer) As Integer
 Declare Sub backend_NavigationCreate(ByRef w As Integer, ByRef h As Integer, ByRef flags As UInteger)
 Declare Sub backend_NavigationClip(ByVal x1 As Integer, ByVal y1 As Integer, ByVal x2 As Integer, ByVal y2 As Integer)
 Declare Function backend_NavigationColor(ByVal clr As ULong) As ULong
+Declare Sub backend_NavigationFill(ByVal x1 As Integer, ByVal y1 As Integer, ByVal x2 As Integer, ByVal y2 As Integer, ByVal clr As ULong)
+' Compatibility entry point for the earlier navigation pixel-footprint API.
+Declare Sub backend_NavigationPlotPixel(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong)
+Declare Function backend_NavigationBounds(ByVal x1 As Integer, ByVal y1 As Integer, ByVal x2 As Integer, ByVal y2 As Integer, ByRef leftPixel As Integer, ByRef topPixel As Integer, ByRef rightPixel As Integer, ByRef bottomPixel As Integer) As Integer
+Declare Sub backend_NavigationLine(ByVal x1 As Integer, ByVal y1 As Integer, ByVal x2 As Integer, ByVal y2 As Integer, ByVal clr As ULong)
+Declare Sub backend_NavigationCircle(ByVal x As Integer, ByVal y As Integer, ByVal radius As Integer, ByVal clr As ULong, ByVal filled As Integer)
+Declare Function backend_NavigationImage(ByVal sourceImage As Any Ptr, ByVal x As Integer, ByVal y As Integer, ByRef drawX As Single, ByRef drawY As Single) As Any Ptr
 Extern omagui_nav_logical_w As Integer, omagui_nav_logical_h As Integer
 Extern omagui_nav_text_scale As Integer
 #endif

@@ -59,23 +59,28 @@ Private Sub backend_FontSpanRelease()
 End Sub
 
 Private Function backend_FontSpanDepth() As Integer
-    ' Mode changes belong to the GUI thread. Sample depth once for this text
-    ' draw; no application callbacks or display-page changes occur inside it.
-    ' SCREENINFO also applies a pending native resize. The direct writer still
-    ' revalidates dimensions, pitch and the current page under its own lock.
-    Dim As Integer screenWidth, screenHeight, screenDepth
-    ScreenInfo screenWidth, screenHeight, screenDepth
+    ' Outside a frame, backend_GetSize still samples SCREENINFO so pending
+    ' native resizes are applied. During a frame it reuses the shared sample.
+    ' The direct writer revalidates dimensions and pitch under ScreenLock.
+    If ScreenPtr = 0 Then Return 0
+    Dim As Integer screenWidth, screenHeight
+    backend_GetSize screenWidth, screenHeight
     If screenWidth <= 0 OrElse screenHeight <= 0 Then Return 0
-    Return screenDepth
+    Return backend_CurrentColorDepth()
 End Function
 
 Private Function backend_FontSpanBegin(ByVal widthValue As Integer, _
     ByVal heightValue As Integer, ByVal screenDepth As Integer = 0) As Integer
-#If Defined(__FB_GFXLIB3__) Or Defined(OMAGUI_DISABLE_FONT_SPANS) Or Defined(OMAGUI_NAVIGATION_EXTENSIONS)
+#If Defined(__FB_GFXLIB3__) Or Defined(OMAGUI_DISABLE_FONT_SPANS)
     ' GPU pages retain their existing drawing path. The disabling define also
     ' lets pixel comparisons qualify the new blit against the original path.
     Return 0
 #Else
+#Ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    Dim viewportWidth As Integer, viewportHeight As Integer
+    ScreenInfo viewportWidth, viewportHeight
+    If viewportWidth <> omagui_nav_logical_w OrElse viewportHeight <> omagui_nav_logical_h Then Return 0
+#EndIf
     If widthValue <= 0 OrElse heightValue <= 0 Then Return 0
     If screenDepth = 0 Then screenDepth = backend_FontSpanDepth()
     If screenDepth <> 32 Then Return 0
@@ -142,7 +147,10 @@ End Function
 ' Validate the pitch and page before deriving pointers. PUT remains the fallback.
 Private Function backend_FontSpanDirect(ByVal x As Integer, ByVal y As Integer, _
     ByVal widthValue As Integer, ByVal heightValue As Integer, ByVal clr As ULong) As Integer
-#If Defined(__FB_GFXLIB3__) Or Defined(OMAGUI_DISABLE_FONT_SPANS) Or Defined(OMAGUI_NAVIGATION_EXTENSIONS)
+#If Defined(__FB_GFXLIB3__) Or Defined(OMAGUI_DISABLE_FONT_SPANS) Or Defined(OMAGUI_NAVIGATION_EXTENSIONS) Or Defined(__FB_HAIKU__)
+    ' The Haiku package run faulted in this direct-page path after native
+    ' window fitting. Keep the coverage mask and let PUT own page access and
+    ' clipping until direct framebuffer lifetime is qualified on that SDK.
     Return 0
 #Else
     If backend_FontSpanPixels = 0 OrElse widthValue <= 0 OrElse heightValue <= 0 OrElse _

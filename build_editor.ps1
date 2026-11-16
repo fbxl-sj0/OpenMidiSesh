@@ -212,7 +212,7 @@ try {
             if ($compileExit -eq 0 -and
                 (Test-Path -LiteralPath $linkedExecutable -PathType Leaf)) {
                 Copy-Item -LiteralPath $linkedExecutable `
-                    -Destination $outputFile -Force
+                    -Destination $outputFile -Force -ErrorAction Stop
             }
             elseif ($compileExit -eq 0) {
                 $compileExit = 1

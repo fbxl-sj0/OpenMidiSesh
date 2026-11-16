@@ -61,6 +61,8 @@ Declare Sub soundfontSynth_SetChannelMix( _
 )
 Declare Sub soundfontSynth_SetPaused(ByVal paused As Integer)
 Declare Sub soundfontSynth_StopChannel(ByVal channelIndex As Integer)
+Declare Sub soundfontSynth_StopMidiNote(ByVal channelIndex As Integer, ByVal keyNumber As Integer)
+Declare Sub soundfontSynth_SetPitchBend(ByVal channelIndex As Integer, ByVal pitchBend As Integer)
 Declare Sub soundfontSynth_StopAll()
 
 Declare Sub soundfontSynth_SuspendOutput()

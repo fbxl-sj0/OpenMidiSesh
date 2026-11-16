@@ -81,6 +81,21 @@ before changing the song.
 | Windows | WinMM | sfxlib | Score, mixer, playback, SoundFonts and file export |
 | Linux | ALSA Sequencer | ALSA Sequencer | Score, mixer, playback, SoundFonts and file export |
 | FreeBSD, NetBSD, OpenBSD, Haiku | Unavailable | Unavailable | Score, mixer, built-in sound and file export |
-| Android | Unavailable | Unavailable | Shared editor, Touch profile and built-in sound |
+| Android 6.0+ | Android MIDI service (USB and system byte-stream ports) | Unavailable | Shared editor, adaptive Touch profile and built-in sound |
+
+Android MIDI callbacks copy timestamped bytes into a bounded Java queue. Only
+the editor thread crosses JNI and decodes fragmented messages, running status
+and SysEx into the existing portable input queue. Late asynchronous opens and
+receivers are rejected by a connection generation. Device removal and activity
+backgrounding close input; the editor silences its monitored notes.
+
+`input_monitor.bi` owns listening policy independently of the recording clock.
+It handles note-off, sustain, program, volume, expression, pan and pitch bend.
+SoundFont notes bend in place; the fallback oscillator restarts its retained
+voice when bending because its API has no in-place frequency operation.
+
+`uiInteraction_ViewportMetrics` owns toolbar breakpoints. `display_profile.bi`
+keeps Android density and legacy runtime fallback behind a display boundary.
+The existing GUI backend supplies normal desktop and supported handheld metrics.
 
 <!-- end of docs/ARCHITECTURE.md -->

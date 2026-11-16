@@ -633,7 +633,9 @@ End Sub
 
 
 Private Sub session_UpdateScoreInput(ByVal screenWidth As Integer, ByVal screenHeight As Integer)
-    If session_IsModalOpen() <> 0 Then
+    If session_IsModalOpen() <> 0 OrElse session_MenuInputActive <> 0 OrElse _
+        session_VisibleDesktopMenuIndex() >= 0 OrElse _
+        (session_CompactLayout <> 0 AndAlso session_MixerVisible <> 0) Then
         session_LastScoreButtons = input_MouseButtons()
         session_LastDeleteState = input_KeyPressed(FB.SC_DELETE)
         session_EndScoreNoteDrag()

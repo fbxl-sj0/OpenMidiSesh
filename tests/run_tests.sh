@@ -287,6 +287,12 @@ run_test soundfont_shutdown_smoke \
 run_test generated_voice_stop_smoke tests/generated_voice_stop_smoke.bas --
 run_test touch_gesture_smoke \
     tests/touch_gesture_smoke.bas src/touch_gesture.bas --
+run_test midi_monitor_audio_smoke \
+    tests/midi_monitor_audio_smoke.bas src/software_synth.bas src/soundfont_synth.bas \
+    src/soundfont_bank.bas src/playback_mix.bas src/sfx_runtime.bas --
+run_test midi_input_stream_smoke \
+    tests/midi_input_stream_smoke.bas src/midi_input_stream.bas src/midi_input_protocol.bas --
+
 run_test ui_interaction_smoke \
     tests/ui_interaction_smoke.bas src/ui_interaction.bas --
 run_test ui_style_smoke tests/ui_style_smoke.bas src/ui_style.bas --

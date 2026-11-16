@@ -13,11 +13,14 @@
     Responsibilities:
         - render list rows and vertical or horizontal scrolling columns
         - select pointer rows once on release inside the pressed row
+        - publish table-header clicks after release inside the pressed header
         - recognize two timely releases on the same row as a double activation
         - select rows through edge-triggered keyboard input
+        - retain separate counts for keyboard and pointer activation sources
         - scroll through the wheel, keyboard, or scrollbar
         - keep programmatic selections visible and range checked
         - render optional normal client and text colors
+        - deliver scan-code Down/Up callbacks around keyboard selection
 
     This file intentionally does NOT contain:
         - filesystem enumeration
@@ -31,6 +34,10 @@
 #include once "src/widgets/menu.bi"
 #include once "src/widgets/checkbox.bi"
 #include once "src/backend/theme.bi"
+#include once "src/widgets/control_keyevents.bi"
+
+' A nested GUI update must not recursively notify this list callback family.
+Dim Shared As Integer listbox_key_event_depth
 
 #ifdef OMAGUI_NAVIGATION_EXTENSIONS
 Const LISTBOX_SCROLLBAR_WIDTH As Integer = 28 ' Touch profile uses fingertip-sized thumbs.
@@ -402,7 +409,10 @@ Private Sub listbox_UpdateKeyboard( _
         If listbox_KeyActivated(keyState, keyPressState, d->key_latch, LISTBOX_KEY_SPACE_BIT) Then
             If d->selected_index < 0 AndAlso d->item_count > 0 Then d->selected_index = 0
             listbox_SelectGesture d, d->selected_index, shiftDown, controlDown, -1
-            If d->selected_index >= 0 Then d->activation_count += 1
+            If d->selected_index >= 0 Then
+                d->activation_count += 1
+                d->keyboard_activation_count += 1
+            End If
         End If
     End If
 
@@ -419,6 +429,7 @@ Private Sub listbox_UpdateKeyboard( _
            keyState, keyPressState, d->key_latch, LISTBOX_KEY_ENTER_BIT _
        ) Then
         d->activation_count += 1
+        d->keyboard_activation_count += 1
     End If
 
     /'
@@ -435,13 +446,14 @@ Private Sub listbox_UpdateKeyboard( _
 End Sub
 
 
-Sub listbox_Update(ByVal w As Widget Ptr)
+Private Sub listbox_UpdateBody(ByVal w As Widget Ptr)
     Dim As ListBoxData Ptr d
     Dim As Integer mx
     Dim As Integer my
     Dim As Integer mb
     Dim As Integer wheelDelta
     Dim As Integer pointerIndex = -1
+    Dim As Integer headerIndex = -1
     Dim As Integer visibleCount
 
     If w = 0 OrElse w->data = 0 Then Exit Sub
@@ -484,6 +496,23 @@ Sub listbox_Update(ByVal w As Widget Ptr)
     End If
 
     pointerIndex = listbox_HitRow(w, mx, my)
+    headerIndex = listbox_HitTableHeader(w, mx, my)
+
+    ' gfxlib button bit 2 is the right button. Save the press here, while
+    ' this list owns pointer dispatch, for modal code that runs after the
+    ' manager restores the global input mask.
+    If (mb And 2) <> 0 Then
+        If d->context_click_latch = 0 AndAlso _
+           mx >= w->ax AndAlso mx < w->ax + w->w - IIf(d->column_count > 0, 0, LISTBOX_SCROLLBAR_WIDTH) AndAlso _
+           my >= w->ay AndAlso my < w->ay + listbox_ClientHeight(w) Then
+            d->context_click_latch = -1
+            d->context_click_count += 1
+            d->context_click_x = mx
+            d->context_click_y = my
+        End If
+    Else
+        d->context_click_latch = 0
+    End If
 
     /'
         Pointer selection follows the same release-inside contract as a push
@@ -499,6 +528,7 @@ Sub listbox_Update(ByVal w As Widget Ptr)
         If d->pointer_latch = 0 Then
             d->pointer_latch = -1
             d->pointer_index = pointerIndex
+            d->pointer_header_column = headerIndex
 #ifdef OMAGUI_NAVIGATION_EXTENSIONS
             d->navigation_drag_y = my: d->navigation_drag_top = d->scroll_top
             d->navigation_dragged = 0
@@ -525,7 +555,12 @@ Sub listbox_Update(ByVal w As Widget Ptr)
         If d->navigation_dragged Then d->pointer_index = -1
         d->navigation_dragged = 0
 #endif
-        If d->pointer_index >= 0 AndAlso _
+        If d->pointer_header_column >= 0 AndAlso _
+           headerIndex = d->pointer_header_column Then
+            If d->table_header_click_count < &HFFFFFFFFFFFFFFFFull Then _
+                d->table_header_click_count += 1
+            d->table_header_click_column = headerIndex
+        ElseIf d->pointer_index >= 0 AndAlso _
            pointerIndex = d->pointer_index Then
             If d->selection_mode = LISTBOX_SELECTION_SINGLE AndAlso d->selected_index <> d->pointer_index Then d->selection_change_count += 1
             d->selected_index = d->pointer_index
@@ -537,6 +572,7 @@ Sub listbox_Update(ByVal w As Widget Ptr)
         End If
         d->pointer_latch = 0
         d->pointer_index = -1
+        d->pointer_header_column = -1
     End If
 
     If w->has_focus <> 0 Then
@@ -732,7 +768,17 @@ Function listbox_Create(ByVal nm As String, ByVal x As Integer, ByVal y As Integ
     d->key_latch = 0
     d->pointer_latch = 0
     d->pointer_index = -1
+    d->pointer_header_column = -1
+    d->context_click_count = 0
+    d->context_click_x = -1
+    d->context_click_y = -1
+    d->context_click_latch = 0
+    d->table_header_click_count = 0
+    d->table_header_click_column = -1
     d->activation_count = 0
+    d->keyboard_activation_count = 0
+    d->key_down_handler = 0
+    d->key_up_handler = 0
     d->double_activation_count = 0
     d->selection_mode = LISTBOX_SELECTION_SINGLE
     d->selection_anchor = -1
@@ -1075,6 +1121,12 @@ Function listbox_GetActivationCount(ByVal w As Widget Ptr) As ULongInt
 End Function
 
 
+Function listbox_GetKeyboardActivationCount(ByVal w As Widget Ptr) As ULongInt
+    If w = 0 OrElse w->data = 0 Then Return 0
+    Return Cast(ListBoxData Ptr, w->data)->keyboard_activation_count
+End Function
+
+
 Function listbox_GetDoubleActivationCount(ByVal w As Widget Ptr) As ULongInt
     If w = 0 OrElse w->data = 0 Then Return 0
     Return Cast(ListBoxData Ptr, w->data)->double_activation_count
@@ -1090,12 +1142,12 @@ Function listbox_ActivateSelected(ByVal w As Widget Ptr) As Integer
        listData->selected_index >= listData->item_count Then Return 0
 
     /'
-        Applications poll activation_count after OMAGUI updates. Programmatic
-        activation follows the same event contract as Enter and pointer
-        release, which also makes accessible or test-driven activation
-        possible without reaching into retained widget data.
+        Applications poll activation counters after OMAGUI updates. This API
+        represents keyboard-style activation so callers can distinguish it
+        from a pointer release without inspecting retained widget data.
     '/
     listData->activation_count += 1
+    listData->keyboard_activation_count += 1
     Return -1
 End Function
 
@@ -1279,4 +1331,75 @@ Function listbox_SetRightColumn( _
     Return -1
 End Function
 
+
+' -------------------------------------------------------------------------
+' Keyboard notification API
+' -------------------------------------------------------------------------
+
+Function listbox_SetKeyDownHandler(ByVal w As Widget Ptr, _
+    ByVal handler As Sub(ByVal As Widget Ptr, ByRef As Integer, ByRef As Integer)) As Integer
+    If w = 0 OrElse w->data = 0 OrElse w->destroy <> @listbox_Destroy Then Return 0
+    Cast(ListBoxData Ptr, w->data)->key_down_handler = handler
+    Return -1
+End Function
+
+Function listbox_SetKeyUpHandler(ByVal w As Widget Ptr, _
+    ByVal handler As Sub(ByVal As Widget Ptr, ByRef As Integer, ByRef As Integer)) As Integer
+    If w = 0 OrElse w->data = 0 OrElse w->destroy <> @listbox_Destroy Then Return 0
+    Cast(ListBoxData Ptr, w->data)->key_up_handler = handler
+    Return -1
+End Function
+
+Sub listbox_Update(ByVal w As Widget Ptr)
+    ' Withdrawing handlers inside a callback must not bypass its active batch
+    ' guard and process the same navigation edge through a nested update.
+    If listbox_key_event_depth <> 0 Then Exit Sub
+    If w = 0 OrElse w->data = 0 Then Exit Sub
+    Dim As ListBoxData Ptr d = w->data
+    ' Preserve the existing pointer/unfocused path when there is no keyboard
+    ' owner here. A callback installed later does not inherit an old batch.
+    If (d->key_down_handler = 0 AndAlso d->key_up_handler = 0) OrElse gui_GetFocus() <> w Then
+        listbox_UpdateBody w
+        Exit Sub
+    End If
+    Dim As ULongInt registry_id = w->registry_id
+    Dim As ULongInt frame_serial = input_FrameSerial()
+    If control_KeyTargetIsCurrent(w, d, registry_id, frame_serial) = 0 Then Exit Sub
+    If control_KeyNotifications(w, d, d->key_down_handler, 0, listbox_key_event_depth) = 0 Then Exit Sub
+    listbox_UpdateBody w
+    If control_KeyTargetIsCurrent(w, d, registry_id, frame_serial) = 0 Then Exit Sub
+    control_KeyNotifications w, d, d->key_up_handler, -1, listbox_key_event_depth
+End Sub
+
+Function listbox_GetItemBounds(ByVal w As Widget Ptr, ByVal item_index As Integer, _
+    ByRef left_value As Integer, ByRef top_value As Integer, ByRef width_value As Integer, ByRef height_value As Integer) As Integer
+    left_value = 0: top_value = 0: width_value = 0: height_value = 0
+    Dim As ListBoxData Ptr d = listbox_SelectionData(w)
+    If d = 0 OrElse d->dropdown_style OrElse item_index < 0 OrElse item_index >= d->item_count Then Return 0
+    If w->w <= 0 OrElse w->h <= 0 Then Return 0
+    listbox_ClampScroll w
+    Dim As Integer relative_index = item_index - d->scroll_top
+    If relative_index < 0 Then Return 0
+    Dim As Integer row_index = relative_index, column_index
+    Dim As Integer cell_width = w->w - LISTBOX_SCROLLBAR_WIDTH
+    Dim As Integer column_width
+    If d->column_count > 0 Then
+        Dim As Integer rows_per_column = listbox_RowsPerColumn(w)
+        column_index = relative_index \ rows_per_column
+        If column_index >= listbox_VisibleColumns(w) Then Return 0
+        row_index = relative_index Mod rows_per_column
+        column_width = listbox_ColumnWidth(w)
+        cell_width = column_width
+        If column_index = listbox_VisibleColumns(w) - 1 Then cell_width = w->w - column_index * column_width
+    End If
+    Dim As Integer row_top = row_index * listbox_RowHeight(d)
+    Dim As Integer client_height = listbox_ClientHeight(w)
+    If cell_width <= 0 OrElse row_top >= client_height Then Return 0
+    left_value = w->ax + column_index * column_width
+    top_value = w->ay + listbox_HeaderHeight(d) + row_top
+    width_value = cell_width
+    height_value = listbox_RowHeight(d)
+    If height_value > client_height - row_top Then height_value = client_height - row_top
+    Return -1
+End Function
 /' end of listbox.bas '/

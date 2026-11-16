@@ -20,6 +20,7 @@
         - expose user activity without conflating it with programmatic state
         - retain optional normal client and text colors
         - keep application item values attached to rows during mutations
+        - bracket keyboard selection with portable Down/Up notifications
 
     This file intentionally does NOT contain:
 
@@ -71,7 +72,15 @@ Type ComboBoxData
     As String type_ahead_text
     As Double type_ahead_clock
     As Integer type_ahead_clock_initialized
+    ' Appended to retain existing field offsets. Rebuild clients embedding the
+    ' record. These GUI-thread callbacks do not own the widget or input frame.
+    As Any Ptr key_down_handler, key_up_handler
 End Type
+
+Declare Function combobox_SetKeyDownHandler(ByVal w As Widget Ptr, _
+    ByVal handler As Sub(ByVal As Widget Ptr, ByRef As Integer, ByRef As Integer)) As Integer
+Declare Function combobox_SetKeyUpHandler(ByVal w As Widget Ptr, _
+    ByVal handler As Sub(ByVal As Widget Ptr, ByRef As Integer, ByRef As Integer)) As Integer
 
 Declare Function combobox_Create( _
     ByVal widget_name As String, _

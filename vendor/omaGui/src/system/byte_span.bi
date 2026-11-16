@@ -1,27 +1,38 @@
 /'
     Project: omaGUI
     File: byte_span.bi
-    Purpose: Compare borrowed byte spans without allocating temporary strings.
-    Responsibilities: Preserve exact equality, accept unaligned spans on DOS,
-        and keep every read within the supplied byte count.
-    Targets: FreeBASIC fb dialect; DOS uses packed, unaligned word loads.
-    Module API: oma_BytesEqual compares caller-owned readable byte spans.
+    Purpose: Compare, search and copy borrowed spans without temporary strings.
+    Responsibilities: Preserve exact bytes, accept unaligned spans, reject
+        overlapping copies, and keep each access within its supplied count.
+    Targets: FreeBASIC fb dialect; the portable profile uses BASIC byte accesses.
+    Module API: oma_BytesEqual compares readable spans. oma_CopyBytes writes
+        a caller-owned separate destination and returns zero before writing
+        if its count, pointers or nonoverlap contract are invalid.
+        oma_BytesContain searches one readable span and returns zero for an
+        empty, negative or NULL span, or when the requested byte is absent.
     This file intentionally does NOT contain:
         - text decoding
         - hashing
         - GUI state
 
     Callers keep both spans alive and unchanged until the call returns. A zero
-    count needs no storage. Other calls require two readable spans of that size.
+    count needs no storage. Nonempty calls require the stated readable spans;
+    copying additionally requires a writable destination of the same size.
 '/
 #ifndef __OMAGUI_BYTE_SPAN_BI__
 #define __OMAGUI_BYTE_SPAN_BI__
 
 Declare Function oma_BytesEqual(ByVal firstBytes As Const Any Ptr, _
     ByVal secondBytes As Const Any Ptr, ByVal byteCount As Integer) As Integer
+Declare Function oma_CopyBytes(ByVal destination As Any Ptr, _
+    ByVal source As Const Any Ptr, ByVal byteCount As Integer) As Integer
+Declare Function oma_BytesContain(ByVal source As Const Any Ptr, _
+    ByVal byteCount As Integer, ByVal requestedByte As UByte) As Integer
 
 #ifdef OMAGUI_IMPLEMENTATION
+#If Not Defined(OMAGUI_PORTABLE_ONLY)
 #include once "crt/string.bi"
+#EndIf
 
 #If Defined(__FB_DOS__) Or Defined(OMAGUI_TEST_BYTE_SPAN_WORDS)
 ' FIELD=1 permits unaligned word loads in both the assembly and C generators.
@@ -38,7 +49,16 @@ Function oma_BytesEqual(ByVal firstBytes As Const Any Ptr, _
     If byteCount < 0 Then Return 0
     If byteCount = 0 Then Return -1
     If firstBytes = 0 OrElse secondBytes = 0 Then Return 0
-#If Defined(__FB_DOS__) Or (Defined(OMAGUI_TEST_BYTE_SPAN_X86) And Defined(__FB_X86__))
+#If Defined(OMAGUI_PORTABLE_ONLY)
+    ' The portable profile uses BASIC on every CPU, including DOS. The other
+    ' profiles retain their existing optimized native comparison paths.
+    Dim As Const UByte Ptr firstData = Cast(Const UByte Ptr, firstBytes)
+    Dim As Const UByte Ptr secondData = Cast(Const UByte Ptr, secondBytes)
+    For byteIndex As Integer = 0 To byteCount - 1
+        If firstData[byteIndex] <> secondData[byteIndex] Then Return 0
+    Next byteIndex
+    Return -1
+#ElseIf Defined(__FB_DOS__) Or (Defined(OMAGUI_TEST_BYTE_SPAN_X86) And Defined(__FB_X86__))
     ' DPMI supplies flat data and extra segments, and the x86 ABI enters with
     ' a clear direction flag. REP compares complete words without a BASIC
     ' loop per word. The final zero to three bytes stay inside the span.
@@ -85,6 +105,40 @@ Function oma_BytesEqual(ByVal firstBytes As Const Any Ptr, _
 #Else
     Return IIf(memcmp(firstBytes, secondBytes, byteCount) = 0, -1, 0)
 #EndIf
+End Function
+
+Function oma_CopyBytes(ByVal destination As Any Ptr, ByVal source As Const Any Ptr, _
+    ByVal byteCount As Integer) As Integer
+    If byteCount < 0 Then Return 0
+    If byteCount = 0 Then Return -1
+    If destination = 0 OrElse source = 0 Then Return 0
+    Dim As UInteger destinationAddress = CUInt(destination)
+    Dim As UInteger sourceAddress = CUInt(source)
+    Dim As UInteger count = CUInt(byteCount)
+    ' Check exclusive-end arithmetic before considering two caller-owned spans.
+    ' Address subtraction then checks overlap without overflowing an end value.
+    If destinationAddress > CUInt(-1) - count OrElse sourceAddress > CUInt(-1) - count Then Return 0
+    If destinationAddress >= sourceAddress Then
+        If destinationAddress - sourceAddress < count Then Return 0
+    Else
+        If sourceAddress - destinationAddress < count Then Return 0
+    End If
+    Dim As UByte Ptr destinationData = Cast(UByte Ptr, destination)
+    Dim As Const UByte Ptr sourceData = Cast(Const UByte Ptr, source)
+    For byteIndex As Integer = 0 To byteCount - 1
+        destinationData[byteIndex] = sourceData[byteIndex]
+    Next byteIndex
+    Return -1
+End Function
+
+Function oma_BytesContain(ByVal source As Const Any Ptr, ByVal byteCount As Integer, _
+    ByVal requestedByte As UByte) As Integer
+    If source = 0 OrElse byteCount <= 0 Then Return 0
+    Dim As Const UByte Ptr sourceData = Cast(Const UByte Ptr, source)
+    For byteIndex As Integer = 0 To byteCount - 1
+        If sourceData[byteIndex] = requestedByte Then Return -1
+    Next byteIndex
+    Return 0
 End Function
 #endif
 #endif

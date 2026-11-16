@@ -20,6 +20,7 @@
         - retain explicit pixel colors independently of a platform bitmap
         - own a copied raster image beneath retained drawings and text
         - forward clipped 16-bit patterned line requests to the pixel surface
+        - deliver optional focused key notifications through the shared guard
 
     Targets:
 
@@ -33,7 +34,7 @@
 
         - image file loading or raster drawing algorithms
         - application drawing policy
-        - input event behavior
+        - pointer policy or application keyboard actions
 
     Ownership:
 
@@ -44,6 +45,10 @@
 
 #include once "src/widgets/picturebox.bi"
 #include once "src/backend/theme.bi"
+#include once "src/widgets/control_keyevents.bi"
+
+' Family-wide reentry state survives removal/replacement of the focused owner.
+Dim Shared As Integer picturebox_key_event_depth
 
 Const PICTUREBOX_MINIMUM_DIMENSION As Integer = 4
 Const PICTUREBOX_SINGLE_INSET As Integer = 1
@@ -131,9 +136,30 @@ Private Function picturebox_SynchronizePixelCanvas( _
 End Function
 
 
-Private Sub picturebox_Update(ByVal picture_widget As Widget Ptr)
+Private Sub picturebox_UpdateBody(ByVal picture_widget As Widget Ptr)
     picturebox_SynchronizePixelCanvas picture_widget
 End Sub
+
+Private Sub picturebox_Update(ByVal picture_widget As Widget Ptr)
+    If picture_widget = 0 OrElse picture_widget->data = 0 Then Exit Sub
+    Dim As PictureBoxData Ptr d = picture_widget->data
+    control_UpdateWithKeyNotifications picture_widget, d, d->key_down_handler, _
+        d->key_up_handler, picturebox_key_event_depth, @picturebox_UpdateBody
+End Sub
+
+Function picturebox_SetKeyDownHandler(ByVal w As Widget Ptr, _
+    ByVal handler As Sub(ByVal As Widget Ptr, ByRef As Integer, ByRef As Integer)) As Integer
+    If w = 0 OrElse w->data = 0 OrElse w->destroy <> @picturebox_Destroy Then Return 0
+    Cast(PictureBoxData Ptr, w->data)->key_down_handler = handler
+    Return -1
+End Function
+
+Function picturebox_SetKeyUpHandler(ByVal w As Widget Ptr, _
+    ByVal handler As Sub(ByVal As Widget Ptr, ByRef As Integer, ByRef As Integer)) As Integer
+    If w = 0 OrElse w->data = 0 OrElse w->destroy <> @picturebox_Destroy Then Return 0
+    Cast(PictureBoxData Ptr, w->data)->key_up_handler = handler
+    Return -1
+End Function
 
 ' -------------------------------------------------------------------------
 ' Rendering and lifecycle

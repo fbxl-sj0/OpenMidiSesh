@@ -61,6 +61,38 @@ backend_Exit
 `gui_UpdateAll` polls input and the live drawable size. Do not call
 `input_Update` separately in the normal application loop.
 
+Static screens without autonomous timers may call `gui_UpdateAll(0)` to skip
+widget callbacks and hit testing when there is no active input. The manager
+still synchronizes viewport layout and validates focus. A static client that
+owns and synchronizes all programmatic geometry, visibility, and focus changes
+may opt into `gui_UpdateAll(0, -1)`: this also skips the widget layout walk on
+idle frames with an unchanged viewport. Pointer, keyboard, touch, and resize
+frames still resolve layout unless the client opts into one of the specific
+paths below. The second argument defaults to zero, preserving
+the normal synchronization contract. Builds with controller navigation ignore
+the idle-skip request so semantic controller events continue to be processed.
+
+Static clients may pass `-1` as the fourth argument to
+`gui_UpdateAll(0, -1, 0, -1)` to skip the initial layout walk on frames with
+only pointer movement and an unchanged viewport. For keyboard-only or
+text-only frames, use the additive
+`gui_UpdateAllWithKeyboardLayoutSkip(0, -1, 0, 0, -1)` entry
+point. Both paths still dispatch input and perform a later layout resolve if a
+callback changes widget geometry, visibility, or enabled state. The caller
+must synchronize geometry, hierarchy, visibility, enabled state, and focus
+before the frame. Touch, combined-input, and viewport-change frames keep the
+initial resolve. Builds with controller navigation keep the complete path.
+The original four-argument `gui_UpdateAll` entry point remains available for
+already-compiled clients.
+
+Applications that must update their own geometry before widget input dispatch
+can call `gui_PrepareUpdateFrame()`, read the logical drawable size with
+`gui_GetViewportSize`, apply their geometry changes, then pass `-1` as the third
+argument to `gui_UpdateAll`. That update consumes the prepared viewport rather
+than querying the backend a second time. The no-argument form still samples the
+live drawable size itself. A prepared sample belongs to one GUI-thread update;
+do not keep it across unrelated event or render work.
+
 ### 2.3 Widget creation and ownership
 
 Constructors return a heap-allocated `Widget Ptr`. Register each top-level
@@ -126,10 +158,23 @@ restore the previous mode after a driver failure.
 automatically updates the GUI viewport from it. `backend_IsResizable` reports
 whether the active gfxlib screen accepted the request.
 
+On a Linux handheld, a normal window starts at the available display size and
+can be resized by the compositor when the status bar or keyboard needs space.
+An explicit full-screen request remains full screen and may be covered by an
+on-screen keyboard. A known device class from gfxlib takes precedence over
+the fallback screen-size and touch heuristics.
+
 `backend_SetWindowMode(width, height, flags)` recreates both gfx pages and
 returns nonzero on success. This is the supported transition between fixed,
 resizable, and full-screen operation. A failed transition makes a best effort
 to restore the previous mode. Mode changes are unavailable in headless mode.
+
+An application with an explicit GUI frame loop can call `backend_BeginFrame()`
+before input, layout, and rendering, then call `backend_EndFrame()` before its
+frame wait. `backend_GetSize()` shares one live drawable sample during that
+interval. Screen-mode changes invalidate the sample, and calls outside a frame
+continue to observe pending native resizes. Keep the bracket at one level and
+pair both calls in the same frame-loop owner.
 
 `backend_GetWorkPage` reports the current drawing page. Applications with
 their own retained shapes may offer `backend_DrawHorizontalSpans` or
@@ -252,7 +297,11 @@ built-in commands, procedure declarations and calls, macros, variables,
 constants, members, user-defined object instances, labels, strings, numbers,
 comments, and types. The
 `TEXTBOX_SYNTAX_COLOR_*` constants identify these categories for
-`textbox_SetSyntaxColor` and `textbox_ClearSyntaxColor`.
+`textbox_SetSyntaxColor` and `textbox_ClearSyntaxColor`. Semantic lookup uses a
+bounded source-wide index to classify declarations and references. It is
+enabled by default; an editor that only needs lexical colors can disable it per
+TextBox with `textbox_SetSyntaxSemanticLookup`. Keyword, command, literal,
+comment, and directive coloring remains active.
 
 ### 3.8 Portable raster images
 
@@ -372,6 +421,13 @@ An activatable control can be assigned an Alt mnemonic with
 `gui_SetMnemonic(widget, FB.SC_C)`. The manager focuses and activates the
 first eligible matching control. Mnemonics use gfxlib scan codes so their
 behavior remains portable across the supported desktop targets.
+
+`gui_SetSoftwareMouseCursorEnabled(0)` keeps the host pointer visible and
+skips custom software-cursor rendering and style lookup. This can reduce
+framebuffer updates on remote desktop transports. Hover, focus, and activation
+are unchanged, but the pointer keeps the host's default shape. Pass a nonzero
+value to restore omaGUI cursor styles. The setting is GUI-thread state and
+defaults to enabled after `gui_Init`.
 
 A noninteractive caption can forward its mnemonic to a focusable widget with
 `gui_SetMnemonicTarget(source, target)`. The target is a checked weak registry
@@ -552,14 +608,20 @@ published once when the primary button is released over the same row where the
 press began. Releasing outside that row cancels the selection. They also
 support edge-triggered Up, Down, Home, End, Page Up, and Page Down keys, an
 integrated scrollbar, and mouse-wheel scrolling while the pointer is over the
-list. Enter activates the selected row by advancing its `activation_count`.
+list. Enter activates the selected row by advancing both `activation_count`
+and `keyboard_activation_count`. Pointer release advances only the aggregate
+counter; a timely second release on the same row also advances
+`double_activation_count`.
 
 Use `listbox_AddItem`, `listbox_Clear`, `listbox_GetItemCount`,
 `listbox_GetSelectedIndex`, and `listbox_GetSelectedItem`. In the default single
 selection mode, the index is zero-based and is `-1` when nothing is selected.
-`listbox_GetActivationCount` is a monotonic event counter suitable for polling
-after each GUI update. `listbox_ActivateSelected` advances that same counter
-for a valid selected row and rejects an empty selection.
+`listbox_GetActivationCount` is a monotonic aggregate event counter suitable
+for polling after each GUI update. `listbox_GetKeyboardActivationCount` and
+`listbox_GetDoubleActivationCount` distinguish keyboard-style activation from
+a completed pointer double-click. `listbox_ActivateSelected` advances the
+aggregate and keyboard counters for a valid selected row and rejects an empty
+selection.
 
 `listbox_SetSelectionMode` accepts `LISTBOX_SELECTION_SINGLE` (0),
 `LISTBOX_SELECTION_SIMPLE` (1), or `LISTBOX_SELECTION_EXTENDED` (2).
@@ -742,10 +804,12 @@ The public document operations are:
 | `htmlview_GetContentHeight` | Read the laid-out document height in pixels |
 | `htmlview_GetScroll` and `htmlview_SetScroll` | Read or set the vertical pixel offset |
 
-The widget reflows automatically when its width changes. It supports pointer
-wheel scrolling, its integrated vertical scrollbar, and the Up, Down, Home,
-End, Page Up, and Page Down keys while focused. The scrollbar is owned by the
-viewer and must not be added separately to the GUI registry.
+The widget reflows automatically when its width changes. It supports wheel
+scrolling, vertical pointer and touch dragging, its integrated vertical
+scrollbar, and the Up, Down, Home, End, Page Up, and Page Down keys while
+focused. Once a drag crosses the shared input threshold, link activation is
+cancelled for that gesture. The scrollbar is owned by the viewer and must
+not be added separately to the GUI registry.
 
 #### Cooperative document loading
 
@@ -972,8 +1036,11 @@ skipped. Input is limited to 1 MiB and internal tables have fixed bounds.
 
 ### 5.7 Popup menus
 
-Menus hold up to `MENU_MAX_ITEMS`, currently 64. Two callback styles are
-available:
+Menus hold up to `MENU_MAX_ITEMS`, 64 by default. Define
+`OMAGUI_MENU_MAX_ITEMS` before including `omaGUI.bi` to select another capacity
+from 1 to 256. This ceiling also bounds related listbox item storage. All
+source files in one executable must use the same value because it sizes fixed
+item storage. Two callback styles are available:
 
 - `menu_AddItem` can attach `Sub(ByVal index As Integer)` to each item.
 - `menu_SetSelectionHandler` installs one
@@ -1022,6 +1089,11 @@ same checked callback path as pointer and keyboard activation. It returns zero
 for invalid indexes, disabled commands, and separators. On success it closes
 the open menu before invoking the callback, which may destroy the widget.
 `menubar_Activate` alone toggles the menu strip; it does not choose a command.
+`menubar_GetHeadingBounds` returns the visible heading's absolute rectangle,
+clipped to the MenuBar widget, for targeted redraws. It returns zero when the
+heading or its geometry is unavailable. Menu bars default to 32 commands per
+heading; define `OMAGUI_MENUBAR_MAX_ITEMS` before including `omaGUI.bi` to
+choose another positive capacity consistently across the executable.
 
 `menubar_SetItemChecked` stores a command's Boolean check state and
 `menubar_GetItemChecked` reads it. Separators reject checked-state changes.
@@ -1101,6 +1173,9 @@ The handler receives `(context, itemIndex)`. A pointer press activates only if
 it is released over the same enabled command. Use `toolbar_SetItemEnabled` and
 `toolbar_GetItemEnabled` to share availability policy with menus;
 `toolbar_GetItemCount` and `toolbar_GetItemLabel` provide bounded inspection.
+`toolbar_GetItemBounds` returns a command button's absolute rectangle, clipped
+to the toolbar widget, for targeted redraws. It returns zero for an invalid,
+separator, hidden-toolbar, or geometry-less item.
 `toolbar_ActivateItem` applies the identical checks for programmatic commands.
 The toolbar does not assign application shortcuts or call a host toolbar API.
 
@@ -1191,11 +1266,14 @@ an outdent with no leading whitespace leaves document, selection, and redo
 state unchanged.
 
 `textbox_SetLineNumbers(widget, -1)` enables a fixed logical line-number gutter
-for a multiline editor; `textbox_GetLineNumbers` returns the configured state.
-The gutter follows the active theme, sizes itself for the document's largest
-line number, and stays outside text selection and horizontal scrolling. Word
-wrapped continuation rows are left unnumbered. Single-line textboxes reject
-the option.
+for a multiline editor; `textbox_GetLineNumbers` reports whether that gutter is
+allocated. `textbox_SetLineNumberVisibility` and
+`textbox_GetLineNumberVisibility` control and query whether line numbers are
+drawn. Keeping the gutter allocated while hiding its numbers preserves editor
+geometry for features such as breakpoints. The gutter follows the active theme,
+sizes itself for the document's largest line number, and stays outside text
+selection and horizontal scrolling. Word-wrapped continuation rows are left
+unnumbered. Single-line textboxes reject the gutter option.
 
 `textbox_SetBackgroundColor` and `textbox_SetForegroundColor` install
 per-widget client and ordinary text colors. Their Get calls report whether an
@@ -1250,6 +1328,19 @@ positioning use the same scaled metrics. `textbox_CenterPosition` scrolls a
 source byte position toward the middle of the viewport.
 `textbox_SetCaretVisible` can hide the blinking caret in passive views or
 deterministic captures without changing keyboard focus or editing state.
+`textbox_SetRenderObservationSerialTracking` is an opt-in render optimization
+for editors whose source changes all go through the TextBox APIs. It reuses a
+compact render observation when `change_serial` is unchanged, without copying
+the document into the key. A bounded, single-line insert or delete can keep
+row-level damage when it does not alter a FreeBASIC block-comment delimiter.
+The scroll-metrics cache also keeps a compact revision key and can update the
+edited row's width and later row offsets without retaining another source
+buffer. Newlines, broad edits, programmatic replacement, history restore,
+uncertain syntax changes, and metric changes that cannot be bounded use the
+normal full-redraw and metric-rebuild paths. A visible horizontal scrollbar
+also uses full redraw so its thumb range is refreshed. Leave tracking disabled
+when application code writes `TextBoxData.text` directly without advancing
+that serial. The default keeps the exact source-byte comparison.
 
 The optional editor gutters support number styles, bookmark or breakpoint
 markers, fold symbols, and click callbacks. A line visibility callback can
@@ -1275,9 +1366,13 @@ The plain-text clipboard accepts at most `CLIPBOARD_MAX_TEXT_BYTES`, currently
 the normal omaGUI build has no host clipboard dependency. Define
 `OMAGUI_ENABLE_HOST_CLIPBOARD` before `OMAGUI_IMPLEMENTATION` to opt into the
 matching Windows or supported Unix desktop bridge. Define
-`OMAGUI_DISABLE_HOST_CLIPBOARD` or the compatible `OMAGUI_PORTABLE_ONLY` name
-to force the bounded process-local implementation, even when the host bridge
-was enabled.
+The explicit host opt-in affects clipboard access only; it can be combined
+with `OMAGUI_PORTABLE_ONLY` without enabling native filesystem or input paths.
+`OMAGUI_DISABLE_HOST_CLIPBOARD` always forces the bounded process-local
+implementation, even when the host bridge was enabled.
+`clipboard_SetHostEnabled(0)` temporarily selects that same local store for
+scripted or isolated application runs; passing a nonzero value restores the
+host bridge when the build includes one.
 
 ### 5.11 Status bars
 
@@ -1771,18 +1866,23 @@ needed by application code.
   `textbox_SetBackgroundColor`, `textbox_ClearBackgroundColor`,
   `textbox_GetBackgroundColor`, `textbox_SetForegroundColor`,
   `textbox_ClearForegroundColor`, `textbox_GetForegroundColor`,
-  `textbox_SetSyntaxMode`, `textbox_GetSyntaxMode`, `textbox_SetSyntaxColor`,
+  `textbox_SetSyntaxMode`, `textbox_GetSyntaxMode`,
+  `textbox_SetSyntaxSemanticLookup`, `textbox_GetSyntaxSemanticLookup`,
+  `textbox_SetSyntaxColor`,
   `textbox_GetSyntaxColor`, `textbox_ClearSyntaxColor`,
   `textbox_SetLineNumbers`, `textbox_GetLineNumbers`,
+  `textbox_SetLineNumberVisibility`, `textbox_GetLineNumberVisibility`,
   `textbox_SetAcceptsTab`, `textbox_GetAcceptsTab`,
   `textbox_SetBlockIndent`, `textbox_GetBlockIndent`,
   `textbox_IndentSelection`, `textbox_UnindentSelection`,
   `textbox_SetVerticalScrollbar`, `textbox_GetVerticalScrollbarMode`,
-  `textbox_SetHorizontalScrollbar`, and `textbox_GetHorizontalScrollbarMode`
-  and `textbox_SetCaretVisible`
+  `textbox_SetHorizontalScrollbar`, and `textbox_GetHorizontalScrollbarMode`,
+  `textbox_SetCaretVisible`, and
+  `textbox_SetRenderObservationSerialTracking`
 - Listbox state: `listbox_AddItem`, `listbox_Clear`,
   `listbox_GetItemCount`, `listbox_GetSelectedIndex`,
   `listbox_GetSelectedItem`, `listbox_GetActivationCount`,
+  `listbox_GetKeyboardActivationCount`, `listbox_GetDoubleActivationCount`,
   `listbox_ActivateSelected`,
   `listbox_SetBackgroundColor`, `listbox_ClearBackgroundColor`,
   `listbox_GetBackgroundColor`, `listbox_SetForegroundColor`,
@@ -1854,6 +1954,9 @@ not call them directly.
 ### SpinButton
 
 `spinbutton_Create` builds a horizontal or vertical bounded numeric control.
+The Min and Max endpoints may be supplied in either order; the widget keeps
+their declared values while clamping, stepping, and wrapping across the
+numeric interval they describe.
 The default behavior activates on pointer release or an arrow key, wraps at
 the range endpoints, and calls the optional change handler only when Value
 changes. `spinbutton_SetRange`, `spinbutton_SetValue`, `spinbutton_SetIncrement`,

@@ -20,6 +20,7 @@
         - retain portable none, single, sizable-single, and double borders
         - retain normal geometry across minimized and maximized states
         - expose portable control-box, minimize, and maximize title controls
+        - retain clipped byte-cell output in the client area
 
     This file intentionally does NOT contain:
         - window ordering policy
@@ -31,6 +32,7 @@
 #define __SUBWINDOW_BI__
 
 #include once "src/widgets/widgets.bi"
+#include once "src/widgets/textsurface.bi"
 
 Const SUBWINDOW_BORDER_NONE As Integer = 0
 Const SUBWINDOW_BORDER_FIXED_SINGLE As Integer = 1
@@ -65,14 +67,18 @@ Type SubWindowData
     As Integer restore_x, restore_y, restore_w, restore_h
     As Integer move_parent
     As Integer titlebar_height, title_text_inset, title_text_y_offset
+    ' A window owns its retained client text; callers own cursor semantics.
+    As GuiTextSurface text_surface
+    As Integer text_columns, text_rows, text_cell_width, text_cell_height
+    As Integer text_inset_x, text_inset_y
     ' Owned palette remains valid for the lifetime of this window.
     As GUI_Theme appearance
 End Type
 
 Declare Function subwindow_Create( _
-    ByVal nm As String, ByVal title As String, _
-    ByVal x As Integer, ByVal y As Integer, _
-    ByVal w As Integer, ByVal h As Integer, _
+    ByVal nm As String, ByVal title As String, _ ' fblint: disable-line FBL-API-001 -- Widget identity precedes its displayed caption.
+    ByVal x As Integer, ByVal y As Integer, _ ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
+    ByVal w As Integer, ByVal h As Integer, _ ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
     ByVal closable As Integer = -1 _
 ) As Widget Ptr
 Declare Sub subwindow_SetCloseHandler( _
@@ -86,7 +92,7 @@ Declare Sub subwindow_SetClosable( _
     ByVal w As Widget Ptr, ByVal closable As Integer _
 )
 Declare Sub subwindow_SetDialogStyle(ByVal w As Widget Ptr)
-Declare Sub subwindow_SetTitleBar(ByVal w As Widget Ptr, ByVal height As Integer, ByVal textInset As Integer = 5)
+Declare Sub subwindow_SetTitleBar(ByVal w As Widget Ptr, ByVal height As Integer, ByVal textInset As Integer = 5) ' fblint: disable-line FBL-API-001 -- Title height precedes its text inset.
 Declare Function subwindow_SetTitleTextYOffset( _
     ByVal w As Widget Ptr, ByVal offsetPixels As Integer _
 ) As Integer
@@ -113,6 +119,21 @@ Declare Function subwindow_GetMaxButton( _
 ) As Integer
 Declare Function subwindow_CloseRequested(ByVal w As Widget Ptr) As Integer
 Declare Sub subwindow_Reopen(ByVal w As Widget Ptr)
+Declare Function subwindow_SetTextGrid( _
+    ByVal w As Widget Ptr, ByVal columns As Integer, ByVal rows As Integer, _
+    ByVal cell_width As Integer, ByVal cell_height As Integer, _
+    ByVal inset_x As Integer = 0, ByVal inset_y As Integer = 0 _
+) As Integer
+Declare Function subwindow_WriteTextByte( _
+    ByVal w As Widget Ptr, ByVal column As Integer, ByVal row As Integer, _
+    ByVal character_code As Integer, ByVal foreground_color As ULong, _
+    ByVal background_color As ULong _
+) As Integer
+Declare Function subwindow_ReadTextCell( _
+    ByVal w As Widget Ptr, ByVal column As Integer, ByVal row As Integer, _
+    ByRef cell As GuiTextCell _
+) As Integer
+Declare Sub subwindow_ClearText(ByVal w As Widget Ptr)
 Declare Function subwindow_SetClientColor( _
     ByVal w As Widget Ptr, _
     ByVal color_value As ULong _
@@ -139,11 +160,11 @@ Declare Function subwindow_GetWindowState( _
     ByVal w As Widget Ptr, ByRef window_state As Integer _
 ) As Integer
 Declare Function subwindow_SetTitleColors( _
-    ByVal w As Widget Ptr, ByVal background_color As ULong, ByVal foreground_color As ULong _
+    ByVal w As Widget Ptr, ByVal background_color As ULong, ByVal foreground_color As ULong _ ' fblint: disable-line FBL-API-001 -- Color roles retain the published drawing/widget order.
 ) As Integer
 Declare Function subwindow_ClearTitleColors(ByVal w As Widget Ptr) As Integer
 Declare Function subwindow_GetTitleColors( _
-    ByVal w As Widget Ptr, ByRef background_color As ULong, ByRef foreground_color As ULong _
+    ByVal w As Widget Ptr, ByRef background_color As ULong, ByRef foreground_color As ULong _ ' fblint: disable-line FBL-API-001 -- Color roles retain the published drawing/widget order.
 ) As Integer
 Declare Sub subwindow_Render(ByVal w As Widget Ptr)
 Declare Sub subwindow_Update(ByVal w As Widget Ptr)

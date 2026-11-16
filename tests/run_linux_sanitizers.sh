@@ -180,8 +180,8 @@ for required_line in \
     'status=ok' \
     'text_controls=29' \
     'list_controls=5' \
-    'behavior_checks=508' \
-    'total_controls=324'; do
+    'behavior_checks=517' \
+    'total_controls=326'; do
     if ! grep -Fqx "$required_line" "$control_report"; then
         echo "Sanitized GUI report is missing: $required_line" >&2
         exit 1
@@ -194,8 +194,8 @@ if [ -n "$midi_input_index" ]; then
 else
     echo 'sanitizer_midi_loopback=skipped'
 fi
-echo 'sanitizer_gui_behavior_checks=508'
-echo 'sanitizer_gui_control_contracts=324'
+echo 'sanitizer_gui_behavior_checks=517'
+echo 'sanitizer_gui_control_contracts=326'
 echo "sanitizer_build_root=$build_root"
 echo 'sanitizer_status=pass'
 

@@ -28,6 +28,9 @@
 
 #include once "src/system/filesystem.bi"
 #include once "dir.bi"
+#if defined(__FB_DOS__)
+#include once "file.bi"
+#endif
 #include once "vbcompat.bi"
 
 #if defined(__FB_WIN32__) and not defined(OMAGUI_PORTABLE_ONLY)
@@ -146,6 +149,15 @@ End Function
 Function system_IsDirectory(ByRef directoryPath As Const String) As Integer
 
     If directoryPath = "" Then Return 0
+
+#if defined(__FB_DOS__)
+    ' A drive root has no DIR entry. Query the public runtime metadata API
+    ' first, without disturbing an active directory enumeration. Older DOS
+    ' runtimes return -1; retain their DIR behavior for non-root directories.
+    If InStr(directoryPath, "*") OrElse InStr(directoryPath, "?") Then Return 0
+    Dim As Long queried_attributes = GetAttr(StrPtr(directoryPath))
+    If queried_attributes >= 0 Then Return IIf((queried_attributes And SYSTEM_FILE_ATTRIBUTE_DIRECTORY) <> 0, -1, 0)
+#endif
 
 #if defined(__FB_WIN32__) and not defined(OMAGUI_PORTABLE_ONLY)
     ' GetFileAttributesA returns a 32-bit all-ones value when lookup fails.

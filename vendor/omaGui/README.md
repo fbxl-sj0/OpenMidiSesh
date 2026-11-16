@@ -18,6 +18,49 @@ alpha, and embedded multi-font APIs are all present in `omaGUI.bi`.
   the compiler include path
 - No separate GUI framework
 
+## Browser clipboard
+
+For FreeBASIC's Emscripten/WASM target, define
+`OMAGUI_ENABLE_HOST_CLIPBOARD` before including `omaGUI.bi` in each compilation
+unit that uses the toolkit. `OMAGUI_DISABLE_HOST_CLIPBOARD` and
+`OMAGUI_PORTABLE_ONLY` retain the process-local clipboard. No extra JavaScript
+file or linker library is needed.
+
+Copy and Cut write plain UTF-8 text through `navigator.clipboard.writeText`.
+Textbox Paste reads asynchronously, then applies the usual input limits,
+history and application shortcut override. A pending paste is discarded when
+focus, text or selection changes. Browser reads start during Ctrl+V/Cmd+V when
+the canvas owns keyboard focus; application Paste buttons can also request a
+read. Serve over HTTPS or localhost and allow the browser's clipboard prompt.
+Browser and iframe permission policies still apply.
+
+For custom editors, call `clipboard_RequestText()`, then poll
+`clipboard_PollText()` until it returns `CLIPBOARD_READ_READY` or
+`CLIPBOARD_READ_FAILED`. Read `clipboard_GetText()` only on success and cancel
+abandoned requests with `clipboard_CancelRead()`. `CLIPBOARD_READ_PENDING`
+means the browser has not answered yet. These calls complete immediately on
+native targets. `clipboard_GetText()` itself remains synchronous and returns
+the last cached text on WASM. Only one read may be outstanding per toolkit.
+`gui_Init` installs the bridge; clipboard-only applications may call
+`clipboard_Initialize` themselves before receiving keyboard input.
+Use `clipboard_ClearLocal()` during account cleanup to cancel reads and clear
+cached text without overwriting the user's system clipboard.
+
+The local bounded clipboard remains usable when the Clipboard API is absent
+or writes are refused. A refused read fails without pasting stale cached text.
+Text is limited to 2 MiB; browser text is truncated at a UTF-8 boundary and NUL
+characters are removed because the Emscripten string bridge is NUL terminated.
+The host bridge is never enabled automatically on any target.
+
+The focused browser test builds a real WASM widget fixture and runs it with
+Chromium in a disposable profile. It requires Node.js, the FreeBASIC JS SDK,
+and a Chromium executable (`OMAGUI_TEST_BROWSER` selects its path):
+
+```powershell
+python tests/build_browser_clipboard.py --sdk C:/freebasic-js --output build/browser-clipboard
+node tests/check_browser_clipboard.cjs build/browser-clipboard
+```
+
 ## Quick start
 
 Define `OMAGUI_IMPLEMENTATION` in exactly one source file, then include the
@@ -84,6 +127,25 @@ The two batched drawing calls return -1 when the work is complete and 0 when
 the caller should use its software path. They clip to the active true-color
 screen and bound each gfxlib3 packet to avoid excessive temporary storage.
 
+## Mobile layout and keyboard space
+
+With responsive display enabled, `backend_GetSize` reports the usable logical
+layout area above a measured native keyboard. The display poll refreshes that
+limit before widget layout. Framebuffer size and drawing/input scale remain
+unchanged, including the conversion of native text-input regions. Hiding the
+keyboard restores the complete layout area. When native panel bounds are
+unknown, the existing focused-field panning behavior remains available.
+The last settled viewport is retained while a new size is pending. A compositor
+can reserve keyboard space before reporting its visibility; this ordering must
+not replace the full-height baseline and pan an already visible editor again.
+A pending keyboard show request prevents the shortened viewport from becoming
+the full-height baseline while the native visibility acknowledgement is delayed.
+An observed compositor reservation also remains valid through rotation or
+scaling while that keyboard stays open. A width change alone must not trigger
+the overlay fallback; reported keyboard bounds still take precedence.
+Display snapshots and colour-depth changes retain physical framebuffer dimensions;
+they do not use the reduced layout area or apply the logical scale a second time.
+
 ## Included controls
 
 The shared tree also retains TurboTrek's copied widget themes, theme-aware
@@ -128,6 +190,9 @@ dialog appearances use the same nearest-ancestor rule. See the manual's
   cancel targets, and mnemonic identities before callbacks run. A callback may
   replace its window tree without routing the remaining keys from that update
   to newly created widgets
+- Textbox Backspace, Delete, arrows, Home, and End honor native key repeats,
+  including Shift selection. The platform supplies the repeat delay and rate;
+  Return and command shortcuts retain their existing press/latch behavior.
 - Focusable read-only textbox mode that retains navigation, selection,
   scrolling, and Copy while rejecting typing, Cut, Paste, Undo, and Redo
 - Optional FreeBASIC syntax coloring for editor textboxes, with public mode and
@@ -155,8 +220,9 @@ dialog appearances use the same nearest-ancestor rule. See the manual's
   the application theme
 - ListBox and ComboBox can independently retain normal client and text colors;
   selected rows continue to use the theme selection colors
-- ListBox exposes checked item-count, selection, and explicit activation
-  queries so applications can poll commands without reaching into widget data
+- ListBox exposes checked item-count, selection, and source-specific
+  keyboard, pointer, and double-activation queries so applications can poll
+  commands without reaching into widget data
 - ListBox and ComboBox retain portable 64-bit item values with each row and
   support checked label replacement without losing selection or item identity
 - ListBox exposes checked top-row access with page clamping and synchronized
@@ -173,6 +239,16 @@ dialog appearances use the same nearest-ancestor rule. See the manual's
 - Fixed, resizable, and full-screen modes with checked runtime transitions
 - Parent-relative anchors for layouts that react to gfxlib resize and maximize
   events
+
+## Native touch and mouse compatibility
+
+Some native backends expose one finger through both mouse events and the touch
+API. Once a queued mouse event owns that gesture, the input layer retains the
+native position and button state between events until all contacts end. The
+duplicate touch contact cannot synthesize an early release or take over after
+the primary finger lifts. Touch-only backends retain their compatibility pointer.
+`tests/touch_input_smoke.bas` checks held native contacts, button activation on
+release, second-finger suppression, and a subsequent touch-only gesture.
 
 ## List item state
 
@@ -317,9 +393,13 @@ focus traversal. Application menus can call `textbox_IndentSelection` and
 Each command preserves line endings and selection direction and records one
 undo transaction. With no selection it operates on the caret's line.
 `textbox_SetLineNumbers(widget, -1)` adds a fixed, theme-aware gutter to a
-multiline editor, and `textbox_GetLineNumbers` queries the setting. Wrapped
-continuation rows remain unnumbered, horizontal scrolling moves only document
-text, and single-line controls reject the option.
+multiline editor, and `textbox_GetLineNumbers` queries whether that gutter is
+allocated. `textbox_SetLineNumberVisibility` and
+`textbox_GetLineNumberVisibility` control and query whether its numbers are
+drawn. The gutter can remain allocated while hidden, for example when an editor
+needs stable breakpoint geometry. Wrapped continuation rows remain unnumbered,
+horizontal scrolling moves only document text, and single-line controls reject
+the gutter option.
 `textbox_SetSyntaxMode` opts a textbox into the built-in FreeBASIC highlighter;
 the lexer distinguishes keywords, built-in commands, procedure declarations and
 calls, preprocessor directives and macros, variables, constants, members,

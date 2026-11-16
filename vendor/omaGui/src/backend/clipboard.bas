@@ -16,8 +16,12 @@
 
         - make the bounded process-local clipboard the default implementation
         - use the Win32 text clipboard only in opted-in Windows builds
+        - use pbcopy/pbpaste on macOS
         - use Wayland, X11 and optional Tk bridges in opted-in Unix builds
+        - exchange UTF-8 text asynchronously with an opted-in browser clipboard
         - allow applications to force the portable implementation
+        - keep all non-clipboard platform behavior portable
+        - isolate scripted runs from desktop clipboard changes
         - reject unbounded clipboard payload growth
 
     This file intentionally does NOT contain:
@@ -39,21 +43,20 @@
     hosted and non-hosted targets.
 
     An application may define OMAGUI_ENABLE_HOST_CLIPBOARD before
-    OMAGUI_IMPLEMENTATION to opt into the matching host bridge. The existing
-    OMAGUI_DISABLE_HOST_CLIPBOARD and OMAGUI_PORTABLE_ONLY switches override
-    that opt-in and always select the process-local implementation.
+    OMAGUI_IMPLEMENTATION to opt into the matching host bridge. This opt-in is
+    limited to clipboard access and can be combined with OMAGUI_PORTABLE_ONLY;
+    other subsystems keep their portable implementations. The explicit
+    OMAGUI_DISABLE_HOST_CLIPBOARD switch always selects the local store.
 '/
 #If Defined(OMAGUI_ENABLE_HOST_CLIPBOARD) AndAlso _
     Not Defined(OMAGUI_DISABLE_HOST_CLIPBOARD) AndAlso _
-    Not Defined(OMAGUI_PORTABLE_ONLY) AndAlso _
-    Defined(__FB_WIN32__)
+    Defined(__FB_WIN32__) AndAlso Not Defined(__FB_JS__)
     #Define OMAGUI_CLIPBOARD_WIN32
     #Include Once "src/backend/backend_windows.bi"
 #ElseIf Defined(OMAGUI_ENABLE_HOST_CLIPBOARD) AndAlso _
     Not Defined(OMAGUI_DISABLE_HOST_CLIPBOARD) AndAlso _
-    Not Defined(OMAGUI_PORTABLE_ONLY) AndAlso _
     (Defined(__FB_LINUX__) Or Defined(__FB_FREEBSD__) Or _
-     Defined(__FB_OPENBSD__))
+     Defined(__FB_OPENBSD__) Or Defined(__FB_DARWIN__)) AndAlso Not Defined(__FB_JS__)
     #Define OMAGUI_CLIPBOARD_UNIX
 #EndIf
 
@@ -69,6 +72,15 @@
 ' This is boundary-owned process state.
 Dim Shared clipboard_FallbackText As String
 
+#If Defined(OMAGUI_CLIPBOARD_WIN32) Or Defined(OMAGUI_CLIPBOARD_UNIX) Or Defined(OMAGUI_CLIPBOARD_BROWSER)
+' This process-wide policy defaults to the enabled host bridge when one exists.
+' FB-LINTER: DISABLE-NEXT-LINE FBL301 REASON: Clipboard mode is shared across the single-threaded UI service.
+Dim Shared As Integer clipboard_HostEnabled = -1
+#Else
+' FB-LINTER: DISABLE-NEXT-LINE FBL301 REASON: Clipboard mode is shared across the single-threaded UI service.
+Dim Shared As Integer clipboard_HostEnabled = 0
+#EndIf
+
 
 Private Function clipboard_BoundedText(ByVal textValue As String) As String
 
@@ -79,6 +91,25 @@ Private Function clipboard_BoundedText(ByVal textValue As String) As String
     Return textValue
 
 End Function
+
+#If Defined(OMAGUI_CLIPBOARD_BROWSER)
+    #Include Once "src/backend/clipboard_browser.bas"
+#EndIf
+
+
+Sub clipboard_SetHostEnabled(ByVal enabled As Integer)
+
+    If enabled <> 0 Then
+        clipboard_HostEnabled = -1
+    Else
+        clipboard_HostEnabled = 0
+    End If
+#If Defined(OMAGUI_CLIPBOARD_BROWSER)
+    clipboard_BrowserInitialize
+    clipboard_BrowserScript("Module.omaGUIClipboard.hostEnabled=" & IIf(enabled <> 0, "true", "false") & ";0")
+#EndIf
+
+End Sub
 
 ' -------------------------------------------------------------------------
 ' Windows clipboard backend
@@ -241,6 +272,11 @@ End Function
 
 Private Function clipboard_UnixGetText() As String
     Dim As String resultText
+#If Defined(__FB_DARWIN__)
+    If clipboard_UnixCommandAvailable("pbpaste") Then
+        If clipboard_UnixReadCommand("pbpaste 2>/dev/null", resultText) Then Return resultText
+    End If
+#Else
     If Environ("WAYLAND_DISPLAY") <> "" AndAlso clipboard_UnixCommandAvailable("wl-paste") Then
         If clipboard_UnixReadCommand("wl-paste --no-newline 2>/dev/null", resultText) Then Return resultText
     End If
@@ -255,6 +291,7 @@ Private Function clipboard_UnixGetText() As String
             If clipboard_UnixReadCommand("python3 -c 'import sys, tkinter as t; r=t.Tk(); r.withdraw(); sys.stdout.write(r.clipboard_get()); r.destroy()' 2>/dev/null", resultText) Then Return resultText
         End If
     End If
+#EndIf
     Return clipboard_FallbackText
 End Function
 
@@ -306,6 +343,9 @@ Private Function clipboard_UnixStartTkOwner( _
 End Function
 
 Private Sub clipboard_UnixSetText(ByVal textValue As String)
+#If Defined(__FB_DARWIN__)
+    If clipboard_UnixWriteCommand("pbcopy", "pbcopy 2>/dev/null", textValue) Then Exit Sub
+#Else
     If Environ("WAYLAND_DISPLAY") <> "" Then
         If clipboard_UnixWriteCommand("wl-copy", "wl-copy 2>/dev/null", textValue) Then Exit Sub
     End If
@@ -314,6 +354,7 @@ Private Sub clipboard_UnixSetText(ByVal textValue As String)
         If clipboard_UnixWriteCommand("xsel", "xsel --clipboard --input 2>/dev/null", textValue) Then Exit Sub
         clipboard_UnixStartTkOwner textValue
     End If
+#EndIf
 End Sub
 #EndIf
 
@@ -323,16 +364,17 @@ End Sub
 
 Function clipboard_GetText() As String
 
-#If Defined(OMAGUI_CLIPBOARD_WIN32)
-    Dim resultText As String
 
-    resultText = clipboard_WindowsGetText()
-    Return clipboard_BoundedText(resultText)
+#If Defined(OMAGUI_CLIPBOARD_WIN32)
+    If clipboard_HostEnabled Then
+        Dim resultText As String = clipboard_WindowsGetText()
+        Return clipboard_BoundedText(resultText)
+    End If
 #ElseIf Defined(OMAGUI_CLIPBOARD_UNIX)
-    Return clipboard_BoundedText(clipboard_UnixGetText())
-#Else
-    Return clipboard_BoundedText(clipboard_FallbackText)
+    If clipboard_HostEnabled Then _
+        Return clipboard_BoundedText(clipboard_UnixGetText())
 #EndIf
+    Return clipboard_BoundedText(clipboard_FallbackText)
 
 End Function
 
@@ -341,11 +383,72 @@ Sub clipboard_SetText(ByVal txt As String)
 
     clipboard_FallbackText = clipboard_BoundedText(txt)
 
-#If Defined(OMAGUI_CLIPBOARD_WIN32)
-    clipboard_WindowsSetText clipboard_FallbackText
+#If Defined(OMAGUI_CLIPBOARD_BROWSER)
+    If clipboard_HostEnabled Then clipboard_BrowserSetText clipboard_FallbackText
+#ElseIf Defined(OMAGUI_CLIPBOARD_WIN32)
+    If clipboard_HostEnabled Then clipboard_WindowsSetText clipboard_FallbackText
 #ElseIf Defined(OMAGUI_CLIPBOARD_UNIX)
-    clipboard_UnixSetText clipboard_FallbackText
+    If clipboard_HostEnabled Then clipboard_UnixSetText clipboard_FallbackText
 #EndIf
+
+End Sub
+
+
+Sub clipboard_Initialize()
+#If Defined(OMAGUI_CLIPBOARD_BROWSER)
+    clipboard_BrowserInitialize
+#EndIf
+End Sub
+
+
+Function clipboard_RequestText() As Integer
+#If Defined(OMAGUI_CLIPBOARD_BROWSER)
+    clipboard_BrowserInitialize
+    clipboard_BrowserScript("Module.omaGUIClipboard.request()")
+    Return clipboard_PollText()
+#Else
+    Return CLIPBOARD_READ_READY
+#EndIf
+End Function
+
+
+Function clipboard_PollText() As Integer
+#If Defined(OMAGUI_CLIPBOARD_BROWSER)
+    clipboard_BrowserInitialize
+    Dim As Integer readStatus = clipboard_BrowserScript("Module.omaGUIClipboard.status")
+    If readStatus = CLIPBOARD_READ_READY Then
+        Dim As ZString Ptr resultText = clipboard_BrowserString("Module.omaGUIClipboard.text")
+        If resultText = 0 Then Return CLIPBOARD_READ_FAILED
+        clipboard_FallbackText = clipboard_BoundedText(*resultText)
+    End If
+    Return readStatus
+#Else
+    Return CLIPBOARD_READ_READY
+#EndIf
+End Function
+
+
+Sub clipboard_CancelRead()
+#If Defined(OMAGUI_CLIPBOARD_BROWSER)
+    clipboard_BrowserInitialize
+    clipboard_BrowserScript("Module.omaGUIClipboard.cancel()")
+#EndIf
+End Sub
+
+
+Sub clipboard_ClearLocal()
+    clipboard_CancelRead
+    clipboard_FallbackText = ""
+#If Defined(OMAGUI_CLIPBOARD_BROWSER)
+    clipboard_BrowserScript("Module.omaGUIClipboard.text='';0")
+#EndIf
+End Sub
+
+
+Sub clipboard_SetHostClipboardEnabled(ByVal enabled As Integer)
+
+    ' Both public spellings select the same host/browser policy.
+    clipboard_SetHostEnabled enabled
 
 End Sub
 

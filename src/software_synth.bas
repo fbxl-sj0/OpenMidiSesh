@@ -42,6 +42,11 @@
 #include once "soundfont_synth.bi"
 #include once "generated_voice_stop_internal.bi"
 
+#if OSE_SFX_GENERATED_RELEASE_AVAILABLE
+Declare Sub softwareSynth_ReleaseGeneratedChannel CDecl Alias "fb_sfxGeneratedReleaseChannel" ( _
+    ByVal channelIndex As Long)
+#endif
+
 ' retained configuration belongs to the process-wide synth adapter.
 Dim Shared softwareSynth_ConfiguredGeneration As Integer
 ' this cursor selects the next module-owned fallback voice.
@@ -49,6 +54,9 @@ Dim Shared softwareSynth_NextFallbackVoice As Integer
 Dim Shared softwareSynth_FallbackVoiceChannel( _
     0 To OSE_SOFTWARE_SYNTH_VOICE_COUNT - 1 _
 ) As Integer
+Dim Shared softwareSynth_FallbackVoiceKey(0 To OSE_SOFTWARE_SYNTH_VOICE_COUNT - 1) As Integer
+Dim Shared softwareSynth_FallbackVoiceBend(0 To OSE_SOFTWARE_SYNTH_VOICE_COUNT - 1) As Integer
+Dim Shared softwareSynth_FallbackVoiceGain(0 To OSE_SOFTWARE_SYNTH_VOICE_COUNT - 1) As Single
 Dim Shared softwareSynth_FallbackVoiceAssigned( _
     0 To OSE_SOFTWARE_SYNTH_VOICE_COUNT - 1 _
 ) As Integer
@@ -225,6 +233,9 @@ Public Function softwareSynth_PlayMidiNote( _
     generatedVoiceStop_Channel audioChannelIndex
     softwareSynth_FallbackVoiceChannel(audioChannelIndex) = channelIndex
     softwareSynth_FallbackVoiceAssigned(audioChannelIndex) = -1
+    softwareSynth_FallbackVoiceKey(audioChannelIndex) = keyNumber
+    softwareSynth_FallbackVoiceBend(audioChannelIndex) = pitchBend
+    softwareSynth_FallbackVoiceGain(audioChannelIndex) = mixValues.voiceGain
 
     instrument audioChannelIndex, instrumentFamily
     volume audioChannelIndex, mixValues.channelGain
@@ -238,5 +249,52 @@ Public Function softwareSynth_PlayMidiNote( _
     End If
     Return -1
 End Function
+
+Public Sub softwareSynth_UpdateMidiChannel(ByVal channelIndex As Integer, _
+    ByVal pitchBend As Integer, ByRef mixValues As OsePlaybackMixValues)
+    If channelIndex < 0 OrElse channelIndex > 15 OrElse _
+        pitchBend < 0 OrElse pitchBend > 16383 Then Exit Sub
+    soundfontSynth_SetChannelMix channelIndex, mixValues.channelGain, mixValues.pan
+    soundfontSynth_SetPitchBend channelIndex, pitchBend
+    For voiceIndex As Integer = 0 To OSE_SOFTWARE_SYNTH_VOICE_COUNT - 1
+        If softwareSynth_FallbackVoiceAssigned(voiceIndex) = 0 OrElse _
+            softwareSynth_FallbackVoiceChannel(voiceIndex) <> channelIndex Then Continue For
+        volume voiceIndex, mixValues.channelGain
+        pan voiceIndex, mixValues.pan
+        If softwareSynth_FallbackVoiceKey(voiceIndex) >= 0 AndAlso _
+            softwareSynth_FallbackVoiceBend(voiceIndex) <> pitchBend AndAlso channelIndex <> 9 Then
+            ' The oscillator API has no in-place frequency control. Restart its
+            ' retained voice on bend; SoundFont voices preserve sample position.
+            sound voiceIndex, softwareSynth_NoteFrequencyWithBend( _
+                softwareSynth_FallbackVoiceKey(voiceIndex), pitchBend), _
+                3600.0, softwareSynth_FallbackVoiceGain(voiceIndex)
+        End If
+        softwareSynth_FallbackVoiceBend(voiceIndex) = pitchBend
+    Next
+End Sub
+
+Public Sub softwareSynth_StopMidiNote(ByVal channelIndex As Integer, ByVal keyNumber As Integer)
+    If channelIndex < 0 OrElse channelIndex > 15 OrElse _
+        keyNumber < 0 OrElse keyNumber > 127 Then Exit Sub
+    soundfontSynth_StopMidiNote channelIndex, keyNumber
+    For voiceIndex As Integer = 0 To OSE_SOFTWARE_SYNTH_VOICE_COUNT - 1
+        If softwareSynth_FallbackVoiceAssigned(voiceIndex) <> 0 AndAlso _
+            softwareSynth_FallbackVoiceChannel(voiceIndex) = channelIndex AndAlso _
+            softwareSynth_FallbackVoiceKey(voiceIndex) = keyNumber Then
+            ' A key release follows the current envelope from its present level.
+            ' Voice stealing and transport panic still use the immediate stop.
+            #if OSE_SFX_GENERATED_RELEASE_AVAILABLE
+                softwareSynth_ReleaseGeneratedChannel CLng(voiceIndex)
+                ' Retain source-channel mix ownership through the release tail.
+                ' An invalid MIDI key marks note-off complete and prevents a
+                ' later pitch bend from restarting the released oscillator.
+                softwareSynth_FallbackVoiceKey(voiceIndex) = -1
+            #else
+                generatedVoiceStop_Channel voiceIndex
+                softwareSynth_FallbackVoiceAssigned(voiceIndex) = 0
+            #endif
+        End If
+    Next
+End Sub
 
 /' end of software_synth.bas '/

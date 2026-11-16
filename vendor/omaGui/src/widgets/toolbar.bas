@@ -251,6 +251,58 @@ Function toolbar_GetItemCount( _
 End Function
 
 
+Function toolbar_GetHotItem( _
+    ByVal bar_widget As Widget Ptr _
+) As Integer
+    If bar_widget = 0 OrElse bar_widget->data = 0 Then Return -1
+    Return Cast(ToolBarData Ptr, bar_widget->data)->hot_item
+End Function
+
+
+Function toolbar_GetItemBounds( _
+    ByVal bar_widget As Widget Ptr, _
+    ByVal item_index As Integer, _
+    ByRef left_position As Integer, _
+    ByRef top_position As Integer, _
+    ByRef width_value As Integer, _
+    ByRef height_value As Integer _
+) As Integer
+    Dim As ToolBarData Ptr bar_data
+    Dim As LongInt item_left, item_right, visible_left, visible_right
+    Dim As LongInt widget_left, widget_right
+
+    left_position = 0
+    top_position = 0
+    width_value = 0
+    height_value = 0
+    If bar_widget = 0 OrElse bar_widget->data = 0 Then Return 0
+    If bar_widget->evis = 0 OrElse bar_widget->w <= 0 OrElse _
+       bar_widget->h <= 0 Then Return 0
+
+    bar_data = Cast(ToolBarData Ptr, bar_widget->data)
+    If bar_data->item_count < 0 OrElse _
+       bar_data->item_count > TOOLBAR_MAX_ITEMS Then Return 0
+    If toolbar_ItemIsButton(bar_data, item_index) = 0 Then Return 0
+    If bar_data->item_width(item_index) <= 0 Then Return 0
+
+    widget_left = bar_widget->ax
+    widget_right = widget_left + bar_widget->w
+    item_left = widget_left + bar_data->item_left(item_index)
+    item_right = item_left + bar_data->item_width(item_index)
+    visible_left = item_left
+    visible_right = item_right
+    If visible_left < widget_left Then visible_left = widget_left
+    If visible_right > widget_right Then visible_right = widget_right
+    If visible_right <= visible_left Then Return 0
+
+    left_position = CInt(visible_left)
+    top_position = bar_widget->ay
+    width_value = CInt(visible_right - visible_left)
+    height_value = bar_widget->h
+    Return -1
+End Function
+
+
 Function toolbar_GetItemLabel( _
     ByVal bar_widget As Widget Ptr, _
     ByVal item_index As Integer _

@@ -777,14 +777,17 @@ Public Sub session_EndLiveRecording()
 
     session_ResetLiveKeyboardState()
     session_ResetLiveMidiState()
+    If session_MonitorEnabled = 0 Then session_ResetInputMonitor()
     session_StopAllAuditionNotes()
     session_KeyboardMousePitch = -1
-    If midiInput_IsOpen() <> 0 Then
+    If midiInput_IsOpen() <> 0 AndAlso session_MonitorEnabled = 0 Then
         midiInput_ClearPending()
     End If
-    If session_MidiInputAutoOpened <> 0 Then
+    If session_MidiInputAutoOpened <> 0 AndAlso session_MonitorEnabled = 0 Then
         midiInput_Close()
     End If
+    If session_MidiInputAutoOpened <> 0 AndAlso session_MonitorEnabled <> 0 Then _
+        session_MonitorAutoOpened = -1
     session_MidiInputAutoOpened = 0
     session_LiveRecordingKeyboardOnly = 0
     session_LiveRecording = 0
@@ -854,7 +857,8 @@ Private Sub session_ResumeLiveRecording()
     If midiInput_IsOpen() <> 0 Then
         session_LiveRecordingHasMidiTimestamp = midiInput_GetClockMilliseconds( _
             session_LiveRecordingStartMidiTimestamp)
-        midiInput_ClearPending()
+        ' Older timestamps are rejected by capture, but their note-offs must
+        ' still reach the monitor after a paused take resumes.
     End If
 
     session_LiveRecordingPaused = 0
@@ -915,54 +919,6 @@ Private Function session_RecordIncomingSystemCommon( _
 End Function
 
 
-Private Sub session_MonitorMidiInput(ByRef message As OseMidiInputMessage)
-    If message.status < OSE_MIDI_STATUS_CHANNEL_MIN OrElse _
-        message.status > OSE_MIDI_STATUS_CHANNEL_MAX Then Exit Sub
-
-    Dim As Integer messageType = message.status And OSE_MIDI_STATUS_TYPE_MASK
-    Dim As Integer channelIndex = message.status And &H0F
-    Dim As Integer keyNumber = message.data1
-    Dim As Integer velocity = message.data2
-    If channelIndex < 0 OrElse channelIndex >= SESSION_CHANNEL_COUNT OrElse _
-        keyNumber > OSE_MIDI_DATA_BYTE_MAX OrElse _
-        velocity > OSE_MIDI_DATA_BYTE_MAX Then Exit Sub
-
-    If midiOutput_IsOpen() <> 0 Then
-        Dim As Integer thruData2 = velocity
-        If messageType = OSE_MIDI_STATUS_PROGRAM_CHANGE OrElse _
-            messageType = OSE_MIDI_STATUS_CHANNEL_PRESSURE Then
-            thruData2 = 0
-        End If
-        midiOutput_Send message.status, keyNumber, thruData2
-    End If
-
-    If messageType = OSE_MIDI_STATUS_PROGRAM_CHANGE Then _
-        session_LiveInputProgram(channelIndex) = keyNumber
-
-    If messageType = OSE_MIDI_STATUS_NOTE_ON AndAlso velocity > 0 Then
-        ' The preview remains available while recording is paused. MIDI output
-        ' and the local synth are independent, so either route may be absent.
-        Dim As OsePlaybackMixValues liveInputMix
-        playbackMix_Calculate liveInputMix, _
-            session_Summary.channelVolume(channelIndex), _
-            session_Summary.channelExpression(channelIndex), _
-            session_Summary.channelPan(channelIndex), velocity, _
-            session_MasterVolume, session_ChannelIsAudible(channelIndex)
-        Dim As OseSoftwareSynthPlayOptions liveInputOptions
-        liveInputOptions.bankNumber = IIf( _
-            channelIndex = OSE_MIDI_CHANNEL_DRUMS, _
-            OSE_MIDI_DRUM_BANK_NUMBER, 0)
-        liveInputOptions.fallbackVoiceChannel = -1
-        softwareSynth_PlayMidiNote channelIndex, keyNumber, _
-            session_LiveInputProgram(channelIndex), _
-            session_Summary.channelPitchBend(channelIndex), _
-            0.18, liveInputMix, liveInputOptions
-        mixerMeter_Trigger session_MixerMeter, channelIndex, _
-            CSng(velocity) / 127.0, 0.18
-    End If
-End Sub
-
-
 Private Function session_ProcessRecordedMidiMessage( _
     ByRef message As OseMidiInputMessage, _
     ByVal monitorInput As Integer _
@@ -970,7 +926,8 @@ Private Function session_ProcessRecordedMidiMessage( _
     ' Monitoring is separate from capture. It must continue while the take is
     ' paused, and it does not depend on the event's recording timestamp.
     If monitorInput <> 0 Then session_MonitorMidiInput message
-    If session_LiveRecordingPaused <> 0 Then Return 0
+    If session_LiveRecording = 0 OrElse session_LiveRecordingKeyboardOnly <> 0 OrElse _
+        session_LiveRecordingPaused <> 0 Then Return 0
 
     Dim As ULongInt currentTick
     If session_LiveRecordingTickForMidiTimestamp( _
@@ -1087,18 +1044,28 @@ End Function
 
 Public Sub session_ProcessMidiInput()
     If midiInput_IsOpen() = 0 Then
+        If session_MonitorEnabled <> 0 OrElse session_MonitorInputWasOpen <> 0 Then
+            session_MonitorEnabled = 0
+            session_MonitorInputWasOpen = 0
+            session_MonitorAutoOpened = 0
+            session_ResetInputMonitor()
+            session_SetStatus "MIDI input disconnected or unavailable."
+        End If
         Exit Sub
     End If
 
+    session_MonitorInputWasOpen = -1
     Dim As OseMidiInputMessage message
     Dim As Integer changedModel = 0
-    While midiInput_Poll(message) <> 0
-        If session_ProcessRecordedMidiMessage(message, -1) <> 0 Then _
+    For inputBatch As Integer = 1 To OSE_MIDI_INPUT_QUEUE_CAPACITY
+        If midiInput_Poll(message) = 0 Then Exit For
+        If session_ProcessRecordedMidiMessage(message, IIf(session_MonitorEnabled <> 0 OrElse session_LiveRecording <> 0, -1, 0)) <> 0 Then _
             changedModel = -1
-    Wend
+    Next
 
     Dim As ULongInt droppedCount = midiInput_GetDroppedCount()
     If droppedCount <> session_LastMidiInputDroppedCount Then
+        session_ResetInputMonitor()
         session_LastMidiInputDroppedCount = droppedCount
         session_SetStatus "MIDI input queue dropped " + Str(droppedCount) + _
             " message(s)."
@@ -1693,7 +1660,8 @@ End Sub
 
 
 Private Sub session_UpdateMixerInput(ByVal screenWidth As Integer, ByVal screenHeight As Integer)
-    If session_IsModalOpen() <> 0 Then
+    If session_MixerVisible = 0 OrElse session_IsModalOpen() <> 0 OrElse _
+        session_MenuInputActive <> 0 OrElse session_VisibleDesktopMenuIndex() >= 0 Then
         If session_MixerDragKind <> OSE_MIXER_CONTROL_NONE Then _
             session_FinishMixerDrag()
         session_LastMouseButtons = input_MouseButtons()

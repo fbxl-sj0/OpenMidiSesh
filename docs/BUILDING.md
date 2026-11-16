@@ -66,6 +66,9 @@ repository root.
 
 ## Android
 
+Use the qualified sfxlib runtime described in [Android audio runtime](ANDROID_AUDIO.md).
+It includes the OpenSL buffer fix and the generated-note release export.
+
 Android shares the editor, score, gestures, and software synthesizer. Build an
 ARM64 development APK with the installed Android wrapper:
 
@@ -77,8 +80,19 @@ The defaults are <code>C:/freebasic-android/fbc-android.cmd</code>,
 <code>android-aarch64</code>, API 24, and
 <code>build/android/openmidisesh-debug.apk</code>. The script also accepts
 <code>android-arm</code> and <code>android-x86_64</code>. Add
+<code>-Target universal</code> to include all three ABIs in one APK. Add
 <code>-RunOnDevice</code> to install and launch the package on an attached
-device. Android currently has no native external MIDI endpoint adapter.
+device. Packages require Android 6.0 (API 23) or later for the system MIDI API.
+The build stages our Java/JNI input bridge alongside the NativeActivity template;
+it does not modify the installed wrapper. USB class-compliant MIDI devices are
+read through Android's MIDI service. External MIDI output remains unavailable.
+The density-aware viewport also supports older wrapper runtimes which lack the
+new gfxlib display-metrics operations. The package permits portrait and landscape.
+
+After installing, attach a USB MIDI device through a host/OTG adapter, open
+**MIDI In**, choose its input port, then press **Monitor**. Test hardware with
+ADB over Wi-Fi or disconnect the ADB cable before using the USB port. Local
+stream tests do not substitute for this hardware check.
 
 ## Outputs and checks
 

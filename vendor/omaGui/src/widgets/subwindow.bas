@@ -402,6 +402,19 @@ Sub subwindow_Update(ByVal w As Widget Ptr)
     my = input_MouseY()
     mb = input_MouseButtons()
 
+    If w->content_height > w->h AndAlso (mb And 1) <> 0 AndAlso _
+       mx >= w->ax + w->w - 18 AndAlso mx < w->ax + w->w - 2 AndAlso _
+       my >= w->ay + w->child_clip_y AndAlso my < w->ay + w->h - 2 Then
+        Dim track_height As Integer = w->h - w->child_clip_y - 2
+        If track_height > 0 Then
+            w->content_scroll_y = (CLngInt(my - w->ay - w->child_clip_y) * (w->content_height - w->h)) \ track_height
+            subwindow_CancelInput w
+            gui_SetFocus 0
+            gui_SynchronizeLayout()
+        End If
+        Exit Sub
+    End If
+
     If (mb And 1) Then
         If d->close_latch OrElse d->minimize_latch OrElse _
            d->maximize_latch Then
@@ -506,7 +519,9 @@ Sub subwindow_Update(ByVal w As Widget Ptr)
             If d->close_handler <> 0 Then
                 Cast(Sub(ByVal As Widget Ptr), d->close_handler)(w)
             Else
-                w->visible = 0
+                ' Closing must release modal, focus and pointer ownership in
+                ' the hidden tree. Retain direct hiding for unregistered users.
+                If gui_SetVisible(w, 0) = 0 Then w->visible = 0
                 w->enabled = 0
             End If
         End If
@@ -540,6 +555,29 @@ End Sub
 ' Rendering and lifecycle
 ' -------------------------------------------------------------------------
 
+Private Sub subwindow_RenderText( _
+    ByVal w As Widget Ptr, ByVal d As SubWindowData Ptr _
+)
+    If w = 0 OrElse d = 0 OrElse d->text_surface.cells = 0 Then Exit Sub
+    If d->text_cell_width < 1 OrElse d->text_cell_height < 1 Then Exit Sub
+
+    Dim As Integer origin_x = w->ax + w->child_clip_x + d->text_inset_x
+    Dim As Integer origin_y = w->ay + w->child_clip_y + d->text_inset_y
+    Dim As Integer client_width = w->w - w->child_clip_x - _
+        w->child_clip_right - 2 * d->text_inset_x
+    Dim As Integer client_height = w->h - w->child_clip_y - _
+        w->child_clip_bottom - 2 * d->text_inset_y
+    If origin_x < -1000000 OrElse origin_x > 1000000 OrElse _
+       origin_y < -1000000 OrElse origin_y > 1000000 OrElse _
+       client_width <= 0 OrElse client_height <= 0 Then Exit Sub
+
+    ' The retained text belongs to the client, never the title bar or border.
+    backend_SetClip origin_x, origin_y, client_width, client_height
+    textsurface_Render d->text_surface, origin_x, origin_y, _
+        d->text_cell_width, d->text_cell_height
+    backend_ResetClip
+End Sub
+
 Sub subwindow_Render(ByVal w As Widget Ptr)
     Dim As SubWindowData Ptr d
     Dim As Integer buttonX
@@ -559,6 +597,7 @@ Sub subwindow_Render(ByVal w As Widget Ptr)
     If d->border_style = SUBWINDOW_BORDER_NONE AndAlso _
        d->window_state <> SUBWINDOW_STATE_MINIMIZED Then
         backend_Rect w->ax, w->ay, w->w, w->h, client_color, -1
+        subwindow_RenderText w, d
         Exit Sub
     End If
 
@@ -595,6 +634,7 @@ Sub subwindow_Render(ByVal w As Widget Ptr)
         If subwindow_GetTitleButtonRectangle(w, d, SUBWINDOW_TITLE_BUTTON_MINIMIZE, buttonX, buttonY) Then
             backend_Line buttonX + 3, buttonY + 10, buttonX + 10, buttonY + 10, current_theme.title_text
         End If
+        subwindow_RenderText w, d
         Exit Sub
     End If
 
@@ -691,11 +731,27 @@ Sub subwindow_Render(ByVal w As Widget Ptr)
                 theme_GetColor(GUI_COLOR_BORDER)
         Next gripOffset
     End If
+    If w->content_height > w->h Then
+        Dim track_top As Integer = w->ay + w->child_clip_y
+        Dim track_height As Integer = w->h - w->child_clip_y - 2
+        If track_height > 0 Then
+            backend_Rect w->ax + w->w - 18, track_top, 16, track_height, current_theme.bg_dark, -1
+            Dim thumb_height As Integer = (CLngInt(track_height) * w->h) \ w->content_height
+            If thumb_height < 16 Then thumb_height = 16
+            If thumb_height > track_height Then thumb_height = track_height
+            Dim thumb_top As Integer = track_top + (CLngInt(track_height - thumb_height) * w->content_scroll_y) \ (w->content_height - w->h)
+            backend_Rect w->ax + w->w - 16, thumb_top, 12, thumb_height, current_theme.bg_face, -1
+        End If
+    End If
+    subwindow_RenderText w, d
 End Sub
 
 Sub subwindow_Destroy(ByVal w As Widget Ptr)
     If w = 0 Then Exit Sub
-    If w->data <> 0 Then Delete Cast(SubWindowData Ptr, w->data)
+    If w->data <> 0 Then
+        textsurface_Release Cast(SubWindowData Ptr, w->data)->text_surface
+        Delete Cast(SubWindowData Ptr, w->data)
+    End If
     w->data = 0
 End Sub
 
@@ -914,6 +970,75 @@ Sub subwindow_Reopen(ByVal w As Widget Ptr)
     w->visible = -1
     w->enabled = -1
     gui_BringToFront w
+End Sub
+
+
+Function subwindow_SetTextGrid( _
+    ByVal w As Widget Ptr, ByVal columns As Integer, ByVal rows As Integer, _
+    ByVal cell_width As Integer, ByVal cell_height As Integer, _
+    ByVal inset_x As Integer, ByVal inset_y As Integer _
+) As Integer
+    If w = 0 OrElse w->data = 0 OrElse _
+       w->destroy <> @subwindow_Destroy Then Return 0
+    If columns < 0 OrElse rows < 0 OrElse _
+       columns > TEXTSURFACE_MAX_DIMENSION OrElse _
+       rows > TEXTSURFACE_MAX_DIMENSION Then Return 0
+    If cell_width < 1 OrElse cell_height < 1 OrElse _
+       cell_width > 256 OrElse cell_height > 256 Then Return 0
+    If inset_x < 0 OrElse inset_y < 0 OrElse _
+       inset_x > 65536 OrElse inset_y > 65536 Then Return 0
+
+    With *Cast(SubWindowData Ptr, w->data)
+        If .text_surface.cells <> 0 AndAlso _
+           textsurface_Resize(.text_surface, columns, rows) = 0 Then Return 0
+        .text_columns = columns
+        .text_rows = rows
+        .text_cell_width = cell_width
+        .text_cell_height = cell_height
+        .text_inset_x = inset_x
+        .text_inset_y = inset_y
+    End With
+    Return -1
+End Function
+
+
+Function subwindow_WriteTextByte( _
+    ByVal w As Widget Ptr, ByVal column As Integer, ByVal row As Integer, _
+    ByVal character_code As Integer, ByVal foreground_color As ULong, _
+    ByVal background_color As ULong _
+) As Integer
+    If w = 0 OrElse w->data = 0 OrElse _
+       w->destroy <> @subwindow_Destroy Then Return 0
+    With *Cast(SubWindowData Ptr, w->data)
+        If column < 0 OrElse row < 0 OrElse _
+           column >= .text_columns OrElse row >= .text_rows Then Return -1
+        If textsurface_Resize( _
+            .text_surface, .text_columns, .text_rows _
+        ) = 0 Then Return 0
+        Return textsurface_WriteByte( _
+            .text_surface, column, row, character_code, _
+            foreground_color, background_color _
+        )
+    End With
+End Function
+
+
+Function subwindow_ReadTextCell( _
+    ByVal w As Widget Ptr, ByVal column As Integer, ByVal row As Integer, _
+    ByRef cell As GuiTextCell _
+) As Integer
+    If w = 0 OrElse w->data = 0 OrElse _
+       w->destroy <> @subwindow_Destroy Then Return 0
+    Return textsurface_ReadCell( _
+        Cast(SubWindowData Ptr, w->data)->text_surface, column, row, cell _
+    )
+End Function
+
+
+Sub subwindow_ClearText(ByVal w As Widget Ptr)
+    If w = 0 OrElse w->data = 0 OrElse _
+       w->destroy <> @subwindow_Destroy Then Exit Sub
+    textsurface_Clear Cast(SubWindowData Ptr, w->data)->text_surface
 End Sub
 
 

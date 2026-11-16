@@ -18,9 +18,10 @@
         - retain one pointer press until release or cancellation
         - expose list creation, update, rendering, and item operations
         - expose checked programmatic selection without leaking widget data
-        - expose bounded item, single-activation, and double-activation queries
+        - expose keyboard, pointer, and double-activation event counts
         - retain optional normal client and text colors
         - keep application item values attached to rows during mutations
+        - bracket keyboard selection with portable Down/Up notifications
 
     This file intentionally does NOT contain:
 
@@ -40,14 +41,13 @@ Const LISTBOX_SELECTION_SINGLE As Integer = 0
 Const LISTBOX_SELECTION_SIMPLE As Integer = 1
 Const LISTBOX_SELECTION_EXTENDED As Integer = 2
 Const LISTBOX_MAX_COLUMNS As Integer = 32767 ' Bounded signed designer property.
-Const LISTBOX_MAX_TABLE_COLUMNS As Integer = 4
+Const LISTBOX_MAX_TABLE_COLUMNS As Integer = 6 ' The XREF manager uses six sortable status/metadata columns.
 
 Type ListBoxData
     As String items(0 To LISTBOX_MAX_ITEMS - 1)
-#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    ' Keep this shared record independent of the including unit's profile.
     ' Compatibility state belongs to the GUI thread; no retained pointer escapes.
     As Integer font_scale, navigation_drag_y, navigation_drag_top, navigation_dragged
-#endif
     As Integer item_count
     As Integer selected_index
     As Integer scroll_top
@@ -89,13 +89,36 @@ Type ListBoxData
     As Integer dropdown_style, checklist_style
     As Widget Ptr dropdown_popup
     As UByte checked_items(0 To LISTBOX_MAX_ITEMS - 1)
+    ' Appended so existing field offsets remain stable. Keyboard activation
+    ' includes Enter/Space and the programmatic keyboard-style activation API.
+    As ULongInt keyboard_activation_count
+    ' Appended callbacks preserve earlier fields. Clients embedding this record
+    ' must rebuild; Down may map/cancel input, while Up observes raw releases.
+    As Any Ptr key_down_handler, key_up_handler
+    ' Right-button context clicks are published after gui_UpdateAll restores
+    ' the dispatch mask, so modal controllers can open menus portably.
+    As ULongInt context_click_count
+    As Integer context_click_x, context_click_y, context_click_latch
+    ' Table headers publish clicks after release, like row activation.
+    As ULongInt table_header_click_count
+    As Integer table_header_click_column, pointer_header_column
 End Type
+
+Declare Function listbox_SetKeyDownHandler(ByVal w As Widget Ptr, _
+    ByVal handler As Sub(ByVal As Widget Ptr, ByRef As Integer, ByRef As Integer)) As Integer
+Declare Function listbox_SetKeyUpHandler(ByVal w As Widget Ptr, _
+    ByVal handler As Sub(ByVal As Widget Ptr, ByRef As Integer, ByRef As Integer)) As Integer
 
 ' Zero retains the vertical list. Positive counts divide its width into
 ' columns filled from top to bottom, with a horizontal scrollbar underneath.
 ' Geometry smaller than the request uses at least one pixel per column.
 Declare Function listbox_SetColumnCount(ByVal w As Widget Ptr, ByVal column_count As Integer) As Integer
 Declare Function listbox_GetColumnCount(ByVal w As Widget Ptr) As Integer
+' Return a visible row's absolute client bounds after layout synchronization.
+' The query does not reveal/select an item. Reflow may normalize the viewport;
+' absent or offscreen rows return zero and clear all four output values.
+Declare Function listbox_GetItemBounds(ByVal w As Widget Ptr, ByVal item_index As Integer, _
+    ByRef left_value As Integer, ByRef top_value As Integer, ByRef width_value As Integer, ByRef height_value As Integer) As Integer
 
 ' GUI-thread APIs. Programmatic changes never increment activation counters.
 ' SetSelectedIndex moves only the caret in multiple-selection modes; -1 clears
@@ -106,6 +129,12 @@ Declare Function listbox_GetSelectionMode(ByVal w As Widget Ptr) As Integer
 Declare Function listbox_SetItemSelected(ByVal w As Widget Ptr, ByVal item_index As Integer, ByVal selected_value As Integer) As Integer
 Declare Function listbox_GetItemSelected(ByVal w As Widget Ptr, ByVal item_index As Integer, ByRef selected_value As Integer) As Integer
 Declare Function listbox_GetSelectedCount(ByVal w As Widget Ptr) As Integer
+' Context-click count changes once when a right-button press begins inside
+' the list client area. Coordinates refer to the latest such press.
+Declare Function listbox_GetContextClickCount(ByVal w As Widget Ptr) As ULongInt
+Declare Function listbox_GetLastContextClick(ByVal w As Widget Ptr, ByRef x As Integer, ByRef y As Integer) As Integer
+' Returns the latest table-header click and its monotonic event count.
+Declare Function listbox_GetTableHeaderClick(ByVal w As Widget Ptr, ByRef clickCount As ULongInt, ByRef columnIndex As Integer) As Integer
 ' An invalidation token, not an event count. Row insertion/removal, clear and
 ' mode changes also invalidate indexed selection observations. Compare for
 ' inequality and refresh after application-owned mutations without firing input.
@@ -159,7 +188,11 @@ Declare Function listbox_GetTopIndex(ByVal w As Widget Ptr) As Integer
 Declare Function listbox_GetSelectedIndex(ByVal w As Widget Ptr) As Integer
 Declare Function listbox_GetSelectedItem(ByVal w As Widget Ptr) As String
 Declare Function listbox_GetItemCount(ByVal w As Widget Ptr) As Integer
+' Aggregate counts include completed pointer and keyboard activation events.
+' The source counts let applications distinguish a single row selection from
+' keyboard activation and a completed same-row pointer double-click.
 Declare Function listbox_GetActivationCount(ByVal w As Widget Ptr) As ULongInt
+Declare Function listbox_GetKeyboardActivationCount(ByVal w As Widget Ptr) As ULongInt
 Declare Function listbox_GetDoubleActivationCount(ByVal w As Widget Ptr) As ULongInt
 Declare Function listbox_ActivateSelected(ByVal w As Widget Ptr) As Integer
 Declare Function listbox_DoubleActivateSelected(ByVal w As Widget Ptr) As Integer

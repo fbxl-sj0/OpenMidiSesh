@@ -40,12 +40,21 @@
 
 #include once "playback_mix.bi"
 
+' Older target runtimes retain immediate stopping. Android packaging requires
+' the runtime release export documented in docs/ANDROID_AUDIO.md.
+#ifndef OSE_SFX_GENERATED_RELEASE_AVAILABLE
+    #define OSE_SFX_GENERATED_RELEASE_AVAILABLE 0
+#endif
+
 Type OseSoftwareSynthPlayOptions
     As Integer bankNumber
     As Integer fallbackVoiceChannel
 End Type
 
 Declare Sub softwareSynth_Configure()
+Declare Sub softwareSynth_StopMidiNote(ByVal channelIndex As Integer, ByVal keyNumber As Integer)
+Declare Sub softwareSynth_UpdateMidiChannel(ByVal channelIndex As Integer, _
+    ByVal pitchBend As Integer, ByRef mixValues As OsePlaybackMixValues)
 Declare Function softwareSynth_NoteFrequency(ByVal keyNumber As Integer) As Integer
 Declare Function softwareSynth_NoteFrequencyWithBend( _
     ByVal keyNumber As Integer, _

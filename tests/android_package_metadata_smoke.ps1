@@ -47,7 +47,7 @@ function Get-TemplateSnapshot {
     $entries = @(Get-ChildItem -LiteralPath $Root -Recurse -Force -File |
         Sort-Object FullName | ForEach-Object {
             $relative = $_.FullName.Substring($boundary.Length).Replace('\', '/')
-            if (-not $ExcludeManifest -or $relative -ne 'AndroidManifest.xml.in') {
+            if (-not $ExcludeManifest -or $relative -notin @('AndroidManifest.xml.in', 'FreeBasicNativeActivity.java', 'fb_android_app.c')) {
                 $relative + '|' + (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
             }
         })
@@ -73,6 +73,8 @@ function New-TestTemplate {
             'FreeBasicInputBridge.java', 'FreeBasicInputView.java', 'strings.xml', '.retained')) {
         [System.IO.File]::WriteAllText((Join-Path $Root $name), $Label + ':' + $name)
     }
+    [IO.File]::WriteAllText((Join-Path $Root 'FreeBasicNativeActivity.java'),
+        'import android.app.NativeActivity; class FreeBasicNativeActivity { void onCreate() { super.onCreate(savedInstanceState); } }')
     [System.IO.File]::WriteAllBytes((Join-Path $Root 'res\raw\payload.bin'),
         [byte[]] @(0, 1, 127, 128, 255))
 }
@@ -102,14 +104,17 @@ $boundary = $templateRoot.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparat
 $otherFiles = @(Get-ChildItem -LiteralPath $templateRoot -Recurse -Force -File |
     Sort-Object FullName | ForEach-Object {
         $relative = $_.FullName.Substring($boundary.Length).Replace('\', '/')
-        if ($relative -ne 'AndroidManifest.xml.in') {
+        if ($relative -notin @('AndroidManifest.xml.in', 'FreeBasicNativeActivity.java', 'fb_android_app.c')) {
             $relative + '|' + (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
         }
     })
 $capture = @{
+    compilerArguments = @($args)
     template = $template
     manifest = [System.IO.File]::ReadAllText((Join-Path $templateRoot 'AndroidManifest.xml.in'))
     otherFiles = $otherFiles
+    activitySource = [IO.File]::ReadAllText((Join-Path $templateRoot 'FreeBasicNativeActivity.java'))
+    nativeSource = [IO.File]::ReadAllText((Join-Path $templateRoot 'fb_android_app.c'))
 }
 [System.IO.File]::WriteAllText($env:OSE_ANDROID_METADATA_CAPTURE,
     ($capture | ConvertTo-Json -Depth 4))
@@ -137,6 +142,7 @@ $global:LASTEXITCODE = 0
         $cases += @{ Name = 'default-empty'; Template = ''; Source = $defaultTemplate; Code = $null; ExpectedCode = 1; Mode = 'ok'; Exit = 0; Label = 'default-template' }
     }
     $cases += @(
+        @{ Name = 'universal'; Template = $nativeOverride; Source = $customTemplate; Code = 90100; ExpectedCode = 90100; Target = 'universal'; Mode = 'ok'; Exit = 0; Label = 'custom-template' },
         @{ Name = 'custom'; Template = $nativeOverride; Source = $customTemplate; Code = 42; ExpectedCode = 42; Mode = 'ok'; Exit = 0; Label = 'custom-template' },
         @{ Name = 'cygwin'; Template = $cygwinOverride; Source = $customTemplate; Code = 43; ExpectedCode = 43; Mode = 'ok'; Exit = 0; Label = 'custom-template' },
         @{ Name = 'failed'; Template = $nativeOverride; Source = $customTemplate; Code = 44; ExpectedCode = 44; Mode = 'fail'; Exit = 23; Label = 'custom-template' },
@@ -149,6 +155,7 @@ $global:LASTEXITCODE = 0
         [Environment]::SetEnvironmentVariable('OSE_ANDROID_METADATA_CAPTURE', $capturePath, 'Process')
         [Environment]::SetEnvironmentVariable('OSE_ANDROID_METADATA_MODE', $case.Mode, 'Process')
         $arguments = @{ FreeBasicAndroidPath = $wrapper; OutputPath = $apkPath }
+        if ($case.ContainsKey('Target')) { $arguments.Target = $case.Target }
         if ($null -ne $case.Code) { $arguments.VersionCode = $case.Code }
         $caught = $null
         try {
@@ -170,12 +177,21 @@ $global:LASTEXITCODE = 0
             ('Template environment was not restored after ' + $case.Name)
         Assert-Test (Test-Path -LiteralPath $capturePath -PathType Leaf) 'Fake wrapper did not record its template.'
         $record = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json
+        if ($case.Name -eq 'universal') {
+            $targetArgument = [Array]::IndexOf($record.compilerArguments, '--targets')
+            Assert-Test ($targetArgument -ge 0 -and
+                $record.compilerArguments[$targetArgument + 1] -ceq 'android-arm,android-aarch64,android-x86_64' -and
+                '--target' -notin $record.compilerArguments) 'Universal build omitted or conflicted with its ABI list.'
+        }
         Assert-Test ($record.template -match '^[A-Za-z]:/' -and -not $record.template.Contains('\')) `
             'Staged template did not use a native forward-slash path.'
         $stageRoot = Split-Path -Parent ([System.IO.Path]::GetFullPath($record.template))
         Assert-Test (-not (Test-Path -LiteralPath $stageRoot)) ('Template staging survived ' + $case.Name)
         Assert-Test ((Test-Path -LiteralPath $apkPath -PathType Leaf) -eq ($case.Mode -eq 'ok')) `
             ('Unexpected fake APK state for ' + $case.Name)
+        Assert-Test ($record.activitySource.Contains('OpenMidiBridge.initialize(this)') -and
+            $record.activitySource.Contains('class OpenMidiBridge') -and
+            $record.nativeSource.Contains('ose_midi_read')) 'MIDI bridge was not staged.'
         $manifest = New-Object System.Xml.XmlDocument
         $manifest.XmlResolver = $null
         $manifest.LoadXml($record.manifest)

@@ -33,6 +33,7 @@
 #define __FILESYSTEMLISTBOX_BI__
 
 #include once "src/widgets/listbox.bi"
+#include once "src/widgets/combobox.bi"
 
 ' Refresh-result values are positive failures so the historical boolean
 ' wrappers can continue returning -1 for success and zero for any failure.
@@ -41,6 +42,7 @@ Const FILESYSTEMLISTBOX_REFRESH_INVALID_WIDGET As Integer = 1
 Const FILESYSTEMLISTBOX_REFRESH_INVALID_PATH As Integer = 2
 Const FILESYSTEMLISTBOX_REFRESH_INVALID_PATTERN As Integer = 3
 Const FILESYSTEMLISTBOX_REFRESH_CAPACITY As Integer = 4
+Const FILESYSTEMLISTBOX_REFRESH_INVALID_ATTRIBUTES As Integer = 5
 
 Declare Function directorylistbox_Create( _
     ByVal nm As String, _
@@ -66,6 +68,7 @@ Declare Function drivelistbox_Create( _
     ByVal h As Integer _
 ) As Widget Ptr
 Declare Function drivelistbox_Refresh(ByVal w As Widget Ptr) As Integer
+Declare Function filesystemlistbox_LoadDriveCombo(ByVal w As Widget Ptr) As Integer
 ' File filters use case-insensitive '*' and '?' matching on every target.
 ' The DOS wildcard '*.*' includes names without an extension.
 Declare Function filelistbox_Create( _
@@ -96,6 +99,13 @@ Declare Function filelistbox_TryRefresh( _
 Declare Function filelistbox_TryRefreshPatterns( _
     ByVal w As Widget Ptr, ByVal pathValue As String, _
     ByVal patternText As String _
+) As Integer
+
+' Opt-in attribute exclusions use FreeBASIC's portable file-attribute bits.
+' Existing APIs retain their broad enumeration policy and calling convention.
+Declare Function filelistbox_TryRefreshPatternsExcluding( _
+    ByVal w As Widget Ptr, ByVal pathValue As String, _
+    ByVal patternText As String, ByVal excludedAttributes As Integer _
 ) As Integer
 
 #endif

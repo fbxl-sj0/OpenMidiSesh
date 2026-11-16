@@ -13,6 +13,8 @@
         - configure fixed or resizable platform windows
         - configure true-color and balanced indexed-color display modes
         - report the live drawable area after a window resize
+        - expose window density, orientation and optional soft-keyboard state
+        - choose full-screen startup on capable Linux handheld sessions
         - expose primitive and alpha-aware drawing operations
         - expose embedded-font measurement and rendering operations
         - load complete Unicode glyph packs for UTF-8 text
@@ -62,6 +64,13 @@ Const BACKEND_FONT_CASCADIA_MONO As Integer = 6
 Const BACKEND_FONT_UNICODE_FALLBACK As Integer = 7
 ' Fixed-cell Spleen 8x16 bitmap font bundled for the legacy Terminal option.
 Const BACKEND_FONT_TERMINAL As Integer = 8
+' Consumer-loaded faces keep distinct IDs after the built-in toolkit fonts.
+Const BACKEND_FONT_LIBERATION_SANS As Integer = 9
+Const BACKEND_FONT_LIBERATION_SANS_BOLD As Integer = 10
+' Consumers may load additional document faces without replacing a toolkit
+' font that widgets are already using. Empty slots retain normal fallback.
+Const BACKEND_FONT_EXTERNAL_FIRST As Integer = 11
+Const BACKEND_FONT_LAST As Integer = 42
 
 ' OpenSesh's redistributable font names use the same embedded slots.
 Const BACKEND_FONT_UI_10_REGULAR As Integer = BACKEND_FONT_ARIAL_10_REGULAR
@@ -93,10 +102,22 @@ Const BACKEND_ALIGN_BOTTOM As Integer = 2
 Const BACKEND_WINDOW_FIXED As UInteger = 0
 Const BACKEND_WINDOW_RESIZABLE As UInteger = 1
 Const BACKEND_WINDOW_FULLSCREEN As UInteger = 2
+' Request a display-sized drawable while leaving the window manager in control.
+Const BACKEND_WINDOW_FILL As UInteger = 4
 Const BACKEND_DISPLAY_ENABLED As Integer = 0
 Const BACKEND_HEADLESS As Integer = -1
 ' A null gfxlib screen keeps pixels available for renderer tests.
 Const BACKEND_HEADLESS_DRAWABLE As Integer = -2
+
+' gfxlib ScreenControl values are kept local so the library also builds with
+' compiler headers that predate the display and soft-keyboard constants.
+Const BACKEND_GET_WINDOW_METRICS As Integer = 19
+Const BACKEND_GET_SOFT_KEYBOARD As Integer = 20
+Const BACKEND_GET_TOUCH_CAPABILITY As Integer = 21
+Const BACKEND_GET_DEVICE_CLASS As Integer = 22
+Const BACKEND_SET_SOFT_KEYBOARD As Integer = 119
+Const BACKEND_SET_SOFT_KEYBOARD_REGION As Integer = 120
+Const BACKEND_CLEAR_SOFT_KEYBOARD_REGIONS As Integer = 201
 
 Const BACKEND_COLOR_DEPTH_MONOCHROME As Integer = 1
 Const BACKEND_COLOR_DEPTH_16_COLOR As Integer = 4
@@ -104,14 +125,28 @@ Const BACKEND_COLOR_DEPTH_256_COLOR As Integer = 8
 Const BACKEND_COLOR_DEPTH_HIGH_COLOR As Integer = 16
 Const BACKEND_COLOR_DEPTH_TRUE_COLOR As Integer = 32
 
+Type BackendWindowMetrics
+    As Integer width, height, dpi, rotation
+    As Integer keyboard_visible, keyboard_available
+End Type
+
 Declare Sub backend_Init( _
-    ByVal w As Integer, _
-    ByVal h As Integer, _
+    ByVal w As Integer, _ ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
+    ByVal h As Integer, _ ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
     ByVal headless As Integer = 0, _
     ByVal windowFlags As UInteger = BACKEND_WINDOW_FIXED, _
     ByVal colorDepth As Integer = BACKEND_COLOR_DEPTH_TRUE_COLOR _
 )
 Declare Sub backend_Exit()
+' Bracket GUI work on the GUI thread to reuse one live drawable-size sample.
+' Screen-mode changes invalidate the sample; calls outside a frame stay live.
+Declare Sub backend_BeginFrame()
+Declare Sub backend_EndFrame()
+#ifdef OMAGUI_PROFILE_BACKEND
+' Test-only counter for verifying that one viewport read is shared per frame.
+Declare Function backend_ProfileGetViewportReadCount() As ULongInt
+Declare Sub backend_ProfileResetViewportReadCount()
+#endif
 ' Select one persistent visible page for damage-based drawing. Call while
 ' ScreenLock is held and repaint fully when it reports a page-mode change.
 Declare Function backend_UseRetainedPage() As Integer
@@ -127,24 +162,51 @@ Declare Function backend_RaiseWindow() As Integer
     full-screen modes. The function returns zero when gfxlib rejects the mode.
 '/
 Declare Function backend_SetWindowMode( _
-    ByVal w As Integer, ByVal h As Integer, _
+    ByVal w As Integer, ByVal h As Integer, _ ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
     ByVal windowFlags As UInteger _
 ) As Integer
+#include once "src/backend/mobile_display.bi"
+Declare Function backend_GetWindowMetrics( _
+    ByRef metrics As BackendWindowMetrics _
+) As Integer
+Declare Function backend_IsHandheld() As Integer
+' Usable logical layout size. Responsive display reserves measured IME space
+' without changing the framebuffer or native drawing/input coordinate scale.
 Declare Sub backend_GetSize(ByRef w As Integer, ByRef h As Integer)
+' OpenGL presentation belongs to the application; mode rollback stays here.
+Declare Function backend_SetOpenGLMode(ByVal w As Integer, ByVal h As Integer, ByVal windowFlags As UInteger, ByVal enabled As Integer) As Integer
+Declare Function backend_IsOpenGLMode() As Integer
+Declare Function backend_GetDesktopSize(ByRef w As Integer, ByRef h As Integer) As Integer
 Declare Function backend_IsResizable() As Integer
 Declare Function backend_GetColorDepth() As Integer
 Declare Function backend_SetColorDepth(ByVal colorDepth As Integer) As Integer
 
+' Physical display mode, independent of logical layout scale and keyboard space.
 Type BackendDisplayState
     As Integer width, height, color_depth, headless
     As UInteger window_flags
+    ' Append renderer selection so older field offsets stay stable.
+    As Integer open_gl
 End Type
 Declare Function backend_CaptureDisplay(ByRef display_state As BackendDisplayState) As Integer
 Declare Function backend_RestoreDisplay(ByRef display_state As Const BackendDisplayState) As Integer
 
 Declare Sub backend_Clear(ByVal clr As ULong = 0)
+' Batch short groups of drawing calls into one refresh on the visible page.
+' Every begin call must have a matching end call on the same GUI thread.
+Declare Sub backend_BeginPaint()
+Declare Sub backend_EndPaint()
 ' Applications with their own frame clock can omit the presentation wait.
 Declare Sub backend_Flip(ByVal waitForCadence As Integer = -1)
+' Complete a queued GFX3 frame after a retained canvas redraw.
+Declare Sub backend_SyncPresentation()
+/'
+    Bracket one serial GUI draw pass. GFX3 batches alpha pixels and submits
+    them before any later drawing operation can change their order.
+'/
+Declare Sub backend_BeginDrawBatch()
+Declare Sub backend_EndDrawBatch()
+Declare Sub backend_SetFrameLimit(ByVal framesPerSecond As Integer)
 /'
     Wait between foreground GUI polls, outside drawing and application locks.
     Nonpositive waits return immediately; waits are capped at one second.
@@ -152,21 +214,74 @@ Declare Sub backend_Flip(ByVal waitForCadence As Integer = -1)
 '/
 Declare Sub backend_Idle(ByVal milliseconds As Integer)
 Declare Function backend_GetWorkPage() As Integer
+' Report whether the current screen has separate visible and work pages.
+Declare Function backend_IsDoubleBuffered() As Integer
 
 /'
     Allocate and load gfxlib image buffers for omaGUI's native image widgets.
     Callers own returned buffers and release them with ImageDestroy.
 '/
 Declare Function backend_CreateImage( _
-    ByVal imageWidth As Integer, ByVal imageHeight As Integer, _
+    ByVal imageWidth As Integer, ByVal imageHeight As Integer, _ ' fblint: disable-line FBL-API-001 -- Dimension pairs retain width then height order.
     ByVal backgroundColor As ULong, ByVal imageDepth As Integer _
 ) As Any Ptr
+Declare Function backend_CaptureImage( _
+    ByVal x As Integer, ByVal y As Integer, _
+    ByVal imageWidth As Integer, ByVal imageHeight As Integer, _
+    ByVal imageBuffer As Any Ptr _
+) As Integer
+Declare Sub backend_DestroyImage(ByVal imageBuffer As Any Ptr)
+/'
+    Retain renderer-owned pixels without handing a GPU page to a CPU image.
+    GFX3 copies and draws these surfaces on its ordered render queue. Other
+    backends report unavailable so callers can keep their CPU image fallback.
+'/
+Declare Function backend_CreateGpuSurface( _
+    ByVal surfaceWidth As Integer, ByVal surfaceHeight As Integer, _
+    ByVal surfaceDepth As Integer _
+) As Any Ptr
+Declare Function backend_CaptureGpuSurface( _
+    ByVal surface As Any Ptr, ByVal x As Integer, ByVal y As Integer, _
+    ByVal surfaceWidth As Integer, ByVal surfaceHeight As Integer _
+) As Integer
+Declare Function backend_CaptureGpuSurfaceAt( _
+    ByVal surface As Any Ptr, ByVal x As Integer, ByVal y As Integer, _
+    ByVal surfaceWidth As Integer, ByVal surfaceHeight As Integer, _
+    ByVal destinationX As Integer, ByVal destinationY As Integer _
+) As Integer
+Declare Function backend_DrawGpuSurface( _
+    ByVal surface As Any Ptr, ByVal x As Integer, ByVal y As Integer, _
+    ByVal surfaceWidth As Integer, ByVal surfaceHeight As Integer _
+) As Integer
+/'
+    Scale a complete GPU surface into a screen rectangle. GFX3 uses linear
+    filtering for transient view previews; other backends return zero.
+'/
+Declare Function backend_DrawGpuSurfaceScaled( _
+    ByVal surface As Any Ptr, _
+    ByVal sourceWidth As Integer, ByVal sourceHeight As Integer, _
+    ByVal destinationX As Integer, ByVal destinationY As Integer, _
+    ByVal destinationWidth As Integer, ByVal destinationHeight As Integer _
+) As Integer
+Declare Function backend_DrawGpuSurfaceRect( _
+    ByVal surface As Any Ptr, _
+    ByVal sourceX As Integer, ByVal sourceY As Integer, _
+    ByVal sourceWidth As Integer, ByVal sourceHeight As Integer, _
+    ByVal destinationX As Integer, ByVal destinationY As Integer _
+) As Integer
+Declare Function backend_DrawGpuSurfaceRectScaled( _
+    ByVal surface As Any Ptr, _
+    ByVal sourceX As Integer, ByVal sourceY As Integer, _
+    ByVal sourceWidth As Integer, ByVal sourceHeight As Integer, _
+    ByVal destinationX As Integer, ByVal destinationY As Integer _
+) As Integer
+Declare Sub backend_DestroyGpuSurface(ByVal surface As Any Ptr)
 Declare Function backend_LoadImageFile( _
     ByVal filePath As String, ByVal imageBuffer As Any Ptr _
 ) As Integer
 
-Declare Sub backend_Rect(ByVal x As Integer, ByVal y As Integer, ByVal w As Integer, ByVal h As Integer, ByVal clr As ULong, ByVal filled As Integer = 0)
-Declare Sub backend_Line(ByVal x1 As Integer, ByVal y1 As Integer, ByVal x2 As Integer, ByVal y2 As Integer, ByVal clr As ULong)
+Declare Sub backend_Rect(ByVal x As Integer, ByVal y As Integer, ByVal w As Integer, ByVal h As Integer, ByVal clr As ULong, ByVal filled As Integer = 0) ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
+Declare Sub backend_Line(ByVal x1 As Integer, ByVal y1 As Integer, ByVal x2 As Integer, ByVal y2 As Integer, ByVal clr As ULong) ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
 /'
     Return zero when the caller should use its ordinary software fallback.
     The gfxlib3 path queues one bounded packet for each call.
@@ -178,33 +293,43 @@ Declare Function backend_DrawHorizontalSpans( _
     ByVal clr As ULong, ByVal alpha As Integer _
 ) As Integer
 Declare Function backend_DrawAlphaMask( _
-    ByVal x As Integer, ByVal y As Integer, _
-    ByVal maskWidth As Integer, ByVal maskHeight As Integer, _
+    ByVal x As Integer, ByVal y As Integer, _ ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
+    ByVal maskWidth As Integer, ByVal maskHeight As Integer, _ ' fblint: disable-line FBL-API-001 -- Dimension pairs retain width then height order.
     ByVal coverage As UByte Ptr, ByVal clr As ULong _
 ) As Integer
-Declare Sub backend_LineEx(ByVal x1 As Integer, ByVal y1 As Integer, ByVal x2 As Integer, ByVal y2 As Integer, ByVal clr As ULong, ByVal line_width As Integer = 1, ByVal alpha As Integer = 255)
-Declare Sub backend_RectEx(ByVal x As Integer, ByVal y As Integer, ByVal w As Integer, ByVal h As Integer, ByVal clr As ULong, ByVal filled As Integer = 0, ByVal line_width As Integer = 1, ByVal alpha As Integer = 255)
-Declare Sub backend_PSet(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong)
-Declare Sub backend_PSetAlpha(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, ByVal alpha As Integer)
-Declare Sub backend_Circle(ByVal x As Integer, ByVal y As Integer, ByVal r As Integer, ByVal clr As ULong, ByVal filled As Integer = 0)
+Declare Sub backend_LineEx(ByVal x1 As Integer, ByVal y1 As Integer, ByVal x2 As Integer, ByVal y2 As Integer, ByVal clr As ULong, ByVal line_width As Integer = 1, ByVal alpha As Integer = 255) ' fblint: disable-line FBL-API-001 -- Geometry precedes the established rendering options.
+Declare Sub backend_RectEx(ByVal x As Integer, ByVal y As Integer, ByVal w As Integer, ByVal h As Integer, ByVal clr As ULong, ByVal filled As Integer = 0, ByVal line_width As Integer = 1, ByVal alpha As Integer = 255) ' fblint: disable-line FBL-API-001 -- Geometry precedes the established rendering options.
+Declare Sub backend_PSet(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong) ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
+Declare Sub backend_PSetAlpha(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, ByVal alpha As Integer) ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
+Declare Sub backend_Circle(ByVal x As Integer, ByVal y As Integer, ByVal r As Integer, ByVal clr As ULong, ByVal filled As Integer = 0) ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
 ' Rounded corners are bounded to 32 pixels and use the same clipping as lines.
 Declare Sub backend_RoundRect( _
-    ByVal x As Integer, ByVal y As Integer, ByVal w As Integer, ByVal h As Integer, _
+    ByVal x As Integer, ByVal y As Integer, ByVal w As Integer, ByVal h As Integer, _ ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
     ByVal radius As Integer, ByVal clr As ULong, ByVal filled As Integer = 0 _
 )
-Declare Sub backend_Curve(ByVal x1 As Integer, ByVal y1 As Integer, ByVal x2 As Integer, ByVal y2 As Integer, ByVal x3 As Integer, ByVal y3 As Integer, ByVal clr As ULong)
+Declare Sub backend_Curve(ByVal x1 As Integer, ByVal y1 As Integer, ByVal x2 As Integer, ByVal y2 As Integer, ByVal x3 As Integer, ByVal y3 As Integer, ByVal clr As ULong) ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
 Declare Sub backend_DrawImage( _
-    ByVal x As Integer, ByVal y As Integer, _
-    ByVal imageBuffer As Any Ptr, ByVal useAlpha As Integer = -1, _
+    ByVal x As Integer, ByVal y As Integer, _ ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
+    ByVal imageBuffer As Any Ptr, ByVal useAlpha As Integer = -1, _ ' fblint: disable-line FBL-API-001 -- Geometry precedes the established rendering options.
     ByVal preserveTransparent As Integer = 0 _
 )
+/'
+    Draw an opaque retained image scaled into a destination rectangle. GFX2
+    uses bounded software resampling; callers fall back when unsupported.
+'/
+Declare Function backend_DrawImageScaled( _
+    ByVal imageBuffer As Any Ptr, _
+    ByVal sourceWidth As Integer, ByVal sourceHeight As Integer, _
+    ByVal destinationX As Integer, ByVal destinationY As Integer, _
+    ByVal destinationWidth As Integer, ByVal destinationHeight As Integer _
+) As Integer
 
-Declare Sub backend_Print(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, ByVal text As String)
-Declare Sub backend_PrintByte(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, ByVal character_code As Integer)
-Declare Sub backend_PrintBytes(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, ByRef bytes_text As Const String)
+Declare Sub backend_Print(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, ByVal text As String) ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
+Declare Sub backend_PrintByte(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, ByVal character_code As Integer) ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
+Declare Sub backend_PrintBytes(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, ByRef bytes_text As Const String) ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
 Declare Sub backend_PrintStyled( _
-    ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, _
-    ByVal text As String, ByVal text_style As Integer, _
+    ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, _ ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
+    ByVal text As String, ByVal text_style As Integer, _ ' fblint: disable-line FBL-API-001 -- Text style, font, layout and opacity retain the drawing API order.
     ByVal font_id As Integer = BACKEND_FONT_DEFAULT _
 )
 Declare Sub backend_SetCustomFont(ByVal glyphs As UByte Ptr Ptr)
@@ -234,91 +359,104 @@ Declare Sub backend_ClearFontPacks()
 Declare Function backend_IsFontAvailable(ByVal font_id As Integer) As Integer
 Declare Function backend_GetFontPointSize(ByVal font_id As Integer) As Integer
 Declare Function backend_GetFontAscent(ByVal font_id As Integer) As Integer
+' Borrow a backend-owned glyph bitmap and its metrics for application geometry.
+Declare Function backend_GetFontGlyph( _
+    ByVal font_id As Integer, ByVal codepoint As Integer, _
+    ByRef advance As Integer, ByRef bearing_x As Integer, _
+    ByRef bearing_y As Integer _
+) As UByte Ptr
+' Return whether the selected font face or its documented Unicode fallback has this glyph.
+Declare Function backend_HasFontGlyph(ByVal font_id As Integer, ByVal codepoint As Integer) As Integer
 ' Decode one scalar from UTF-8; byteIndex is zero-based and advances on errors.
 Declare Function backend_ReadUTF8Codepoint(ByRef text As Const String, ByRef byteIndex As Integer) As Integer
-Declare Sub backend_PrintScaled(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, ByVal text As String, ByVal scale_x As Integer = 1, ByVal scale_y As Integer = 1)
+Declare Sub backend_PrintScaled(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, ByVal text As String, ByVal scale_x As Integer = 1, ByVal scale_y As Integer = 1) ' fblint: disable-line FBL-API-001 -- Geometry precedes the established rendering options.
 ' Font size and temporary editor zoom compose into a 25..900 percent scale.
 ' These limits bound glyph rendering; textbox zoom itself remains 50..300.
 Const BACKEND_MIN_FONT_PERCENT As Integer = 25
 Const BACKEND_MAX_FONT_PERCENT As Integer = 900
-Declare Sub backend_PrintPercent(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, ByVal text As String, ByVal percent As Integer)
+Declare Sub backend_PrintPercent(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, ByVal text As String, ByVal percent As Integer) ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
 ' Font-aware percentage rendering keeps editor geometry aligned with glyphs.
 Declare Sub backend_PrintFontPercent( _
-    ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, _
-    ByVal text As String, ByVal font_id As Integer, ByVal percent As Integer _
+    ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, _ ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
+    ByVal text As String, ByVal font_id As Integer, ByVal percent As Integer _ ' fblint: disable-line FBL-API-001 -- Text style, font, layout and opacity retain the drawing API order.
 )
 ' Italic text shears glyph rows but keeps the regular glyph advance.
 Declare Sub backend_PrintItalicPercent( _
-    ByVal x As Integer, ByVal y As Integer, _
+    ByVal x As Integer, ByVal y As Integer, _ ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
     ByVal clr As ULong, ByVal text As String, ByVal percent As Integer _
 )
 Declare Sub backend_PrintItalicFontPercent( _
-    ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, _
-    ByVal text As String, ByVal font_id As Integer, ByVal percent As Integer _
+    ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, _ ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
+    ByVal text As String, ByVal font_id As Integer, ByVal percent As Integer _ ' fblint: disable-line FBL-API-001 -- Text style, font, layout and opacity retain the drawing API order.
 )
-Declare Sub backend_PrintFont(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, ByVal text As String, ByVal font_id As Integer)
-Declare Sub backend_PrintFontAlpha(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, ByVal text As String, ByVal font_id As Integer, ByVal alpha As Integer)
-Declare Sub backend_PrintScaledFont(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, ByVal text As String, ByVal font_id As Integer, ByVal scale_x As Integer = 1, ByVal scale_y As Integer = 1)
+Declare Sub backend_PrintFont(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, ByVal text As String, ByVal font_id As Integer) ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
+Declare Sub backend_PrintFontAlpha(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, ByVal text As String, ByVal font_id As Integer, ByVal alpha As Integer) ' fblint: disable-line FBL-API-001 -- Text style, font, layout and opacity retain the drawing API order.
+Declare Sub backend_PrintScaledFont(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, ByVal text As String, ByVal font_id As Integer, ByVal scale_x As Integer = 1, ByVal scale_y As Integer = 1) ' fblint: disable-line FBL-API-001 -- Text style, font, layout and opacity retain the drawing API order.
 Declare Sub backend_PrintScaledFontAlpha( _
-    ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, _
-    ByVal text As String, ByVal font_id As Integer, _
-    ByVal scale_x As Integer = 1, ByVal scale_y As Integer = 1, _
+    ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, _ ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
+    ByVal text As String, ByVal font_id As Integer, _ ' fblint: disable-line FBL-API-001 -- Text style, font, layout and opacity retain the drawing API order.
+    ByVal scale_x As Integer = 1, ByVal scale_y As Integer = 1, _ ' fblint: disable-line FBL-API-001 -- Geometry precedes the established rendering options.
     ByVal alpha As Integer = 255 _
 )
 Declare Sub backend_PrintAligned( _
-    ByVal x As Integer, ByVal y As Integer, _
-    ByVal w As Integer, ByVal h As Integer, ByVal clr As ULong, _
-    ByVal text As String, ByVal font_id As Integer = BACKEND_FONT_DEFAULT, _
-    ByVal horizontal_align As Integer = BACKEND_ALIGN_LEFT, _
+    ByVal x As Integer, ByVal y As Integer, _ ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
+    ByVal w As Integer, ByVal h As Integer, ByVal clr As ULong, _ ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
+    ByVal text As String, ByVal font_id As Integer = BACKEND_FONT_DEFAULT, _ ' fblint: disable-line FBL-API-001 -- Text style, font, layout and opacity retain the drawing API order.
+    ByVal horizontal_align As Integer = BACKEND_ALIGN_LEFT, _ ' fblint: disable-line FBL-API-001 -- Horizontal layout precedes vertical layout.
     ByVal vertical_align As Integer = BACKEND_ALIGN_TOP _
 )
 Declare Sub backend_PrintAlignedAlpha( _
-    ByVal x As Integer, ByVal y As Integer, _
-    ByVal w As Integer, ByVal h As Integer, ByVal clr As ULong, _
-    ByVal text As String, ByVal font_id As Integer = BACKEND_FONT_DEFAULT, _
-    ByVal horizontal_align As Integer = BACKEND_ALIGN_LEFT, _
-    ByVal vertical_align As Integer = BACKEND_ALIGN_TOP, _
+    ByVal x As Integer, ByVal y As Integer, _ ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
+    ByVal w As Integer, ByVal h As Integer, ByVal clr As ULong, _ ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
+    ByVal text As String, ByVal font_id As Integer = BACKEND_FONT_DEFAULT, _ ' fblint: disable-line FBL-API-001 -- Text style, font, layout and opacity retain the drawing API order.
+    ByVal horizontal_align As Integer = BACKEND_ALIGN_LEFT, _ ' fblint: disable-line FBL-API-001 -- Horizontal layout precedes vertical layout.
+    ByVal vertical_align As Integer = BACKEND_ALIGN_TOP, _ ' fblint: disable-line FBL-API-001 -- Geometry precedes the established rendering options.
     ByVal alpha As Integer = 255 _
 )
 Declare Sub backend_PrintAlignedScaled( _
-    ByVal x As Integer, ByVal y As Integer, _
-    ByVal w As Integer, ByVal h As Integer, ByVal clr As ULong, _
-    ByVal text As String, ByVal font_id As Integer = BACKEND_FONT_DEFAULT, _
-    ByVal horizontal_align As Integer = BACKEND_ALIGN_LEFT, _
-    ByVal vertical_align As Integer = BACKEND_ALIGN_TOP, _
-    ByVal scale_x As Integer = 1, ByVal scale_y As Integer = 1 _
+    ByVal x As Integer, ByVal y As Integer, _ ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
+    ByVal w As Integer, ByVal h As Integer, ByVal clr As ULong, _ ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
+    ByVal text As String, ByVal font_id As Integer = BACKEND_FONT_DEFAULT, _ ' fblint: disable-line FBL-API-001 -- Text style, font, layout and opacity retain the drawing API order.
+    ByVal horizontal_align As Integer = BACKEND_ALIGN_LEFT, _ ' fblint: disable-line FBL-API-001 -- Horizontal layout precedes vertical layout.
+    ByVal vertical_align As Integer = BACKEND_ALIGN_TOP, _ ' fblint: disable-line FBL-API-001 -- Geometry precedes the established rendering options.
+    ByVal scale_x As Integer = 1, ByVal scale_y As Integer = 1 _ ' fblint: disable-line FBL-API-001 -- Geometry precedes the established rendering options.
 )
 Declare Sub backend_PrintAlignedScaledAlpha( _
-    ByVal x As Integer, ByVal y As Integer, _
-    ByVal w As Integer, ByVal h As Integer, ByVal clr As ULong, _
-    ByVal text As String, ByVal font_id As Integer = BACKEND_FONT_DEFAULT, _
-    ByVal horizontal_align As Integer = BACKEND_ALIGN_LEFT, _
-    ByVal vertical_align As Integer = BACKEND_ALIGN_TOP, _
-    ByVal scale_x As Integer = 1, ByVal scale_y As Integer = 1, _
+    ByVal x As Integer, ByVal y As Integer, _ ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
+    ByVal w As Integer, ByVal h As Integer, ByVal clr As ULong, _ ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
+    ByVal text As String, ByVal font_id As Integer = BACKEND_FONT_DEFAULT, _ ' fblint: disable-line FBL-API-001 -- Text style, font, layout and opacity retain the drawing API order.
+    ByVal horizontal_align As Integer = BACKEND_ALIGN_LEFT, _ ' fblint: disable-line FBL-API-001 -- Horizontal layout precedes vertical layout.
+    ByVal vertical_align As Integer = BACKEND_ALIGN_TOP, _ ' fblint: disable-line FBL-API-001 -- Geometry precedes the established rendering options.
+    ByVal scale_x As Integer = 1, ByVal scale_y As Integer = 1, _ ' fblint: disable-line FBL-API-001 -- Geometry precedes the established rendering options.
     ByVal alpha As Integer = 255 _
 )
 Declare Function backend_GetTextWidth(ByVal text As String) As Integer
 Declare Function backend_GetTextWidthScaled(ByVal text As String, ByVal scale_x As Integer = 1) As Integer
 Declare Function backend_GetTextWidthPercent(ByVal text As String, ByVal percent As Integer) As Integer
 Declare Function backend_GetTextWidthFontPercent( _
-    ByVal text As String, ByVal font_id As Integer, ByVal percent As Integer _
+    ByVal text As String, ByVal font_id As Integer, ByVal percent As Integer _ ' fblint: disable-line FBL-API-001 -- Text style, font, layout and opacity retain the drawing API order.
 ) As Integer
 Declare Function backend_GetTextWidthFont(ByVal text As String, ByVal font_id As Integer) As Integer
-Declare Function backend_GetTextWidthScaledFont(ByVal text As String, ByVal font_id As Integer, ByVal scale_x As Integer = 1) As Integer
+Declare Function backend_GetTextWidthScaledFont(ByVal text As String, ByVal font_id As Integer, ByVal scale_x As Integer = 1) As Integer ' fblint: disable-line FBL-API-001 -- Text style, font, layout and opacity retain the drawing API order.
 Declare Function backend_GetTextHeight() As Integer
 Declare Function backend_GetTextHeightScaled(ByVal scale_y As Integer = 1) As Integer
 Declare Function backend_GetTextHeightPercent(ByVal percent As Integer) As Integer
 Declare Function backend_GetTextHeightFontPercent( _
-    ByVal font_id As Integer, ByVal percent As Integer _
+    ByVal font_id As Integer, ByVal percent As Integer _ ' fblint: disable-line FBL-API-001 -- Text style, font, layout and opacity retain the drawing API order.
 ) As Integer
 Declare Function backend_GetTextHeightFont(ByVal font_id As Integer) As Integer
-Declare Function backend_GetTextHeightScaledFont(ByVal font_id As Integer, ByVal scale_y As Integer = 1) As Integer
+Declare Function backend_GetTextHeightScaledFont(ByVal font_id As Integer, ByVal scale_y As Integer = 1) As Integer ' fblint: disable-line FBL-API-001 -- Text style, font, layout and opacity retain the drawing API order.
 
-Declare Sub backend_SetClip(ByVal x As Integer, ByVal y As Integer, ByVal w As Integer, ByVal h As Integer)
-Declare Sub backend_GetClip(ByRef x As Integer, ByRef y As Integer, ByRef w As Integer, ByRef h As Integer)
+Declare Sub backend_SetClip(ByVal x As Integer, ByVal y As Integer, ByVal w As Integer, ByVal h As Integer) ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
+Declare Sub backend_GetClip(ByRef x As Integer, ByRef y As Integer, ByRef w As Integer, ByRef h As Integer) ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
 Declare Sub backend_ResetClip()
 
 Declare Sub backend_SaveSnapshot(ByVal filename As String)
+' A zero-sized crop captures the full visible page; positive dimensions capture that framebuffer region.
+Declare Function backend_SaveSnapshotRegion( _
+    ByVal filename As String, ByVal sourceX As Integer, ByVal sourceY As Integer, _
+    ByVal sourceWidth As Integer, ByVal sourceHeight As Integer _
+) As Integer
 
 #endif
 

@@ -34,6 +34,8 @@ Use a clean checkout and verify the exact commit that will be tagged.
 
 Windows package verification is driven by <code>verify_windows_release.ps1</code>.
 Platform package jobs and their limits are described in [CI](CI.md). Android
-has a separate development packaging path and no native external MIDI adapter.
+has a separate development packaging path and system MIDI input support.
+External MIDI output remains unavailable there; the S10 USB input, built-in
+monitor and TimGM6mb SoundFont paths have physical listening evidence.
 
 <!-- end of docs/RELEASE_CHECKLIST.md -->

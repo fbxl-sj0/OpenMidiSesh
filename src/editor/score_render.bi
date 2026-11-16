@@ -2868,6 +2868,12 @@ Private Sub session_DrawScore(ByVal screenWidth As Integer, ByVal screenHeight A
             scoreTitleCharacters = SESSION_SCORE_TITLE_MINIMUM_CHARACTERS
         End If
         scoreTitle = session_ClipText(scoreTitle, scoreTitleCharacters)
+        If scoreWidth < 360 Then
+            backend_Print SESSION_SCORE_LEFT + 8, SESSION_SCORE_TOP + 6, _
+                session_ThemePalette.textColor, "Grid " + session_SnapName() + "  " + _
+                LTrim(Str(activeSignature.numerator)) + "/" + _
+                LTrim(Str(session_TempoDenominatorValue(activeSignature.denominatorPower)))
+        Else
         backend_PrintAligned SESSION_SCORE_LEFT + 4, SESSION_SCORE_TOP + 5, _
             scoreWidth - 8, 14, session_ThemePalette.textColor, _
             "Score View - " + scoreTitle, _
@@ -2884,6 +2890,7 @@ Private Sub session_DrawScore(ByVal screenWidth As Integer, ByVal screenHeight A
             SESSION_SCORE_TOP + 6, session_ThemePalette.textColor, _
             "Key " + session_KeySignatureText(activeKeySignature.sharpsFlats, _
             activeKeySignature.minor)
+        End If
         session_ScoreHeaderPageFingerprint(workPage) = headerFingerprint
         session_ScoreHeaderPageValid(workPage) = -1
     End If
@@ -3250,6 +3257,7 @@ End Sub
 
 
 Private Sub session_DrawMixer(ByVal screenWidth As Integer, ByVal screenHeight As Integer)
+    If session_MixerVisible = 0 Then Exit Sub
     Dim As OseMixerControlLayout mixerLayout
     Dim As Integer mixerLayoutAnchor = session_SelectedTrack
     If session_MixerPageAnchor >= 0 Then _
@@ -3916,6 +3924,14 @@ Private Sub session_DrawApplication(ByVal screenWidth As Integer, ByVal screenHe
         backend_Line 0, SESSION_MENU_HEIGHT - 1, screenWidth - 1, _
             SESSION_MENU_HEIGHT - 1, session_ThemePalette.dividerColor
         Dim As Integer menuTextY = (SESSION_MENU_HEIGHT - 8) \ 2
+        If screenWidth < 640 Then
+            Dim As String headings(0 To 7) = {"File", "Edit", "Options", "Setup", "View", "Track", "Music", "Help"}
+            For headingIndex As Integer = 0 To 7
+                backend_Print (headingIndex Mod 4) * (screenWidth \ 4) + 8, _
+                    (headingIndex \ 4) * (SESSION_MENU_HEIGHT \ 2) + _
+                    (SESSION_MENU_HEIGHT \ 2 - 8) \ 2, session_ThemePalette.textColor, headings(headingIndex)
+            Next
+        Else
         backend_Print 10, menuTextY, session_ThemePalette.textColor, "File"
         backend_Print 50, menuTextY, session_ThemePalette.textColor, "Edit"
         backend_Print 90, menuTextY, session_ThemePalette.textColor, "Options"
@@ -3937,6 +3953,7 @@ Private Sub session_DrawApplication(ByVal screenWidth As Integer, ByVal screenHe
                     mnemonicX(mnemonicIndex) + 6, menuTextY + 9, _
                     session_ThemePalette.textColor
             Next
+        End If
         End If
 
         backend_Rect 0, SESSION_TOOLBAR_TOP, screenWidth, _
@@ -4061,14 +4078,17 @@ Private Sub session_DrawApplication(ByVal screenWidth As Integer, ByVal screenHe
     Dim As Double smoothnessSectionClock
     If session_SmoothnessProfilingActive <> 0 Then _
         smoothnessSectionClock = Timer
-    session_DrawScore screenWidth, screenHeight
+    If session_CompactLayout = 0 OrElse session_MixerVisible = 0 Then _
+        session_DrawScore screenWidth, screenHeight
     If session_SmoothnessProfilingActive <> 0 Then
         session_SmoothnessScoreRenderMs = uiFramePacing_ElapsedMilliseconds( _
             smoothnessSectionClock, Timer)
         smoothnessSectionClock = Timer
     End If
-    session_DrawScoreToolRail screenHeight
-    session_DrawAddNotePalette()
+    If session_CompactLayout = 0 OrElse session_MixerVisible = 0 Then
+        session_DrawScoreToolRail screenHeight
+        session_DrawAddNotePalette()
+    End If
     If session_SmoothnessProfilingActive <> 0 Then
         session_SmoothnessScoreToolRenderMs = _
             uiFramePacing_ElapsedMilliseconds(smoothnessSectionClock, Timer)

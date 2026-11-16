@@ -14,6 +14,7 @@
          Handle signed-range changes through pointer and keyboard input
          Repeat held arrow/page steps with bounded GUI-thread timing
          Validate imported range, value, and increment properties
+         Bracket ordinary input actions with optional key notifications
 
     This file intentionally does NOT contain:
          List selection behavior
@@ -23,6 +24,10 @@
 #lang "fb"
 #include once "src/widgets/scrollbar.bi"
 #include once "src/backend/theme.bi"
+#include once "src/widgets/control_keyevents.bi"
+
+' Callback depth must outlive a scrollbar removed by its own application code.
+Dim Shared As Integer scrollbar_key_event_depth
 
 Const SCROLLBAR_MINIMUM_THUMB_SIZE As Integer = 12
 Const SCROLLBAR_MINIMUM_WHEEL_STEP As Integer = 1
@@ -348,7 +353,7 @@ End Sub
 ' Processing
 ' -------------------------------------------------------------------------
 
-Sub scrollbar_Update(ByVal w As Widget Ptr)
+Private Sub scrollbar_UpdateBody(ByVal w As Widget Ptr)
     Dim As ScrollBarData Ptr d
     Dim As Integer mx
     Dim As Integer my
@@ -615,5 +620,26 @@ End Function
 Sub scrollbar_Destroy(ByVal w As Widget Ptr)
     Delete Cast(ScrollBarData Ptr, w->data)
 End Sub
+
+Sub scrollbar_Update(ByVal w As Widget Ptr)
+    If w = 0 OrElse w->data = 0 Then Exit Sub
+    Dim As ScrollBarData Ptr d = w->data
+    control_UpdateWithKeyNotifications w, d, d->key_down_handler, d->key_up_handler, _
+        scrollbar_key_event_depth, @scrollbar_UpdateBody
+End Sub
+
+Function scrollbar_SetKeyDownHandler(ByVal w As Widget Ptr, _
+    ByVal handler As Sub(ByVal As Widget Ptr, ByRef As Integer, ByRef As Integer)) As Integer
+    If w = 0 OrElse w->data = 0 OrElse w->destroy <> @scrollbar_Destroy Then Return 0
+    Cast(ScrollBarData Ptr, w->data)->key_down_handler = handler
+    Return -1
+End Function
+
+Function scrollbar_SetKeyUpHandler(ByVal w As Widget Ptr, _
+    ByVal handler As Sub(ByVal As Widget Ptr, ByRef As Integer, ByRef As Integer)) As Integer
+    If w = 0 OrElse w->data = 0 OrElse w->destroy <> @scrollbar_Destroy Then Return 0
+    Cast(ScrollBarData Ptr, w->data)->key_up_handler = handler
+    Return -1
+End Function
 
 ' end of scrollbar.bas

@@ -87,7 +87,7 @@ Const GUI_CONTROL_STYLE_FLAT As Integer = 1
 Declare Sub theme_SetMode(ByVal theme_mode As Integer)
 Declare Function theme_GetMode() As Integer
 Declare Sub theme_SetClassicEffects( _
-    ByVal shadow_enabled As Integer, ByVal three_d_enabled As Integer _
+    ByVal shadow_enabled As Integer, ByVal three_d_enabled As Integer _ ' fblint: disable-line FBL-API-001 -- Classic shadow and 3D switches retain their published order.
 )
 Declare Function theme_GetClassicShadow() As Integer
 Declare Function theme_GetClassicThreeD() As Integer

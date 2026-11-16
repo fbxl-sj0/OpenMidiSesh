@@ -75,8 +75,8 @@ Declare Function label_Create( _
     ByVal fontId As Integer = BACKEND_FONT_DEFAULT _
 ) As Widget Ptr
 Declare Function label_CreateWithColor( _
-    ByVal nm As String, ByVal txt As String, _
-    ByVal x As Integer, ByVal y As Integer, _
+    ByVal nm As String, ByVal txt As String, _ ' fblint: disable-line FBL-API-001 -- Widget identity precedes its displayed caption.
+    ByVal x As Integer, ByVal y As Integer, _ ' fblint: disable-line FBL-API-001 -- Coordinates, extents and creation options retain the public API order.
     ByVal clr As ULong, _
     ByVal fontId As Integer = BACKEND_FONT_DEFAULT _
 ) As Widget Ptr
@@ -107,13 +107,13 @@ Declare Function label_GetBackgroundColor( _
     ByVal w As Widget Ptr, ByRef backgroundColor As ULong _
 ) As Integer
 Declare Sub label_SetWordWrap( _
-    ByVal w As Widget Ptr, ByVal maximumWidth As Integer, _
+    ByVal w As Widget Ptr, ByVal maximumWidth As Integer, _ ' fblint: disable-line FBL-API-001 -- The width limit precedes the line-count limit.
     ByVal maximumLines As Integer = 0 _
 )
 Declare Function label_GetRenderedLineCount(ByVal w As Widget Ptr) As Integer
 ' Measure the same bounded layout used by rendering, including border insets.
 ' Does not resize the widget. Empty text retains one font-height line.
-Declare Function label_GetTextSize(ByVal w As Widget Ptr, ByRef textWidth As Integer, ByRef textHeight As Integer) As Integer
+Declare Function label_GetTextSize(ByVal w As Widget Ptr, ByRef textWidth As Integer, ByRef textHeight As Integer) As Integer ' fblint: disable-line FBL-API-001 -- Dimension pairs retain width then height order.
 Declare Function label_SetBorderStyle(ByVal w As Widget Ptr, ByVal borderStyle As Integer) As Integer
 Declare Function label_GetBorderStyle(ByVal w As Widget Ptr) As Integer
 ' Unclipped rendering remains the default, including labels with no explicit
@@ -121,11 +121,11 @@ Declare Function label_GetBorderStyle(ByVal w As Widget Ptr) As Integer
 Declare Function label_SetClipToBounds(ByVal w As Widget Ptr, ByVal enabled As Integer) As Integer
 Declare Function label_GetClipToBounds(ByVal w As Widget Ptr) As Integer
 Declare Function label_SetAlignment( _
-    ByVal w As Widget Ptr, ByVal horizontalAlignment As Integer, _
+    ByVal w As Widget Ptr, ByVal horizontalAlignment As Integer, _ ' fblint: disable-line FBL-API-001 -- Horizontal layout precedes vertical layout.
     ByVal verticalAlignment As Integer = BACKEND_ALIGN_TOP _
 ) As Integer
 Declare Function label_GetAlignment( _
-    ByVal w As Widget Ptr, ByRef horizontalAlignment As Integer, _
+    ByVal w As Widget Ptr, ByRef horizontalAlignment As Integer, _ ' fblint: disable-line FBL-API-001 -- Horizontal layout precedes vertical layout.
     ByRef verticalAlignment As Integer _
 ) As Integer
 Declare Function label_ClearAlignment(ByVal w As Widget Ptr) As Integer

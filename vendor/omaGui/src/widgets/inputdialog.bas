@@ -369,4 +369,17 @@ Function inputdialog_SetColors( _
     Return -1
 End Function
 
+Function inputdialog_GetFieldWidget(ByVal dialog_widget As Widget Ptr, ByVal field_index As Integer) As Widget Ptr
+    If dialog_widget = 0 OrElse dialog_widget->destroy <> @inputdialog_Destroy OrElse dialog_widget->data = 0 Then Return 0
+    If field_index < 0 OrElse field_index >= INPUTDIALOG_FIELD_COUNT Then Return 0
+    Return Cast(InputDialogData Ptr, dialog_widget->data)->fields(field_index)
+End Function
+Function inputdialog_GetActionButton(ByVal dialog_widget As Widget Ptr, ByVal action_index As Integer) As Widget Ptr
+    If dialog_widget = 0 OrElse dialog_widget->destroy <> @inputdialog_Destroy OrElse dialog_widget->data = 0 Then Return 0
+    Select Case action_index
+    Case 0: Return Cast(InputDialogData Ptr, dialog_widget->data)->accept_button
+    Case 1: Return Cast(InputDialogData Ptr, dialog_widget->data)->cancel_button
+    End Select
+    Return 0
+End Function
 /' end of inputdialog.bas '/

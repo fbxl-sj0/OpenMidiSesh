@@ -14,10 +14,13 @@
         - navigate directories through dialog-owned path state
         - filter files with bounded case-insensitive wildcard-list matching
         - collect typed open/save paths and confirm replacement
+        - expose optional read-only, initial-view, save-format and application-preview controls
         - report accepted and cancelled dialog states
         - claim modal update focus while the dialog is open
         - apply a bounded title and responsive portable layout
         - navigate through places, history and an editable location
+        - search the browsed folder and registered places with a bounded scan
+        - search configured support paths through the same portable directory API
         - create explicitly requested folders without shell commands
 
     Targets:
@@ -57,7 +60,14 @@ Const FILEDIALOG_MAX_ENTRIES As Integer = LISTBOX_MAX_ITEMS - 1
 Const FILEDIALOG_MAX_NAME_BYTES As Integer = 1048576
 Const FILEDIALOG_MAX_PATH_BYTES As Integer = 4096
 Const FILEDIALOG_HISTORY_CAPACITY As Integer = 32
-Const FILEDIALOG_PLACE_CAPACITY As Integer = 12
+' Places include Windows drive roots plus common folders and app support paths.
+Const FILEDIALOG_PLACE_CAPACITY As Integer = 64
+Const FILEDIALOG_SUPPORT_PATH_CAPACITY As Integer = 16
+' A user-started Places scan is bounded so a root-folder query cannot monopolize the UI thread.
+Const FILEDIALOG_SEARCH_SCAN_LIMIT As Integer = 50000
+' Bound queued memory and directory cycles while Find File walks nested folders.
+Const FILEDIALOG_SEARCH_DIRECTORY_LIMIT As Integer = 2048
+Const FILEDIALOG_SEARCH_DEPTH_LIMIT As Integer = 32
 Const FILEDIALOG_MAX_TITLE_BYTES As Integer = 255
 Const FILEDIALOG_WINDOW_WIDTH As Integer = 720
 Const FILEDIALOG_WINDOW_HEIGHT As Integer = 480
@@ -68,11 +78,16 @@ Const FILEDIALOG_PATH_SEPARATOR As String = "/"
 #EndIf
 
 Type FileDialogEntry
-    As String entry_name, name_key, kind_text, modified_text, size_text
+    As String entry_name, entry_path, name_key, kind_text, modified_text, size_text
     As UInteger attributes
     As Double modified_value
     As LongInt size_value
     As Integer details_loaded
+End Type
+
+Type FileDialogSearchDirectory
+    As String path_value
+    As Integer depth
 End Type
 
 Type FileDialogData
@@ -83,17 +98,25 @@ Type FileDialogData
     As String current_path, selected_file, filter_pattern
     As Integer mode, finished
     As Widget Ptr pathBox, searchBox, filterBox, places, statusLabel
-    As Widget Ptr btn_back, btn_forward, btn_up, btn_go, btn_refresh, btn_new
-    As Widget Ptr hiddenBox, nameLabel, filterLabel, searchLabel, placesLabel
+    As Widget Ptr btn_back, btn_forward, btn_up, btn_go, btn_refresh, btn_new, btn_find_files, btn_search_paths, btn_options
+    As Widget Ptr hiddenBox, readOnlyBox, initialViewBox, saveOptionBox, previewBox, previewWidget
+    As Widget Ptr nameLabel, filterLabel, searchLabel, placesLabel
     As FileDialogEntry entries(0 To FILEDIALOG_MAX_ENTRIES - 1)
     As Integer order(0 To FILEDIALOG_MAX_ENTRIES - 1)
     As Integer entry_count, name_bytes, truncated, visible_count
-    As Integer sort_column, sort_descending, show_hidden
+    As Integer sort_column, sort_descending, show_hidden, read_only_option_enabled, choose_initial_view_enabled, save_option_enabled
+    As Integer preview_enabled
     As Integer layout_width, layout_height, layout_top, selected_entry
     As ULongInt selection_serial, double_serial, places_serial
     As ULongInt search_serial, filter_serial, filename_serial
-    As String search_text, pending_replace, default_extension, previous_name
+    As String search_text, search_root, pending_replace, default_extension, previous_name
+    As Integer search_all_places, search_scan_count
+    As FileDialogSearchDirectory search_directories(0 To FILEDIALOG_SEARCH_DIRECTORY_LIMIT - 1)
+    As Integer search_directory_count, search_directory_index, search_root_depth, search_recursive
+    As String support_paths(0 To FILEDIALOG_SUPPORT_PATH_CAPACITY - 1)
+    As Integer support_path_count
     As Integer confirm_overwrite, creating_folder, header_latch
+    As Integer options_enabled, options_requested
     As String history(0 To FILEDIALOG_HISTORY_CAPACITY - 1)
     As Integer history_count, history_index
     As String place_paths(0 To FILEDIALOG_PLACE_CAPACITY - 1)
@@ -109,6 +132,8 @@ Declare Sub filedialog_Update(ByVal root As Widget Ptr)
 Declare Sub filedialog_OnOK(ByVal w As Widget Ptr)
 Declare Sub filedialog_OnCancel(ByVal w As Widget Ptr)
 Declare Sub filedialog_Refresh(ByVal root As Widget Ptr)
+Declare Sub filedialog_OnFindFiles(ByVal w As Widget Ptr)
+Declare Sub filedialog_OnSearchPaths(ByVal w As Widget Ptr)
 Declare Sub filedialog_RebuildView(ByVal root As Widget Ptr)
 Declare Sub filedialog_Layout(ByVal root As Widget Ptr)
 
@@ -302,16 +327,66 @@ Private Sub filedialog_ClearReplace(ByVal d As FileDialogData Ptr)
     If d->mode = FILEDIALOG_MODE_SAVE Then button_SetText d->btn_ok, "Save"
 End Sub
 
+Private Function filedialog_QueueSearchDirectory(ByVal d As FileDialogData Ptr, _
+    ByVal path_value As String, ByVal depth_value As Integer) As Integer
+    If d = 0 OrElse path_value = "" OrElse Len(path_value) > FILEDIALOG_MAX_PATH_BYTES Then Return -1
+    For directory_index As Integer = 0 To d->search_directory_count - 1
+        If d->search_directories(directory_index).path_value = path_value Then Return -1
+    Next directory_index
+    If d->search_directory_count >= FILEDIALOG_SEARCH_DIRECTORY_LIMIT Then
+        d->truncated = -1
+        Return 0
+    End If
+    With d->search_directories(d->search_directory_count)
+        .path_value = path_value
+        .depth = depth_value
+    End With
+    d->search_directory_count += 1
+    Return -1
+End Function
+
 Private Function filedialog_AddEntry(ByRef entryName As Const String, _
     ByVal attributes As UInteger, ByVal context As Any Ptr) As Integer
     Dim As FileDialogData Ptr d = Cast(FileDialogData Ptr, context)
+    Dim As String entry_path = ""
+    If d->search_all_places Then
+        d->search_scan_count += 1
+        If d->search_scan_count > FILEDIALOG_SEARCH_SCAN_LIMIT Then
+            d->truncated = -1
+            Return 1
+        End If
+        If (attributes And SYSTEM_FILE_ATTRIBUTE_DIRECTORY) <> 0 Then
+            If d->search_recursive = 0 Then Return 0
+            If entryName = "." OrElse entryName = ".." Then Return 0
+            If (attributes And SYSTEM_FILE_ATTRIBUTE_REPARSE_POINT) <> 0 Then Return 0
+            If d->show_hidden = 0 AndAlso (Left(entryName, 1) = "." OrElse (attributes And fbHidden) <> 0) Then Return 0
+            If d->search_root_depth >= FILEDIALOG_SEARCH_DEPTH_LIMIT Then
+                d->truncated = -1
+                Return 1
+            End If
+#If Not Defined(__FB_WIN32__) And Not Defined(__FB_DOS__)
+            ' Recursing from the Unix root would walk pseudo-filesystems such
+            ' as /proc and /sys. Their mounted folders remain searchable Places.
+            If d->search_root = "/" Then Return 0
+#EndIf
+            Dim As String child_path = filedialog_JoinPath(d->search_root, entryName)
+            If Len(child_path) > FILEDIALOG_MAX_PATH_BYTES Then Return 0
+            If filedialog_QueueSearchDirectory(d, child_path, d->search_root_depth + 1) = 0 Then Return 1
+            Return 0
+        End If
+        If d->search_text = "" OrElse InStr(LCase(entryName), d->search_text) = 0 Then Return 0
+        entry_path = filedialog_JoinPath(d->search_root, entryName)
+        If Len(entry_path) > FILEDIALOG_MAX_PATH_BYTES Then Return 0
+    End If
+    Dim As LongInt required_bytes = Len(entryName) + Len(entry_path)
     If d->entry_count >= FILEDIALOG_MAX_ENTRIES OrElse _
-       Len(entryName) > FILEDIALOG_MAX_NAME_BYTES - d->name_bytes Then
+       required_bytes > FILEDIALOG_MAX_NAME_BYTES - d->name_bytes Then
         d->truncated = -1
         Return 1
     End If
     Dim As Integer entry_index = d->entry_count
     d->entries(entry_index).entry_name = entryName
+    d->entries(entry_index).entry_path = entry_path
     d->entries(entry_index).name_key = LCase(entryName)
     d->entries(entry_index).attributes = attributes
     d->entries(entry_index).size_value = -1
@@ -324,15 +399,21 @@ Private Function filedialog_AddEntry(ByRef entryName As Const String, _
         If dot_position > 1 AndAlso dot_position < Len(entryName) Then _
             d->entries(entry_index).kind_text = UCase(Mid(entryName, dot_position + 1)) & " file"
     End If
-    d->name_bytes += Len(entryName)
+    d->name_bytes += required_bytes
     d->entry_count += 1
     Return 0
+End Function
+
+Private Function filedialog_EntryPath(ByVal d As FileDialogData Ptr, ByVal entry_index As Integer) As String
+    If entry_index < 0 OrElse entry_index >= d->entry_count Then Return ""
+    If d->entries(entry_index).entry_path <> "" Then Return d->entries(entry_index).entry_path
+    Return filedialog_JoinPath(d->current_path, d->entries(entry_index).entry_name)
 End Function
 
 Private Sub filedialog_LoadDetails(ByVal d As FileDialogData Ptr, ByVal entry_index As Integer)
     If entry_index < 0 OrElse entry_index >= d->entry_count Then Exit Sub
     If d->entries(entry_index).details_loaded Then Exit Sub
-    Dim As String path_value = filedialog_JoinPath(d->current_path, d->entries(entry_index).entry_name)
+    Dim As String path_value = filedialog_EntryPath(d,entry_index)
     ' Query attributes/timestamps, never open file contents. FileLen and
     ' FileExists in older runtimes open a stream and can block on Unix FIFOs.
     ' Size is optional: legacy portable runtimes expose no safe size query.
@@ -360,6 +441,8 @@ End Sub
 
 Private Function filedialog_RowText(ByVal d As FileDialogData Ptr, ByVal entry_index As Integer) As String
     Dim As String name_text = filedialog_DisplayName(d->entries(entry_index).entry_name)
+    If d->entries(entry_index).entry_path <> "" Then _
+        name_text &= " (" & filedialog_DisplayName(filedialog_GetParentPath(d->entries(entry_index).entry_path)) & ")"
     If d->entries(entry_index).attributes And SYSTEM_FILE_ATTRIBUTE_DIRECTORY Then _
         name_text = "[" & name_text & "]"
     If d->layout_width < 540 Then Return name_text
@@ -436,13 +519,17 @@ Private Sub filedialog_RebuildView(ByVal root As Widget Ptr)
         gap \= 2
     Wend
     listbox_Clear d->lst
-    listbox_AddItem d->lst, ".."
-    listbox_SetItemData d->lst, 0, 0
+    Dim As Integer first_result_row = 0
+    If d->search_all_places = 0 Then
+        listbox_AddItem d->lst, ".."
+        listbox_SetItemData d->lst, 0, 0
+        first_result_row = 1
+    End If
     For row_index As Integer = 0 To d->visible_count - 1
         Dim As Integer entry_index = d->order(row_index)
         listbox_AddItem d->lst, filedialog_RowText(d, entry_index)
-        listbox_SetItemData d->lst, row_index + 1, entry_index + 1
-        If entry_index = old_entry Then listbox_SetSelectedIndex d->lst, row_index + 1
+        listbox_SetItemData d->lst, row_index + first_result_row, entry_index + 1
+        If entry_index = old_entry Then listbox_SetSelectedIndex d->lst, row_index + first_result_row
     Next row_index
     d->selection_serial = listbox_GetSelectionChangeCount(d->lst)
     d->selected_entry = filedialog_SelectedEntry(d)
@@ -456,6 +543,7 @@ End Sub
 
 Private Sub filedialog_Refresh(ByVal root As Widget Ptr)
     Dim As FileDialogData Ptr d = Cast(FileDialogData Ptr, root->data)
+    d->search_all_places = 0: d->search_root = "": d->search_scan_count = 0
     listbox_Clear d->lst
     For entry_index As Integer = 0 To d->entry_count - 1
         d->entries(entry_index) = Type<FileDialogEntry>()
@@ -492,6 +580,7 @@ Private Function filedialog_Navigate(ByVal root As Widget Ptr, ByVal path_value 
         d->history_index = d->history_count
         d->history_count += 1
     End If
+    d->search_all_places = 0: d->search_root = "": d->search_scan_count = 0
     d->current_path = path_value
     d->search_text = ""
     textbox_SetText d->searchBox, "", -1
@@ -537,7 +626,137 @@ End Sub
 
 Private Sub filedialog_OnRefresh(ByVal w As Widget Ptr)
     Dim As Widget Ptr root = filedialog_GetRoot(w)
-    If root <> 0 Then filedialog_Refresh root
+    If root = 0 Then Exit Sub
+    Dim As FileDialogData Ptr d = Cast(FileDialogData Ptr, root->data)
+    If d->search_all_places Then
+        filedialog_OnFindFiles w
+    Else
+        filedialog_Refresh root
+    End If
+End Sub
+
+Private Sub filedialog_OnFindFiles(ByVal w As Widget Ptr)
+    Dim As Widget Ptr root = filedialog_GetRoot(w)
+    If root = 0 Then Exit Sub
+    Dim As FileDialogData Ptr d = Cast(FileDialogData Ptr, root->data)
+    If d->mode <> FILEDIALOG_MODE_OPEN Then Exit Sub
+    Dim As String query_text = Trim(textbox_GetText(d->searchBox))
+    If query_text = "" Then
+        filedialog_Status d, "Enter filename text in Search before using Find File."
+        gui_SetFocus d->searchBox
+        Exit Sub
+    End If
+
+    d->search_text = LCase(query_text)
+    d->search_serial = Cast(TextBoxData Ptr, d->searchBox->data)->change_serial
+    d->search_all_places = -1: d->search_recursive = -1
+    d->search_scan_count = 0: d->search_root = "": d->search_root_depth = 0
+    For directory_index As Integer = 0 To d->search_directory_count - 1
+        d->search_directories(directory_index) = Type<FileDialogSearchDirectory>
+    Next directory_index
+    d->search_directory_count = 0: d->search_directory_index = 0
+    For entry_index As Integer = 0 To d->entry_count - 1
+        d->entries(entry_index) = Type<FileDialogEntry>()
+    Next entry_index
+    d->entry_count = 0: d->name_bytes = 0: d->truncated = 0
+    textbox_SetText d->filenameBox, "", -1
+    d->filename_serial = Cast(TextBoxData Ptr, d->filenameBox->data)->change_serial
+
+    ' Find File scans the current folder and registered Places recursively.
+    ' Both the entry and directory queues are bounded before walking child paths.
+    Dim As Integer places_searched = 0
+    filedialog_QueueSearchDirectory d, d->current_path, 0
+    ' Search configured paths early so a large Working folder cannot hide a
+    ' known library file when the total-entry limit is reached.
+    For path_index As Integer = 0 To d->support_path_count - 1
+        Dim As String support_path = d->support_paths(path_index)
+        If support_path = "" OrElse system_IsDirectory(support_path) = 0 Then Continue For
+        If filedialog_QueueSearchDirectory(d, support_path, 0) = 0 Then Exit For
+    Next path_index
+    For place_index As Integer = 0 To d->place_count - 1
+        If d->truncated Then Exit For
+        Dim As String place_path = d->place_paths(place_index)
+        If place_path = "" OrElse system_IsDirectory(place_path) = 0 Then Continue For
+        If filedialog_QueueSearchDirectory(d, place_path, 0) = 0 Then Exit For
+    Next place_index
+    While d->search_directory_index < d->search_directory_count AndAlso d->truncated = 0
+        Dim As Integer directory_index = d->search_directory_index
+        d->search_root = d->search_directories(directory_index).path_value
+        d->search_root_depth = d->search_directories(directory_index).depth
+        d->search_directory_index += 1
+        places_searched += 1
+        d->directory_scan_count += 1
+        system_EnumerateDirectory(d->search_root, _
+            SYSTEM_DIRECTORY_FILES Or SYSTEM_DIRECTORY_FOLDERS, @filedialog_AddEntry, d)
+    Wend
+    d->search_root = ""
+    listbox_SetSelectedIndex d->lst, -1
+    d->selected_entry = -2
+    filedialog_RebuildView root
+    If d->entry_count = 0 Then
+        filedialog_Status d, "Find File found no matching files in " & LTrim(Str(places_searched)) & " locations."
+    Else
+        filedialog_Status d, "Find File found " & LTrim(Str(d->visible_count)) & " result(s) in " & LTrim(Str(places_searched)) & " locations."
+    End If
+    If d->truncated Then filedialog_Status d, "Find File stopped at the search limit. Narrow the search and try again."
+    gui_SetFocus d->lst
+End Sub
+
+Private Sub filedialog_OnOptions(ByVal w As Widget Ptr)
+    Dim As Widget Ptr root = filedialog_GetRoot(w)
+    If root = 0 Then Exit Sub
+    Dim As FileDialogData Ptr d = Cast(FileDialogData Ptr, root->data)
+    If (d->mode <> FILEDIALOG_MODE_OPEN AndAlso d->mode <> FILEDIALOG_MODE_SAVE) OrElse _
+       d->options_enabled = 0 OrElse d->finished Then Exit Sub
+    ' Leave the selected path and filename in place while the owner opens its options dialog.
+    d->options_requested = -1
+End Sub
+
+Private Sub filedialog_OnSearchPaths(ByVal w As Widget Ptr)
+    Dim As Widget Ptr root = filedialog_GetRoot(w)
+    If root = 0 Then Exit Sub
+    Dim As FileDialogData Ptr d = Cast(FileDialogData Ptr, root->data)
+    If d->mode <> FILEDIALOG_MODE_OPEN Then Exit Sub
+    If d->support_path_count = 0 Then
+        filedialog_Status d, "Set support paths in Options before searching them."
+        Exit Sub
+    End If
+    Dim As String query_text = Trim(textbox_GetText(d->searchBox))
+    If query_text = "" Then
+        filedialog_Status d, "Enter filename text in Search before searching support paths."
+        gui_SetFocus d->searchBox
+        Exit Sub
+    End If
+    d->search_text = LCase(query_text)
+    d->search_serial = Cast(TextBoxData Ptr, d->searchBox->data)->change_serial
+    d->search_all_places = -1: d->search_scan_count = 0: d->search_root = ""
+    For entry_index As Integer = 0 To d->entry_count - 1
+        d->entries(entry_index) = Type<FileDialogEntry>()
+    Next entry_index
+    d->entry_count = 0: d->name_bytes = 0: d->truncated = 0
+    textbox_SetText d->filenameBox, "", -1
+    d->filename_serial = Cast(TextBoxData Ptr, d->filenameBox->data)->change_serial
+    Dim As Integer paths_searched = 0
+    For path_index As Integer = 0 To d->support_path_count - 1
+        Dim As String path_value = d->support_paths(path_index)
+        If path_value = "" OrElse system_IsDirectory(path_value) = 0 Then Continue For
+        d->search_root = path_value
+        paths_searched += 1
+        d->directory_scan_count += 1
+        system_EnumerateDirectory path_value, SYSTEM_DIRECTORY_FILES, @filedialog_AddEntry, d
+        If d->truncated Then Exit For
+    Next path_index
+    d->search_root = ""
+    listbox_SetSelectedIndex d->lst, -1
+    d->selected_entry = -2
+    filedialog_RebuildView root
+    If d->entry_count = 0 Then
+        filedialog_Status d, "Search paths found no matching files in " & LTrim(Str(paths_searched)) & " paths."
+    Else
+        filedialog_Status d, "Search paths found " & LTrim(Str(d->visible_count)) & " result(s) in " & LTrim(Str(paths_searched)) & " paths."
+    End If
+    If d->truncated Then filedialog_Status d, "Search stopped at the entry limit. Narrow the search and try again."
+    gui_SetFocus d->lst
 End Sub
 
 Private Sub filedialog_OnOpenFolder(ByVal w As Widget Ptr)
@@ -638,7 +857,11 @@ Private Sub filedialog_OnOK(ByVal w As Widget Ptr)
             If d->entries(entry_index).attributes And SYSTEM_FILE_ATTRIBUTE_DIRECTORY Then
                 filedialog_OnOpenFolder w : Exit Sub
             End If
-            filename = d->entries(entry_index).entry_name
+            If d->search_all_places AndAlso d->entries(entry_index).entry_path <> "" Then
+                filename = d->entries(entry_index).entry_path
+            Else
+                filename = d->entries(entry_index).entry_name
+            End If
         End If
     End If
     Dim As String path_value = filedialog_ResolvePath(filename, d->current_path)
@@ -776,13 +999,25 @@ Private Sub filedialog_Layout(ByVal root As Widget Ptr)
     Dim As Integer width_value = d->win->w, height_value = d->win->h
     Dim As Integer sidebar = IIf(width_value >= 600, 134, 0)
     Dim As Integer list_x = 10 + sidebar
-    Dim As Integer list_width = width_value - list_x - 10
+    Dim As Integer preview_width = 0
+    Dim As Integer preview_visible = (d->previewWidget <> 0 AndAlso d->preview_enabled <> 0 AndAlso _
+        d->mode = FILEDIALOG_MODE_OPEN AndAlso width_value >= 660)
+    If preview_visible Then preview_width = 244
+    Dim As Integer list_width = width_value - list_x - 10 - preview_width - IIf(preview_visible, 10, 0)
     Dim As Integer list_y = top_value + 70
     Dim As Integer list_height = height_value - list_y - 126
     gui_SetBounds d->btn_back, 10, top_value, 48, 26
     gui_SetBounds d->btn_forward, 62, top_value, 48, 26
     gui_SetBounds d->btn_up, 114, top_value, 48, 26
     gui_SetBounds d->btn_refresh, 166, top_value, 68, 26
+    d->btn_find_files->visible = (d->mode = FILEDIALOG_MODE_OPEN AndAlso width_value >= 480)
+    gui_SetBounds d->btn_find_files, 244, top_value, 100, 26
+    d->btn_search_paths->visible = (d->mode = FILEDIALOG_MODE_OPEN AndAlso width_value >= 480 AndAlso d->support_path_count > 0)
+    gui_SetBounds d->btn_search_paths, 350, top_value, 112, 26
+    d->previewBox->visible = (d->previewWidget <> 0 AndAlso d->mode = FILEDIALOG_MODE_OPEN AndAlso width_value >= 660)
+    If d->previewBox->visible Then gui_SetBounds d->previewBox, 468, top_value + 3, 128, 20
+    d->btn_options->visible = ((d->mode = FILEDIALOG_MODE_OPEN OrElse d->mode = FILEDIALOG_MODE_SAVE) AndAlso d->options_enabled <> 0)
+    gui_SetBounds d->btn_options, width_value - 278, height_value - 36, 82, 26
     gui_SetBounds d->btn_new, width_value - 112, top_value, 102, 26
     gui_SetBounds d->pathBox, 10, top_value + 34, width_value - 74, 26
     gui_SetBounds d->btn_go, width_value - 58, top_value + 34, 48, 26
@@ -790,6 +1025,10 @@ Private Sub filedialog_Layout(ByVal root As Widget Ptr)
     gui_SetBounds d->placesLabel, 10, list_y, 122, 20
     gui_SetBounds d->places, 10, list_y + 24, 122, list_height - 24
     gui_SetBounds d->lst, list_x, list_y, list_width, list_height
+    If d->previewWidget <> 0 Then
+        d->previewWidget->visible = preview_visible
+        If preview_visible Then gui_SetBounds d->previewWidget, list_x + list_width + 10, list_y, preview_width, list_height
+    End If
     Dim As Integer name_width = list_width - 16
     Dim As Integer type_width = 0, size_width = 0, date_width = 0
     If width_value >= 540 Then type_width = 92 : date_width = 126
@@ -809,7 +1048,8 @@ Private Sub filedialog_Layout(ByVal root As Widget Ptr)
         End If
         listbox_SetColumn d->lst, date_column, "Modified" & IIf(d->sort_column = 3, sort_arrow, ""), date_width
     End If
-    For row_index As Integer = 1 To listbox_GetItemCount(d->lst) - 1
+    Dim As Integer first_file_row = IIf(d->search_all_places, 0, 1)
+    For row_index As Integer = first_file_row To listbox_GetItemCount(d->lst) - 1
         Dim As LongInt entry_id
         If listbox_GetItemData(d->lst, row_index, entry_id) Then
             If entry_id >= 1 AndAlso entry_id <= d->entry_count Then
@@ -826,7 +1066,27 @@ Private Sub filedialog_Layout(ByVal root As Widget Ptr)
     gui_SetBounds d->filterBox, 66, bottom_y + 29, 132, 24
     gui_SetBounds d->nameLabel, 208, bottom_y + 34, 48, 20
     gui_SetBounds d->filenameBox, 258, bottom_y + 29, width_value - 268, 24
-    gui_SetBounds d->statusLabel, 10, bottom_y + 59, width_value - 20, 20
+    d->readOnlyBox->visible = (d->mode = FILEDIALOG_MODE_OPEN AndAlso d->read_only_option_enabled)
+    d->initialViewBox->visible = (d->mode = FILEDIALOG_MODE_OPEN AndAlso d->choose_initial_view_enabled)
+    d->saveOptionBox->visible = (d->mode = FILEDIALOG_MODE_SAVE AndAlso d->save_option_enabled)
+    Dim As Integer status_x = 10
+    If d->mode = FILEDIALOG_MODE_SAVE AndAlso d->save_option_enabled Then
+        gui_SetBounds d->saveOptionBox, 10, bottom_y + 59, 142, 20
+        status_x = 160
+    ElseIf d->mode = FILEDIALOG_MODE_OPEN AndAlso d->read_only_option_enabled Then
+        gui_SetBounds d->readOnlyBox, 10, bottom_y + 59, 142, 20
+        status_x = 160
+    End If
+    If d->mode = FILEDIALOG_MODE_OPEN AndAlso d->choose_initial_view_enabled Then
+        If d->read_only_option_enabled Then
+            gui_SetBounds d->initialViewBox, 160, bottom_y + 59, 174, 20
+            status_x = 342
+        Else
+            gui_SetBounds d->initialViewBox, 10, bottom_y + 59, 174, 20
+            status_x = 192
+        End If
+    End If
+    gui_SetBounds d->statusLabel, status_x, bottom_y + 59, width_value - status_x - 10, 20
     gui_SetBounds d->btn_enter, 10, height_value - 36, 112, 26
     gui_SetBounds d->btn_ok, width_value - 186, height_value - 36, 82, 26
     gui_SetBounds d->btn_cancel, width_value - 96, height_value - 36, 86, 26
@@ -840,7 +1100,12 @@ Private Sub filedialog_Update(ByVal root As Widget Ptr)
     If serial_value <> d->search_serial Then
         d->search_serial = serial_value
         d->search_text = LCase(textbox_GetText(d->searchBox))
-        filedialog_RebuildView root
+        If d->search_all_places Then
+            ' Changing the query leaves multi-place mode; click Find File to scan the places again.
+            filedialog_Refresh root
+        Else
+            filedialog_RebuildView root
+        End If
     End If
     If checkbox_GetChecked(d->hiddenBox) <> d->show_hidden Then
         d->show_hidden = checkbox_GetChecked(d->hiddenBox)
@@ -870,11 +1135,22 @@ Private Sub filedialog_Update(ByVal root As Widget Ptr)
         d->selection_serial = serial_value : d->selected_entry = entry_index
         If entry_index >= 0 AndAlso d->creating_folder = 0 AndAlso d->mode <> FILEDIALOG_MODE_FOLDER Then
             If (d->entries(entry_index).attributes And SYSTEM_FILE_ATTRIBUTE_DIRECTORY) = 0 Then
-                textbox_SetText d->filenameBox, d->entries(entry_index).entry_name, -1
+                Dim As String selected_name = d->entries(entry_index).entry_name
+                If d->search_all_places AndAlso d->entries(entry_index).entry_path <> "" Then _
+                    selected_name = d->entries(entry_index).entry_path
+                textbox_SetText d->filenameBox, selected_name, -1
                 d->filename_serial = Cast(TextBoxData Ptr, d->filenameBox->data)->change_serial
                 If d->pending_replace <> "" Then filedialog_ClearReplace d
             End If
         End If
+        If d->previewWidget <> 0 Then _
+            gui_InvalidateRect d->previewWidget->ax, d->previewWidget->ay, d->previewWidget->w, d->previewWidget->h
+    End If
+    If d->previewWidget <> 0 AndAlso checkbox_GetChecked(d->previewBox) <> d->preview_enabled Then
+        d->preview_enabled = checkbox_GetChecked(d->previewBox)
+        d->layout_width = -1
+        filedialog_Layout root
+        gui_InvalidateRect d->previewWidget->ax, d->previewWidget->ay, d->previewWidget->w, d->previewWidget->h
     End If
     serial_value = listbox_GetDoubleActivationCount(d->lst)
     If serial_value <> d->double_serial Then
@@ -936,6 +1212,24 @@ Function filedialog_AddPlace(ByVal w As Widget Ptr, ByVal caption As String, ByV
     Return -1
 End Function
 
+Function filedialog_AddSupportPath(ByVal w As Widget Ptr, ByVal pathValue As String) As Integer
+    If filedialog_GetRoot(w) <> w OrElse w = 0 Then Return 0
+    Dim As FileDialogData Ptr d = Cast(FileDialogData Ptr, w->data)
+    If d->mode <> FILEDIALOG_MODE_OPEN OrElse d->support_path_count >= FILEDIALOG_SUPPORT_PATH_CAPACITY Then Return 0
+    pathValue = filedialog_ResolvePath(pathValue, d->current_path)
+    If pathValue = "" OrElse system_IsDirectory(pathValue) = 0 Then Return 0
+    For path_index As Integer = 0 To d->support_path_count - 1
+        If d->support_paths(path_index) = pathValue Then Return 0
+    Next path_index
+    d->support_paths(d->support_path_count) = pathValue
+    d->support_path_count += 1
+    Dim As String directory_name = filedialog_DisplayName(pathValue)
+    filedialog_AddPlace w, "Support: " & Left(directory_name, 72), pathValue
+    d->layout_width = -1
+    filedialog_Layout w
+    Return -1
+End Function
+
 Private Function filedialog_CreateModeAtPath(ByVal nm As String, ByVal x As Integer, _
     ByVal y As Integer, ByVal initialPath As String, ByVal initialFilename As String, _
     ByVal mode As Integer) As Widget Ptr
@@ -980,6 +1274,10 @@ Private Function filedialog_CreateModeAtPath(ByVal nm As String, ByVal x As Inte
     d->btn_up = button_Create(nm & "_up", "Up", 0, 0, 48, 26, @filedialog_OnUp)
     d->btn_refresh = button_Create(nm & "_refresh", "Refresh", 0, 0, 68, 26, @filedialog_OnRefresh)
     d->btn_new = button_Create(nm & "_new", "New folder", 0, 0, 102, 26, @filedialog_OnNewFolder)
+    d->btn_find_files = button_Create(nm & "_find_files", "Find File", 0, 0, 100, 26, @filedialog_OnFindFiles)
+    d->btn_search_paths = button_Create(nm & "_search_paths", "Search Paths", 0, 0, 112, 26, @filedialog_OnSearchPaths)
+    d->btn_options = button_Create(nm & "_options", "Options", 0, 0, 82, 26, @filedialog_OnOptions)
+    d->btn_options->visible = 0
     d->pathBox = textbox_Create(nm & "_path", d->current_path, 0, 0, 200, 26, 0, 0)
     d->btn_go = button_Create(nm & "_go", "Go", 0, 0, 48, 26, @filedialog_OnGo)
     d->lst = listbox_Create(nm & "_lst", 0, 0, 200, 160)
@@ -992,6 +1290,14 @@ Private Function filedialog_CreateModeAtPath(ByVal nm As String, ByVal x As Inte
     d->searchBox = textbox_Create(nm & "_search", "", 0, 0, 200, 24, 0, 0)
     textbox_SetCueBanner d->searchBox, "Find in this folder", RGB(100, 100, 100)
     d->hiddenBox = checkbox_Create(nm & "_hidden", "Show hidden", 0, 0)
+    d->readOnlyBox = checkbox_Create(nm & "_read_only", "Open read-only", 0, 0)
+    d->readOnlyBox->visible = 0
+    d->initialViewBox = checkbox_Create(nm & "_initial_view", "Choose initial view", 0, 0)
+    d->initialViewBox->visible = 0
+    d->saveOptionBox = checkbox_Create(nm & "_save_option", "Binary DXF", 0, 0)
+    d->saveOptionBox->visible = 0
+    d->previewBox = checkbox_Create(nm & "_preview", "Preview", 0, 0)
+    d->previewBox->visible = 0
     d->filterLabel = label_Create(nm & "_filter_label", "Filter", 0, 0, LABEL_COLOR_THEME_TEXT)
     d->filterBox = textbox_Create(nm & "_filter", "*", 0, 0, 132, 24, 0, 0)
     d->nameLabel = label_Create(nm & "_name_label", "Name", 0, 0, LABEL_COLOR_THEME_TEXT)
@@ -1002,10 +1308,11 @@ Private Function filedialog_CreateModeAtPath(ByVal nm As String, ByVal x As Inte
     d->btn_ok = button_Create(nm & "_ok", IIf(mode = FILEDIALOG_MODE_SAVE, "Save", _
         IIf(mode = FILEDIALOG_MODE_FOLDER, "Select", "Open")), 0, 0, 82, 26, @filedialog_OnOK)
     d->btn_cancel = button_Create(nm & "_cancel", "Cancel", 0, 0, 86, 26, @filedialog_OnCancel)
-    Dim As Widget Ptr controls(0 To 21) = {d->btn_back, d->btn_forward, d->btn_up, d->btn_refresh, d->btn_new, _
+    Dim As Widget Ptr controls(0 To 27) = {d->btn_back, d->btn_forward, d->btn_up, d->btn_refresh, d->btn_find_files, d->btn_search_paths, d->btn_new, _
         d->pathBox, d->btn_go, d->lst, d->placesLabel, d->places, d->searchLabel, d->searchBox, d->hiddenBox, _
-        d->filterLabel, d->filterBox, d->nameLabel, d->filenameBox, d->statusLabel, d->btn_enter, d->btn_ok, d->btn_cancel, 0}
-    For control_index As Integer = 0 To 20
+        d->filterLabel, d->filterBox, d->nameLabel, d->filenameBox, d->statusLabel, d->btn_enter, d->btn_ok, d->btn_cancel, _
+        d->readOnlyBox, d->initialViewBox, d->btn_options, d->previewBox, d->saveOptionBox}
+    For control_index As Integer = 0 To 27
         filedialog_OwnControl controls(control_index), d->win
     Next control_index
     textbox_SetInputLimit d->pathBox, FILEDIALOG_MAX_PATH_BYTES
@@ -1037,7 +1344,16 @@ Private Function filedialog_CreateModeAtPath(ByVal nm As String, ByVal x As Inte
         filedialog_AddPlace root, "Downloads", filedialog_JoinPath(home_path, "Downloads")
     End If
     filedialog_AddPlace root, "Working folder", CurDir
+#If Defined(__FB_WIN32__) And Not Defined(__FB_DOS__)
+    ' Add available drive roots to Find File while leaving the current folder unchanged.
+    For drive_index As Integer = Asc("A") To Asc("Z")
+        Dim As String drive_path = Chr(drive_index) & ":\"
+        If system_IsDirectory(drive_path) Then _
+            filedialog_AddPlace root, "Drive " & Chr(drive_index), drive_path
+    Next drive_index
+#Else
     filedialog_AddPlace root, "Root", Left(d->current_path, filedialog_RootLength(d->current_path))
+#EndIf
 #If Not Defined(__FB_WIN32__) And Not Defined(__FB_DOS__)
     filedialog_AddPlace root, "Volumes", "/Volumes"
     filedialog_AddPlace root, "Media", "/media"
@@ -1173,15 +1489,122 @@ Function filedialog_GetSelectedFile(ByVal w As Widget Ptr) As String
     Return ""
 End Function
 
+Function filedialog_GetHighlightedFile(ByVal w As Widget Ptr) As String
+    Dim As Widget Ptr root = filedialog_GetRoot(w)
+    If root = 0 Then Return ""
+    Dim As FileDialogData Ptr d = Cast(FileDialogData Ptr, root->data)
+    If d->mode <> FILEDIALOG_MODE_OPEN OrElse d->selected_entry < 0 OrElse _
+       d->selected_entry >= d->entry_count Then Return ""
+    If (d->entries(d->selected_entry).attributes And SYSTEM_FILE_ATTRIBUTE_DIRECTORY) <> 0 Then Return ""
+    If d->search_all_places AndAlso d->entries(d->selected_entry).entry_path <> "" Then _
+        Return d->entries(d->selected_entry).entry_path
+    Return filedialog_JoinPath(d->current_path, d->entries(d->selected_entry).entry_name)
+End Function
+
+Function filedialog_SetPreviewWidget(ByVal w As Widget Ptr, ByVal previewWidget As Widget Ptr) As Integer
+    If w = 0 OrElse filedialog_GetRoot(w) <> w OrElse previewWidget = 0 Then Return 0
+    Dim As FileDialogData Ptr d = Cast(FileDialogData Ptr, w->data)
+    If d->mode <> FILEDIALOG_MODE_OPEN OrElse (d->previewWidget <> 0 AndAlso d->previewWidget <> previewWidget) Then Return 0
+    If d->previewWidget = previewWidget Then Return -1
+    d->previewWidget = previewWidget
+    filedialog_OwnControl d->previewWidget, d->win
+    d->preview_enabled = checkbox_GetChecked(d->previewBox)
+    d->layout_width = -1
+    filedialog_Layout w
+    Return -1
+End Function
+
 Function filedialog_GetResultState(ByVal w As Widget Ptr) As Integer
     If w = 0 OrElse filedialog_GetRoot(w) <> w Then Return 0
     Return Cast(FileDialogData Ptr, w->data)->finished
+End Function
+
+Function filedialog_SetReadOnlyOption(ByVal w As Widget Ptr, ByVal enabled_state As Integer) As Integer
+    If w = 0 OrElse filedialog_GetRoot(w) <> w Then Return 0
+    Dim As FileDialogData Ptr d = Cast(FileDialogData Ptr, w->data)
+    If d->mode <> FILEDIALOG_MODE_OPEN OrElse d->readOnlyBox = 0 Then Return 0
+    d->read_only_option_enabled = (enabled_state <> 0)
+    d->readOnlyBox->visible = d->read_only_option_enabled
+    If d->read_only_option_enabled = 0 Then checkbox_SetChecked d->readOnlyBox, 0
+    d->layout_width = -1
+    filedialog_Layout w
+    Return -1
+End Function
+
+Function filedialog_GetReadOnlyOption(ByVal w As Widget Ptr) As Integer
+    If w = 0 OrElse filedialog_GetRoot(w) <> w Then Return 0
+    Dim As FileDialogData Ptr d = Cast(FileDialogData Ptr, w->data)
+    If d->read_only_option_enabled = 0 OrElse d->readOnlyBox = 0 Then Return 0
+    Return checkbox_GetChecked(d->readOnlyBox) <> 0
+End Function
+
+Function filedialog_SetInitialViewOption(ByVal w As Widget Ptr, ByVal enabled_state As Integer) As Integer
+    If w = 0 OrElse filedialog_GetRoot(w) <> w Then Return 0
+    Dim As FileDialogData Ptr d = Cast(FileDialogData Ptr, w->data)
+    If d->mode <> FILEDIALOG_MODE_OPEN OrElse d->initialViewBox = 0 Then Return 0
+    d->choose_initial_view_enabled = (enabled_state <> 0)
+    d->initialViewBox->visible = d->choose_initial_view_enabled
+    If d->choose_initial_view_enabled = 0 Then checkbox_SetChecked d->initialViewBox, 0
+    d->layout_width = -1
+    filedialog_Layout w
+    Return -1
+End Function
+
+Function filedialog_GetInitialViewOption(ByVal w As Widget Ptr) As Integer
+    If w = 0 OrElse filedialog_GetRoot(w) <> w Then Return 0
+    Dim As FileDialogData Ptr d = Cast(FileDialogData Ptr, w->data)
+    If d->choose_initial_view_enabled = 0 OrElse d->initialViewBox = 0 Then Return 0
+    Return checkbox_GetChecked(d->initialViewBox) <> 0
+End Function
+
+Function filedialog_SetSaveOption(ByVal w As Widget Ptr, ByRef label_text As Const String, ByVal enabled_state As Integer, ByVal checked_state As Integer) As Integer
+    If w = 0 OrElse filedialog_GetRoot(w) <> w Then Return 0
+    Dim As FileDialogData Ptr d = Cast(FileDialogData Ptr, w->data)
+    If d->mode <> FILEDIALOG_MODE_SAVE OrElse d->saveOptionBox = 0 OrElse _
+       Len(label_text) < 1 OrElse Len(label_text) > 64 OrElse InStr(label_text, Chr(0)) Then Return 0
+    If checkbox_SetText(d->saveOptionBox, label_text) = 0 Then Return 0
+    d->save_option_enabled = (enabled_state <> 0)
+    If d->save_option_enabled Then
+        checkbox_SetChecked d->saveOptionBox, checked_state <> 0
+    Else
+        checkbox_SetChecked d->saveOptionBox, 0
+    End If
+    d->layout_width = -1
+    filedialog_Layout w
+    Return -1
+End Function
+
+Function filedialog_GetSaveOption(ByVal w As Widget Ptr) As Integer
+    If w = 0 OrElse filedialog_GetRoot(w) <> w Then Return 0
+    Dim As FileDialogData Ptr d = Cast(FileDialogData Ptr, w->data)
+    If d->mode <> FILEDIALOG_MODE_SAVE OrElse d->save_option_enabled = 0 OrElse d->saveOptionBox = 0 Then Return 0
+    Return checkbox_GetChecked(d->saveOptionBox) <> 0
 End Function
 
 Function filedialog_SetTitle(ByVal w As Widget Ptr, ByVal title_text As String) As Integer
     If w = 0 OrElse filedialog_GetRoot(w) <> w Then Return 0
     If Len(title_text) < 1 OrElse Len(title_text) > FILEDIALOG_MAX_TITLE_BYTES OrElse InStr(title_text, Chr(0)) Then Return 0
     Return subwindow_SetTitle(Cast(FileDialogData Ptr, w->data)->win, title_text)
+End Function
+
+Function filedialog_SetOptionsButton(ByVal w As Widget Ptr, ByVal enabled_state As Integer) As Integer
+    If w = 0 OrElse filedialog_GetRoot(w) <> w Then Return 0
+    Dim As FileDialogData Ptr d = Cast(FileDialogData Ptr, w->data)
+    If d->mode <> FILEDIALOG_MODE_OPEN AndAlso d->mode <> FILEDIALOG_MODE_SAVE Then Return 0
+    d->options_enabled = (enabled_state <> 0)
+    d->options_requested = 0
+    d->layout_width = 0
+    filedialog_Layout w
+    Return -1
+End Function
+
+Function filedialog_OptionsRequested(ByVal w As Widget Ptr) As Integer
+    If w = 0 OrElse filedialog_GetRoot(w) <> w Then Return 0
+    Dim As FileDialogData Ptr d = Cast(FileDialogData Ptr, w->data)
+    If (d->mode <> FILEDIALOG_MODE_OPEN AndAlso d->mode <> FILEDIALOG_MODE_SAVE) OrElse _
+       d->options_enabled = 0 OrElse d->options_requested = 0 Then Return 0
+    d->options_requested = 0
+    Return -1
 End Function
 
 Function filedialog_SetFilter(ByVal w As Widget Ptr, ByVal filterPattern As String) As Integer

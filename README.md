@@ -42,7 +42,7 @@ file.
 
 ## Get the editor
 
-The current version is **0.9.0-dev**. Download the package for your system from
+The current version is **0.9.1**. Download the package for your system from
 [GitHub Releases](https://github.com/fbxl-sj0/OpenMidiSesh/releases). Extract
 the complete archive and run <code>OpenMidiSesh.exe</code> on Windows or
 <code>openmidisesh</code> on Unix-like systems. Package-specific runtime
@@ -53,10 +53,12 @@ requirements are listed in [Dependencies](docs/DEPENDENCIES.md).
 | Windows x86_64 | Desktop editor | WinMM input and sfxlib output |
 | Linux x86_64 | Desktop editor | ALSA Sequencer input and output |
 | FreeBSD, NetBSD, OpenBSD, Haiku x86_64 | Desktop editor | Not available; built-in sound and editing work |
-| Android | Touch-oriented package | Not available; built-in sound and editing work |
+| Android 6.0+ | Adaptive Touch interface | System MIDI input, including USB MIDI; built-in sound |
 
 Android is built through a separate packaging script. It shares the editor,
-score, gestures, and synthesizer with the desktop program.
+score, gestures, and synthesizer with the desktop program. The Monitor button
+plays incoming MIDI without recording. The toolbar adapts to narrow windows
+and screen rotation; short displays can switch between Score and Mixer.
 
 ## Build from source
 

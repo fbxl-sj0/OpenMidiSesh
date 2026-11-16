@@ -97,6 +97,84 @@ Private Function statusbar_FutureFlexibleCount( _
     Return panel_count
 End Function
 
+
+' The renderer and damage callers share these exact panel rectangles.
+Private Function statusbar_CalculatePanelBounds( _
+    ByVal bar_widget As Widget Ptr, _
+    ByVal bar_data As StatusBarData Ptr, _
+    ByVal target_index As Integer, _
+    ByRef x As Integer, ByRef y As Integer, _
+    ByRef widthValue As Integer, ByRef heightValue As Integer _
+) As Integer
+    Dim As Integer available_width
+    Dim As Integer maximum_panel_width
+    Dim As Integer future_fixed_width
+    Dim As Integer flexible_count
+    Dim As Integer panel_width
+    Dim As Integer remaining_width
+    Dim As LongInt panel_left
+
+    x = 0: y = 0: widthValue = 0: heightValue = 0
+    If bar_widget = 0 OrElse bar_data = 0 OrElse _
+       bar_data->panel_count < 1 OrElse _
+       bar_data->panel_count > STATUSBAR_MAX_PANELS OrElse _
+       target_index < 0 OrElse target_index >= bar_data->panel_count Then _
+        Return 0
+
+    available_width = bar_widget->w - 2
+    If available_width < 1 Then Return 0
+    remaining_width = available_width
+    panel_left = CLngInt(bar_widget->ax) + 1
+
+    For panel_index As Integer = 0 To target_index
+        maximum_panel_width = remaining_width - _
+            (bar_data->panel_count - panel_index - 1)
+        If maximum_panel_width < 1 Then maximum_panel_width = 1
+        If panel_index = bar_data->panel_count - 1 Then
+            panel_width = remaining_width
+        ElseIf bar_data->panel_width(panel_index) > 0 Then
+            panel_width = bar_data->panel_width(panel_index)
+            If panel_width > maximum_panel_width Then _
+                panel_width = maximum_panel_width
+        Else
+            future_fixed_width = statusbar_FutureFixedWidth( _
+                bar_data, panel_index + 1 _
+            )
+            flexible_count = statusbar_FutureFlexibleCount( _
+                bar_data, panel_index _
+            )
+            panel_width = remaining_width - future_fixed_width
+            If flexible_count > 0 Then panel_width \= flexible_count
+            If panel_width < 1 Then panel_width = 1
+            If panel_width > maximum_panel_width Then _
+                panel_width = maximum_panel_width
+        End If
+
+        If panel_index = target_index Then
+            Dim As LongInt right_edge = panel_left + panel_width
+            Dim As LongInt widget_right = _
+                CLngInt(bar_widget->ax) + bar_widget->w - 1
+            If panel_left < bar_widget->ax Then panel_left = bar_widget->ax
+            If right_edge > widget_right Then right_edge = widget_right
+            If right_edge <= panel_left OrElse _
+               panel_left < -2147483648 OrElse _
+               panel_left > 2147483647 OrElse _
+               right_edge - panel_left > 2147483647 Then Return 0
+            x = CInt(panel_left)
+            y = bar_widget->ay
+            widthValue = CInt(right_edge - panel_left)
+            heightValue = bar_widget->h
+            Return -1
+        End If
+
+        panel_left += panel_width
+        remaining_width -= panel_width
+        If remaining_width < 1 Then Return 0
+    Next panel_index
+
+    Return 0
+End Function
+
 ' -------------------------------------------------------------------------
 ' Construction and public metadata API
 ' -------------------------------------------------------------------------
@@ -212,6 +290,22 @@ Function statusbar_GetPanelText( _
 End Function
 
 
+Function statusbar_GetPanelBounds( _
+    ByVal bar_widget As Widget Ptr, ByVal panel_index As Integer, _
+    ByRef x As Integer, ByRef y As Integer, _
+    ByRef widthValue As Integer, ByRef heightValue As Integer _
+) As Integer
+    If bar_widget = 0 OrElse bar_widget->data = 0 Then
+        x = 0: y = 0: widthValue = 0: heightValue = 0
+        Return 0
+    End If
+    Return statusbar_CalculatePanelBounds( _
+        bar_widget, Cast(StatusBarData Ptr, bar_widget->data), panel_index, _
+        x, y, widthValue, heightValue _
+    )
+End Function
+
+
 Function statusbar_GetPanelAlignment( _
     ByVal bar_widget As Widget Ptr, _
     ByVal panel_index As Integer _
@@ -240,15 +334,10 @@ End Function
 
 Sub statusbar_Render(ByVal bar_widget As Widget Ptr)
     Dim As StatusBarData Ptr bar_data
-    Dim As Integer available_width
-    Dim As Integer flexible_count
-    Dim As Integer future_fixed_width
-    Dim As Integer maximum_panel_width
     Dim As Integer panel_index
-    Dim As Integer panel_left
+    Dim As Integer panel_left, panel_top
     Dim As Integer panel_text_width
-    Dim As Integer panel_width
-    Dim As Integer remaining_width
+    Dim As Integer panel_width, panel_height
     Dim As String display_text
 
     If bar_widget = 0 OrElse bar_widget->data = 0 Then Exit Sub
@@ -261,33 +350,12 @@ Sub statusbar_Render(ByVal bar_widget As Widget Ptr)
         bar_widget->ax + bar_widget->w - 1, bar_widget->ay, _
         theme_GetColor(GUI_COLOR_BORDER)
 
-    available_width = bar_widget->w - 2
-    If available_width < 1 OrElse bar_data->panel_count < 1 Then Exit Sub
-    remaining_width = available_width
-    panel_left = bar_widget->ax + 1
+    If bar_data->panel_count < 1 Then Exit Sub
     For panel_index = 0 To bar_data->panel_count - 1
-        maximum_panel_width = remaining_width - _
-            (bar_data->panel_count - panel_index - 1)
-        If maximum_panel_width < 1 Then maximum_panel_width = 1
-        If panel_index = bar_data->panel_count - 1 Then
-            panel_width = remaining_width
-        ElseIf bar_data->panel_width(panel_index) > 0 Then
-            panel_width = bar_data->panel_width(panel_index)
-            If panel_width > maximum_panel_width Then _
-                panel_width = maximum_panel_width
-        Else
-            future_fixed_width = statusbar_FutureFixedWidth( _
-                bar_data, panel_index + 1 _
-            )
-            flexible_count = statusbar_FutureFlexibleCount( _
-                bar_data, panel_index _
-            )
-            panel_width = remaining_width - future_fixed_width
-            If flexible_count > 0 Then panel_width \= flexible_count
-            If panel_width < 1 Then panel_width = 1
-            If panel_width > maximum_panel_width Then _
-                panel_width = maximum_panel_width
-        End If
+        If statusbar_CalculatePanelBounds( _
+            bar_widget, bar_data, panel_index, panel_left, panel_top, _
+            panel_width, panel_height _
+        ) = 0 Then Continue For
 
         panel_text_width = panel_width - STATUSBAR_TEXT_PADDING * 2
         If panel_text_width > 0 Then
@@ -295,22 +363,19 @@ Sub statusbar_Render(ByVal bar_widget As Widget Ptr)
                 bar_data->panel_text(panel_index), panel_text_width _
             )
             backend_PrintAligned _
-                panel_left + STATUSBAR_TEXT_PADDING, bar_widget->ay + 1, _
-                panel_text_width, bar_widget->h - 2, _
+                panel_left + STATUSBAR_TEXT_PADDING, panel_top + 1, _
+                panel_text_width, panel_height - 2, _
                 theme_GetColor(GUI_COLOR_TEXT), display_text, _
                 BACKEND_FONT_DEFAULT, bar_data->panel_alignment(panel_index), _
                 BACKEND_ALIGN_MIDDLE
         End If
         If panel_index < bar_data->panel_count - 1 Then
             backend_Line _
-                panel_left + panel_width - 1, bar_widget->ay + 3, _
+                panel_left + panel_width - 1, panel_top + 3, _
                 panel_left + panel_width - 1, _
-                bar_widget->ay + bar_widget->h - 4, _
+                panel_top + panel_height - 4, _
                 theme_GetColor(GUI_COLOR_BORDER)
         End If
-        panel_left += panel_width
-        remaining_width -= panel_width
-        If remaining_width < 1 Then Exit For
     Next panel_index
 End Sub
 

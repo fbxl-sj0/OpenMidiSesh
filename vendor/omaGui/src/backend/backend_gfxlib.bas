@@ -14,7 +14,7 @@
         - recreate those screens when an application changes window mode
         - expose supported native window activation through one backend call
         - configure predictable palettes for indexed-color modes
-        - report the live drawable size to reactive GUI layouts
+        - report usable layout space while retaining drawable coordinates
         - swap complete pages at the display refresh boundary
         - own one balanced Windows timer request while a visible legacy screen exists
         - draw primitives and alpha-mapped embedded fonts
@@ -31,16 +31,43 @@
 '/
 
 #lang "fb"
+
+/'
+    The mobile ScreenControl commands are part of FreeBASIC 1.20.5 and later.
+    Keep this backend buildable with older compiler headers used by desktop
+    projects. Older runtimes report metrics as unavailable and ignore these
+    optional keyboard bridge operations.
+'/
+#if __FB_VER_MAJOR__ > 1
+#define OMAGUI_GFXLIB_HAS_MOBILE_SCREENCONTROL
+#elseif __FB_VER_MAJOR__ = 1
+#if __FB_VER_MINOR__ > 20
+#define OMAGUI_GFXLIB_HAS_MOBILE_SCREENCONTROL
+#elseif __FB_VER_MINOR__ = 20
+#if __FB_VER_PATCH__ >= 5
+#define OMAGUI_GFXLIB_HAS_MOBILE_SCREENCONTROL
+#endif
+#endif
+#endif
 #ifdef OMAGUI_NAVIGATION_EXTENSIONS
+' Optional navigation state belongs to this backend and is shared only with
+' the include modules assembled by omaGUI.bi on the GUI thread.
+' fblint: disable-next-line FBL301
 Dim Shared As Integer omagui_nav_logical_w = 2, omagui_nav_logical_h = 2
 Dim Shared As Integer omagui_nav_text_scale = 1
 #endif
+
+' The GUI thread refreshes this measured layout limit before widget updates.
+' Zero keeps the full canvas; drawing and native input always use canvas size.
+Private Dim Shared backend_LayoutHeight As Integer
 
 #include once "src/backend/backend.bi"
 #include once "src/backend/input.bi"
 #include once "src/backend/font_data.bi"
 #include once "src/backend/theme.bi"
+#If Not Defined(OMAGUI_PORTABLE_ONLY)
 #include once "crt/string.bi"
+#EndIf
 #include once "src/backend/backend_idle.bi"
 #If Defined(__FB_WIN32__) AndAlso Not Defined(OMAGUI_PORTABLE_ONLY)
 #include once "src/backend/backend_windows.bi"
@@ -51,6 +78,15 @@ Dim Shared As Integer omagui_nav_text_scale = 1
 #EndIf
 #Ifdef __FB_GFXLIB3__
 #include once "fbgfx3.bi"
+' Older gfxlib3 SDKs expose points and surfaces but no native line/rectangle
+' packets or screen-to-surface copy. Keep their ordinary drawing fallback.
+#If Defined(FB.Gfx3Line) And Defined(FB.Gfx3DrawLines)
+#Define OMAGUI_GFX3_NATIVE_LINES
+#EndIf
+#If Defined(FB.Gfx3Rectangle) And Defined(FB.Gfx3DrawRectangles)
+#Define OMAGUI_GFX3_NATIVE_RECTANGLES
+#EndIf
+
 #EndIf
 
 #Ifdef __FB_RISCOS__
@@ -93,7 +129,7 @@ Private Const BACKEND_FONT_PACK_MAX_GLYPHS As Integer = 1111999
 Private Const BACKEND_FONT_PACK_HEADER_BYTES As Integer = 20
 Private Const BACKEND_FONT_PACK_GLYPH_HEADER_BYTES As Integer = 14
 Private Dim Shared As BackendFontPack backend_FontPacks( _
-    0 To BACKEND_FONT_TERMINAL _
+    0 To BACKEND_FONT_LAST _
 )
 Const BACKEND_CURVE_STEP As Double = 0.05
 Const BACKEND_8BIT_COLOR_CUBE_SIZE As Integer = 216
@@ -102,6 +138,10 @@ Const BACKEND_8BIT_GRAY_COUNT As Integer = 40
 Const BACKEND_ITALIC_SHEAR_PERCENT As Integer = 12
 Const BACKEND_8BIT_GRAY_THRESHOLD As Integer = 18
 Const BACKEND_CLIP_STACK_CAPACITY As Integer = 128
+' Bound metrics before ScreenRes allocates gfxlib's display pages.
+Private Const BACKEND_METRIC_MAX_SIDE As Integer = 8192
+' Two 32-bit pages at this pixel count require at most 64 MiB.
+Private Const BACKEND_METRIC_MAX_PIXELS As LongInt = 8388608
 Const BACKEND_PRESENTATION_HZ As Double = 60.0
 Const BACKEND_COARSE_WAIT_MARGIN_SECONDS As Double = 0.001
 #Ifdef __FB_GFXLIB3__
@@ -112,6 +152,16 @@ Const BACKEND_COARSE_WAIT_MARGIN_SECONDS As Double = 0.001
 '/
 Const BACKEND_GFX3_TEXT_POINT_LIMIT As ULongInt = 262144
 Const BACKEND_GFX3_SPAN_POINT_LIMIT As ULongInt = 262144
+' Four 32-bit fields make this fixed 16,384-point packet 256 KiB. Larger
+' submissions amortize the gfxlib3 API copy while keeping temporary memory
+' bounded independently of drawing size.
+Const BACKEND_GFX3_PENDING_POINT_LIMIT As Integer = 16384
+' The GFX3 ordered winner key supports fifteen bits; keep one full line batch.
+Const BACKEND_GFX3_PENDING_LINE_LIMIT As Integer = 32767
+' gfxlib3's ordered rectangle packet is bounded to 1024 items.
+Const BACKEND_GFX3_PENDING_RECTANGLE_LIMIT As Integer = 1024
+' Keep the software ceiling above a 60 Hz present interval on GFX3.
+Const BACKEND_GFX3_PRESENTATION_LIMIT As Integer = 120
 
 Private Function backend_Gfx3Alpha( _
     ByVal alpha As Integer _
@@ -143,9 +193,18 @@ Dim Shared backend_GfxVisiblePage As Integer
 Dim Shared backend_Resizable As Integer
 Dim Shared backend_RequestedWidth As Integer
 Private Dim Shared As Integer backend_HeadlessActive
+Private Dim Shared As Integer backend_PaintBatchDepth
 Dim Shared backend_RequestedHeight As Integer
 Dim Shared backend_WindowFlags As UInteger
 Dim Shared backend_ColorDepth As Integer
+Private Dim Shared As Integer backend_OpenGLActive
+Private Dim Shared As Integer backend_FrameViewportActive
+Private Dim Shared As Integer backend_FrameViewportValid
+Private Dim Shared As Integer backend_FrameViewportWidth
+Private Dim Shared As Integer backend_FrameViewportHeight
+#ifdef OMAGUI_PROFILE_BACKEND
+Private Dim Shared As ULongInt backend_ProfileViewportReadCount
+#endif
 Dim Shared backend_ClipDepth As Integer
 Dim Shared backend_ClipOverflowDepth As Integer
 Dim Shared backend_ClipX1(0 To BACKEND_CLIP_STACK_CAPACITY - 1) As Integer
@@ -153,6 +212,17 @@ Dim Shared backend_ClipY1(0 To BACKEND_CLIP_STACK_CAPACITY - 1) As Integer
 Dim Shared backend_ClipX2(0 To BACKEND_CLIP_STACK_CAPACITY - 1) As Integer
 Dim Shared backend_ClipY2(0 To BACKEND_CLIP_STACK_CAPACITY - 1) As Integer
 Dim Shared backend_LastPresentationClock As Double
+
+Private Sub backend_ResetPaintBatch()
+    If backend_PaintBatchDepth > 0 Then
+        ' A screen-mode change releases gfxlib locks. Balance our outer lock
+        ' first when the current display still exists, then clear nesting.
+        If backend_HeadlessActive = BACKEND_DISPLAY_ENABLED AndAlso _
+           ScreenPtr <> 0 Then ScreenUnlock
+        backend_PaintBatchDepth = 0
+    End If
+End Sub
+Private Dim Shared As Integer backend_FrameLimit = 60
 #If Defined(__FB_WIN32__) And Not Defined(__FB_GFXLIB3__) And _
     Not Defined(OMAGUI_PORTABLE_ONLY)
 Const BACKEND_TIMER_PERIOD_MILLISECONDS As ULong = 1
@@ -162,6 +232,172 @@ Dim Shared backend_TimerPeriodActive As Integer
 ' gfxlib3 copies a submitted packet before this reusable array changes.
 Dim Shared backend_Gfx3SpanPoints() As fb.Gfx3Point
 Dim Shared backend_Gfx3SpanPointCapacity As ULongInt
+/'
+    Small alpha masks and text packets emitted inside an explicit draw batch
+    share this bounded packet until another drawing operation changes order
+    or the batch ends. Gfx3DrawPoints copies it before returning.
+'/
+Dim Shared As fb.Gfx3Point backend_Gfx3PendingPoints( _
+    0 To BACKEND_GFX3_PENDING_POINT_LIMIT - 1 _
+)
+Dim Shared backend_Gfx3PendingPointCount As Integer
+/'
+    Keep adjacent visible strokes together. The GFX3 runtime converts the
+    packet directly into its native ordered LINES command, bypassing the
+    legacy per-call CPU framebuffer shadow path.
+'/
+#ifdef OMAGUI_GFX3_NATIVE_LINES
+Dim Shared As fb.Gfx3Line backend_Gfx3PendingLines( _
+    0 To BACKEND_GFX3_PENDING_LINE_LIMIT - 1 _
+)
+#endif
+Dim Shared backend_Gfx3PendingLineCount As Integer
+/'
+    Adjacent opaque UI rectangles share one native GFX3 rectangle command.
+    The runtime copies each packet before the reusable array changes.
+'/
+#ifdef OMAGUI_GFX3_NATIVE_RECTANGLES
+Dim Shared As fb.Gfx3Rectangle backend_Gfx3PendingRectangles( _
+    0 To BACKEND_GFX3_PENDING_RECTANGLE_LIMIT - 1 _
+)
+#endif
+Dim Shared backend_Gfx3PendingRectangleCount As Integer
+Dim Shared backend_Gfx3DrawBatchDepth As Integer
+' Record whether queued presentation may need a completion boundary.
+Dim Shared backend_Gfx3PresentationPending As Integer
+Dim Shared backend_Gfx3PipelinedFrame As Integer
+Dim Shared backend_Gfx3BatchScreenWidth As Integer
+Dim Shared backend_Gfx3BatchScreenHeight As Integer
+Dim Shared backend_Gfx3BatchScreenDepth As Integer
+
+Private Sub backend_Gfx3DrawPendingFallback( _
+    ByRef pointValue As Const fb.Gfx3Point _
+)
+    Dim As Integer alphaValue = pointValue.alpha
+    If alphaValue < 255 Then alphaValue -= 1
+    If alphaValue <= 0 Then Exit Sub
+
+    If alphaValue >= 255 Then
+        PSet (pointValue.x, pointValue.y), pointValue.color
+        Exit Sub
+    End If
+
+    Dim As ULong backgroundValue = Point(pointValue.x, pointValue.y)
+    Dim As ULong redValue = (pointValue.color Shr 16) And &HFF
+    Dim As ULong greenValue = (pointValue.color Shr 8) And &HFF
+    Dim As ULong blueValue = pointValue.color And &HFF
+    Dim As ULong backgroundRed = (backgroundValue Shr 16) And &HFF
+    Dim As ULong backgroundGreen = (backgroundValue Shr 8) And &HFF
+    Dim As ULong backgroundBlue = backgroundValue And &HFF
+
+    redValue = (redValue * alphaValue + _
+        backgroundRed * (255 - alphaValue)) \ 255
+    greenValue = (greenValue * alphaValue + _
+        backgroundGreen * (255 - alphaValue)) \ 255
+    blueValue = (blueValue * alphaValue + _
+        backgroundBlue * (255 - alphaValue)) \ 255
+    PSet (pointValue.x, pointValue.y), _
+        RGB(redValue, greenValue, blueValue)
+End Sub
+
+Private Sub backend_Gfx3FlushPendingPoints()
+#ifdef OMAGUI_GFX3_NATIVE_RECTANGLES
+    If backend_Gfx3PendingRectangleCount > 0 Then
+        Dim As Integer rectangleCount = _
+            backend_Gfx3PendingRectangleCount
+        backend_Gfx3PendingRectangleCount = 0
+        If fb.Gfx3DrawRectangles( _
+            @backend_Gfx3PendingRectangles(0), rectangleCount _
+        ) <> 0 Then
+            ' Preserve the established gfxlib path if packet submission fails.
+            Dim As Integer batchDepth = backend_Gfx3DrawBatchDepth
+            backend_Gfx3DrawBatchDepth = 0
+            For rectangleIndex As Integer = 0 To rectangleCount - 1
+                Dim As Integer firstX = _
+                    backend_Gfx3PendingRectangles(rectangleIndex).x1
+                Dim As Integer firstY = _
+                    backend_Gfx3PendingRectangles(rectangleIndex).y1
+                Dim As Integer lastX = _
+                    backend_Gfx3PendingRectangles(rectangleIndex).x2
+                Dim As Integer lastY = _
+                    backend_Gfx3PendingRectangles(rectangleIndex).y2
+                Dim As Integer rectangleWidth = CInt( _
+                    CLngInt(lastX) - CLngInt(firstX) + 1 _
+                )
+                Dim As Integer rectangleHeight = CInt( _
+                    CLngInt(lastY) - CLngInt(firstY) + 1 _
+                )
+                Dim As ULong rectangleColor = _
+                    backend_Gfx3PendingRectangles(rectangleIndex).color
+                Dim As Integer rectangleFilled = _
+                    backend_Gfx3PendingRectangles(rectangleIndex).filled
+                backend_Rect(firstX, firstY, rectangleWidth, _
+                    rectangleHeight, rectangleColor, rectangleFilled)
+            Next rectangleIndex
+            backend_Gfx3DrawBatchDepth = batchDepth
+        End If
+    End If
+
+#endif
+#ifdef OMAGUI_GFX3_NATIVE_LINES
+    If backend_Gfx3PendingLineCount > 0 Then
+        Dim As Integer lineCount = backend_Gfx3PendingLineCount
+        backend_Gfx3PendingLineCount = 0
+        If fb.Gfx3DrawLines(@backend_Gfx3PendingLines(0), lineCount) <> 0 Then
+            ' The batched API validates the complete batch before submission.
+            Dim As Integer batchDepth = backend_Gfx3DrawBatchDepth
+            backend_Gfx3DrawBatchDepth = 0
+            For lineIndex As Integer = 0 To lineCount - 1
+                Dim As Integer firstX = backend_Gfx3PendingLines(lineIndex).x1
+                Dim As Integer firstY = backend_Gfx3PendingLines(lineIndex).y1
+                Dim As Integer lastX = backend_Gfx3PendingLines(lineIndex).x2
+                Dim As Integer lastY = backend_Gfx3PendingLines(lineIndex).y2
+                Dim As ULong lineColor = backend_Gfx3PendingLines(lineIndex).color
+                backend_Line(firstX, firstY, lastX, lastY, lineColor)
+            Next lineIndex
+            backend_Gfx3DrawBatchDepth = batchDepth
+        End If
+    End If
+
+#endif
+    If backend_Gfx3PendingPointCount <= 0 Then Exit Sub
+
+    Dim As Integer pointCount = backend_Gfx3PendingPointCount
+    backend_Gfx3PendingPointCount = 0
+    If fb.Gfx3DrawPoints( _
+        0, @backend_Gfx3PendingPoints(0), pointCount _
+    ) = 0 Then Exit Sub
+
+    ' Keep the original CPU blend as an allocation/queue failure fallback.
+    For pointIndex As Integer = 0 To pointCount - 1
+        backend_Gfx3DrawPendingFallback(backend_Gfx3PendingPoints(pointIndex))
+    Next pointIndex
+End Sub
+
+Private Sub backend_Gfx3QueuePixel( _
+    ByVal x As Integer, ByVal y As Integer, _
+    ByVal clr As ULong, ByVal alpha As Integer _
+)
+    If backend_Gfx3PendingLineCount > 0 OrElse _
+       backend_Gfx3PendingRectangleCount > 0 Then _
+        backend_Gfx3FlushPendingPoints
+    If backend_Gfx3PendingPointCount >= _
+       BACKEND_GFX3_PENDING_POINT_LIMIT Then
+        backend_Gfx3FlushPendingPoints
+    End If
+
+    Dim As Integer pointIndex = backend_Gfx3PendingPointCount
+    backend_Gfx3PendingPoints(pointIndex).x = x
+    backend_Gfx3PendingPoints(pointIndex).y = y
+    backend_Gfx3PendingPoints(pointIndex).color = clr
+    backend_Gfx3PendingPoints(pointIndex).alpha = backend_Gfx3Alpha(alpha)
+    backend_Gfx3PendingPointCount += 1
+End Sub
+
+#EndIf
+#Ifndef __FB_GFXLIB3__
+Private Sub backend_Gfx3FlushPendingPoints()
+End Sub
 #EndIf
 
 ' -------------------------------------------------------------------------
@@ -286,12 +522,14 @@ Private Function backend_CreateScreen( _
     ByVal w As Integer, _
     ByVal h As Integer, _
     ByVal windowFlags As UInteger, _
-    ByVal colorDepth As Integer _
+    ByVal colorDepth As Integer, _
+    ByVal openGLActive As Integer = 0 _
 ) As Integer
 
     Dim As Integer actualDepth
     Dim As Integer actualHeight
     Dim As Integer actualWidth
+    Dim As Integer pageCount
     Dim As Integer screenResult
     Dim As UInteger gfxFlags
 #Ifdef __FB_RISCOS__
@@ -300,7 +538,17 @@ Private Function backend_CreateScreen( _
 #EndIf
 
     If w < 1 OrElse h < 1 Then Return 0
+    backend_Gfx3FlushPendingPoints
+#Ifdef __FB_GFXLIB3__
+    If backend_Gfx3PresentationPending <> 0 Then ScreenSync
+    backend_Gfx3PresentationPending = 0
+    backend_Gfx3PipelinedFrame = 0
+#EndIf
     If backend_IsSupportedColorDepth(colorDepth) = 0 Then Return 0
+    If openGLActive <> 0 AndAlso backend_HeadlessActive <> BACKEND_DISPLAY_ENABLED Then Return 0
+
+    ' A mode request can change the drawable even when gfxlib later rejects it.
+    backend_FrameViewportValid = 0
 
 #Ifdef __FB_RISCOS__
     /'
@@ -319,17 +567,36 @@ Private Function backend_CreateScreen( _
         backend_GfxWorkPage = BACKEND_GFX_VISIBLE_PAGE
         backend_GfxVisiblePage = BACKEND_GFX_VISIBLE_PAGE
         backend_DoubleBufferActive = 0
+#Ifdef __FB_GFXLIB3__
+        backend_Gfx3PresentationPending = 0
+        backend_Gfx3PipelinedFrame = 0
+#EndIf
         backend_Resizable = 0
         backend_RequestedWidth = w
         backend_RequestedHeight = h
         backend_WindowFlags = windowFlags
         backend_ColorDepth = colorDepth
+        backend_OpenGLActive = 0
         backend_ClipDepth = 0
         backend_ClipOverflowDepth = 0
         Return -1
     End If
 
     gfxFlags = 0
+    pageCount = BACKEND_GFX_PAGE_COUNT
+    If openGLActive <> 0 Then
+        gfxFlags Or= FB.GFX_OPENGL
+        ' OpenGL owns its back buffer. gfxlib page identities do not describe
+        ' that buffer and a second CPU page only wastes display-sized memory.
+        pageCount = 1
+        /'
+            SET_GL_2D_MODE selects the next context's mode, so it must precede
+            ScreenRes. OGL_2D_NONE leaves CPU drawing in ScreenPtr and keeps
+            presentation under the application's explicit Flip calls.
+        '/
+        Dim As Integer mode2D = FB.OGL_2D_NONE
+        ScreenControl FB.SET_GL_2D_MODE, mode2D
+    End If
     If (windowFlags And BACKEND_WINDOW_RESIZABLE) <> 0 Then
 #If __FB_VERSION__ >= "1.20.0"
 #If Not Defined(__FB_ANDROID__) And Not Defined(__FB_AROS__) And _
@@ -354,28 +621,36 @@ Private Function backend_CreateScreen( _
     If backend_HeadlessActive <> 0 Then gfxFlags = FB.GFX_NULL
 
     screenResult = ScreenRes( _
-        w, h, colorDepth, BACKEND_GFX_PAGE_COUNT, gfxFlags _
+        w, h, colorDepth, pageCount, gfxFlags _
     )
 
     If screenResult <> 0 Then
         screenResult = ScreenRes( _
-            w, h, colorDepth, BACKEND_GFX_PAGE_COUNT, _
+            w, h, colorDepth, pageCount, _
             gfxFlags Or FB.GFX_NO_SWITCH _
         )
     End If
 
     If screenResult <> 0 Then Return 0
 
+    If openGLActive = 0 Then
 #Ifndef __FB_RISCOS__
-    ScreenSet BACKEND_GFX_WORK_PAGE, BACKEND_GFX_VISIBLE_PAGE
+        ScreenSet BACKEND_GFX_WORK_PAGE, BACKEND_GFX_VISIBLE_PAGE
 #EndIf
+    Else
+        Dim As Integer observedMode2D = -1
+        ScreenControl FB.GET_GL_2D_MODE, observedMode2D
+        If observedMode2D <> FB.OGL_2D_NONE Then Return 0
+    End If
     ScreenInfo actualWidth, actualHeight, actualDepth
 
-    backend_GfxWorkPage = BACKEND_GFX_WORK_PAGE
+    backend_GfxWorkPage = IIf(openGLActive <> 0, BACKEND_GFX_VISIBLE_PAGE, BACKEND_GFX_WORK_PAGE)
     backend_GfxVisiblePage = BACKEND_GFX_VISIBLE_PAGE
-    backend_DoubleBufferActive = IIf( _
-        BACKEND_GFX_PAGE_COUNT > 1, -1, 0 _
-    )
+    backend_DoubleBufferActive = IIf(openGLActive <> 0 OrElse pageCount > 1, -1, 0)
+#Ifdef __FB_GFXLIB3__
+    backend_Gfx3PresentationPending = 0
+    backend_Gfx3PipelinedFrame = 0
+#EndIf
     backend_Resizable = 0
 #If __FB_VERSION__ >= "1.20.0"
     If (gfxFlags And FB.GFX_RESIZABLE) <> 0 Then backend_Resizable = -1
@@ -386,6 +661,7 @@ Private Function backend_CreateScreen( _
     If backend_Resizable = 0 Then _
         backend_WindowFlags And= Not BACKEND_WINDOW_RESIZABLE
     backend_ColorDepth = actualDepth
+    backend_OpenGLActive = IIf(openGLActive <> 0, -1, 0)
     backend_ClipDepth = 0
     backend_ClipOverflowDepth = 0
     backend_LastPresentationClock = 0.0
@@ -408,7 +684,8 @@ End Function
 
 Private Sub backend_WaitForPresentationCadence()
 
-    Const secondsPerFrame As Double = 1.0 / BACKEND_PRESENTATION_HZ
+    If backend_FrameLimit <= 0 Then Exit Sub
+    Dim As Double secondsPerFrame = 1.0 / backend_FrameLimit
     Dim As Double currentClock = Timer
 
     If backend_LastPresentationClock <= 0.0 Then
@@ -440,22 +717,75 @@ Private Sub backend_WaitForPresentationCadence()
 
 End Sub
 
+
+Sub backend_SetFrameLimit(ByVal framesPerSecond As Integer)
+    If framesPerSecond < 0 OrElse framesPerSecond > 1000 Then Exit Sub
+    backend_FrameLimit = framesPerSecond
+#Ifdef __FB_GFXLIB3__
+    If framesPerSecond = 60 Then
+        /'
+            Queue draining can consume part of a display interval before the
+            GFX3 page swap. Pacing at exactly 60 Hz can then miss a refresh.
+            Leave one refresh interval of headroom while retaining a finite
+            fallback ceiling on drivers without synchronized presentation.
+        '/
+        backend_FrameLimit = BACKEND_GFX3_PRESENTATION_LIMIT
+    End If
+#EndIf
+    backend_LastPresentationClock = 0.0
+End Sub
+
+Private Sub backend_GetDrawScreenInfo( _
+    ByRef screenWidth As Integer, _
+    ByRef screenHeight As Integer, _
+    ByRef screenDepth As Integer _
+)
+#Ifdef __FB_GFXLIB3__
+    /'
+        ScreenInfo takes gfxlib3's global graphics lock. The UI captures the
+        drawable size when its render batch begins, so reuse that snapshot for
+        color mapping and other per-primitive queries in the same frame.
+    '/
+    If backend_Gfx3DrawBatchDepth > 0 AndAlso _
+       backend_Gfx3BatchScreenWidth > 0 AndAlso _
+       backend_Gfx3BatchScreenHeight > 0 AndAlso _
+       backend_Gfx3BatchScreenDepth > 0 Then
+        screenWidth = backend_Gfx3BatchScreenWidth
+        screenHeight = backend_Gfx3BatchScreenHeight
+        screenDepth = backend_Gfx3BatchScreenDepth
+        Exit Sub
+    End If
+#EndIf
+    ScreenInfo screenWidth, screenHeight, screenDepth
+End Sub
+
 ' -------------------------------------------------------------------------
 ' Helpers: Degraded Color Mapping
 ' -------------------------------------------------------------------------
+Private Function backend_CurrentColorDepth() As Integer
+    If backend_ColorDepth > 0 Then Return backend_ColorDepth
+
+    ' A direct draw before backend_Init keeps gfxlib's live-depth fallback.
+    Dim As Integer actualDepth, actualHeight, actualWidth
+    ScreenInfo actualWidth, actualHeight, actualDepth
+    If actualDepth > 0 Then backend_ColorDepth = actualDepth
+    Return backend_ColorDepth
+End Function
+
 Private Function MapColor(ByVal clr As ULong) As ULong
 #ifdef OMAGUI_NAVIGATION_EXTENSIONS
     clr = backend_NavigationColor(clr)
 #endif
-    Dim As Integer w, h, d, bpp, pitch
-    ScreenInfo w, h, d, bpp, pitch
-    If d >= 16 Then Return clr
+    ' Screen mode changes go through this backend. Reuse its validated depth
+    ' instead of querying gfxlib for every rectangle, line, or pixel.
+    Dim As Integer screenDepth = backend_CurrentColorDepth()
+    If screenDepth >= 16 Then Return clr
 
     Dim As UByte r = (clr Shr 16) And &HFF
     Dim As UByte g = (clr Shr 8) And &HFF
     Dim As UByte b = clr And &HFF
 
-    If d = BACKEND_COLOR_DEPTH_256_COLOR Then
+    If screenDepth = BACKEND_COLOR_DEPTH_256_COLOR Then
         Dim As Integer highestChannel = r
         Dim As Integer lowestChannel = r
         Dim As UInteger luminance
@@ -476,7 +806,7 @@ Private Function MapColor(ByVal clr As ULong) As ULong
         Return (((CUInt(r) * 5) + 127) \ 255) * 36 + _
             (((CUInt(g) * 5) + 127) \ 255) * 6 + _
             (((CUInt(b) * 5) + 127) \ 255)
-    Elseif d = BACKEND_COLOR_DEPTH_16_COLOR Then
+    Elseif screenDepth = BACKEND_COLOR_DEPTH_16_COLOR Then
         Dim As Integer colorIndex
         Dim As Integer paletteRed
         Dim As Integer paletteGreen
@@ -505,7 +835,7 @@ Private Function MapColor(ByVal clr As ULong) As ULong
         Next colorIndex
 
         Return nearestIndex
-    Elseif d = BACKEND_COLOR_DEPTH_MONOCHROME Then
+    Elseif screenDepth = BACKEND_COLOR_DEPTH_MONOCHROME Then
         /'
             ITU-R BT.601 luma weights provide a more faithful black/white
             threshold than adding the channels with equal importance.
@@ -532,6 +862,11 @@ Sub backend_Init( _
     ByVal colorDepth As Integer _
 )
 
+#If Defined(__FB_LINUX__) Or Defined(__FB_JS__) Or Defined(__FB_ANDROID__)
+    Dim As BackendWindowMetrics windowMetrics
+#EndIf
+
+    backend_ResetPaintBatch
     /'
         Drawable headless tests use gfxlib's null driver with a framebuffer.
         Screenless tests leave gfxlib closed until an image operation needs a
@@ -541,7 +876,15 @@ Sub backend_Init( _
     Not Defined(OMAGUI_PORTABLE_ONLY)
     backend_SetPresentationTiming 0
 #EndIf
+#Ifdef __FB_GFXLIB3__
+    If backend_Gfx3PresentationPending <> 0 Then ScreenSync
+    backend_Gfx3PresentationPending = 0
+    backend_Gfx3PipelinedFrame = 0
+#EndIf
     backend_DoubleBufferActive = 0
+    backend_LayoutHeight = 0
+    backend_FrameViewportActive = 0
+    backend_FrameViewportValid = 0
     Select Case headless
     Case BACKEND_HEADLESS
         backend_HeadlessActive = BACKEND_HEADLESS
@@ -550,6 +893,44 @@ Sub backend_Init( _
     Case Else
         backend_HeadlessActive = BACKEND_DISPLAY_ENABLED
     End Select
+#If Defined(__FB_LINUX__) Or Defined(__FB_JS__) Or Defined(__FB_ANDROID__)
+    /'
+        Keep display sizing in omaGUI so applications share one platform
+        policy. Normal desktop windows keep their requested size unless the
+        caller requests a display-sized window. Linux handhelds let the
+        compositor tile the window so its keyboard and system controls can
+        remain visible while the app fills the area. A resizable browser or
+        Android surface uses the available activity area by default.
+    '/
+    If backend_HeadlessActive = BACKEND_DISPLAY_ENABLED AndAlso _
+       backend_GetWindowMetrics(windowMetrics) <> 0 Then
+        If backend_IsHandheld() <> 0 Then
+            w = windowMetrics.width
+            h = windowMetrics.height
+#If Defined(__FB_LINUX__) And Not Defined(__FB_JS__)
+            /'
+                A true fullscreen Wayland surface can cover Phosh's keyboard.
+                Preserve an explicit fullscreen request, but use a resizable
+                display-sized surface for the ordinary handheld window.
+            '/
+            If (windowFlags And BACKEND_WINDOW_FULLSCREEN) <> 0 Then
+                windowFlags And= Not BACKEND_WINDOW_RESIZABLE
+            Else
+                windowFlags Or= BACKEND_WINDOW_RESIZABLE Or BACKEND_WINDOW_FILL
+            End If
+#Else
+            windowFlags Or= BACKEND_WINDOW_FULLSCREEN
+#EndIf
+#If Defined(__FB_JS__) Or Defined(__FB_ANDROID__)
+        ElseIf (windowFlags And (BACKEND_WINDOW_FILL Or BACKEND_WINDOW_RESIZABLE)) <> 0 Then
+#Else
+        ElseIf (windowFlags And BACKEND_WINDOW_FILL) <> 0 Then
+#EndIf
+            w = windowMetrics.width
+            h = windowMetrics.height
+        End If
+    End If
+#EndIf
     backend_GfxWorkPage = BACKEND_GFX_VISIBLE_PAGE
     backend_GfxVisiblePage = BACKEND_GFX_VISIBLE_PAGE
     backend_Resizable = 0
@@ -557,6 +938,7 @@ Sub backend_Init( _
     backend_RequestedHeight = h
     backend_WindowFlags = windowFlags
     backend_ColorDepth = 0
+    backend_OpenGLActive = 0
 
 #ifdef OMAGUI_NAVIGATION_EXTENSIONS
     backend_NavigationCreate w, h, windowFlags
@@ -586,7 +968,87 @@ Sub backend_Init( _
 #endif
 End Sub
 
+Function backend_GetWindowMetrics( _
+    ByRef metrics As BackendWindowMetrics _
+) As Integer
+
+    metrics.width = 0
+    metrics.height = 0
+    metrics.dpi = 96
+    metrics.rotation = 0
+    metrics.keyboard_visible = -2
+    metrics.keyboard_available = 0
+
+    ScreenControl BACKEND_GET_WINDOW_METRICS, _
+        metrics.width, metrics.height, metrics.dpi, metrics.rotation
+    ScreenControl BACKEND_GET_SOFT_KEYBOARD, _
+        metrics.keyboard_visible, metrics.keyboard_available
+
+    If metrics.width < 2 OrElse metrics.height < 2 OrElse _
+       metrics.width > BACKEND_METRIC_MAX_SIDE OrElse _
+       metrics.height > BACKEND_METRIC_MAX_SIDE Then Return 0
+    If CLngInt(metrics.width) * CLngInt(metrics.height) > _
+       BACKEND_METRIC_MAX_PIXELS Then Return 0
+    If metrics.dpi <= 0 Then metrics.dpi = 96
+    Return -1
+End Function
+
+Function backend_IsHandheld() As Integer
+    Dim As BackendWindowMetrics metrics
+    Dim As Integer shorterSide
+
+    If backend_HeadlessActive <> BACKEND_DISPLAY_ENABLED Then Return 0
+    If backend_GetWindowMetrics(metrics) = 0 Then Return 0
+
+#if defined(__FB_LINUX__) And Not defined(__FB_JS__)
+    Dim As Integer deviceClass = backend_DeviceClass()
+    If deviceClass = BACKEND_DEVICE_CLASS_HANDHELD Then Return -1
+    If deviceClass = BACKEND_DEVICE_CLASS_DESKTOP Then Return 0
+#endif
+
+    shorterSide = IIf(metrics.width < metrics.height, _
+        metrics.width, metrics.height)
+#if defined(__FB_LINUX__) Or defined(__FB_JS__)
+    Dim As Integer touch_capable
+    ScreenControl BACKEND_GET_TOUCH_CAPABILITY, touch_capable
+    If touch_capable <> -1 Then Return 0
+    /'
+        Wayland text-input-v3 is available on desktop compositors too. Require
+        actual touch hardware before applying phone layout, then use compact
+        logical dimensions or high density to distinguish a handset from a
+        touch-enabled desktop display.
+    '/
+    If shorterSide <= 1200 AndAlso _
+       (shorterSide <= 520 OrElse metrics.dpi >= 180) Then Return -1
+#else
+    /'
+        Bound the form-factor heuristic to compact displays. A 3:2 ratio
+        covers portrait and landscape phone layouts without classifying a
+        normal widescreen desktop as handheld.
+    '/
+    If shorterSide <= 900 Then
+        If metrics.keyboard_available <> 0 OrElse metrics.dpi >= 180 OrElse _
+           (CLngInt(metrics.width) * 2 >= CLngInt(metrics.height) * 3) OrElse _
+           (CLngInt(metrics.height) * 2 >= CLngInt(metrics.width) * 3) Then
+            Return -1
+        End If
+    End If
+#endif
+    Return 0
+End Function
+
 Sub backend_Exit()
+    backend_SetSoftKeyboard 0
+    backend_ClearTextInputRegions()
+    backend_ResetPaintBatch
+    backend_FrameViewportActive = 0
+    backend_FrameViewportValid = 0
+    backend_Gfx3FlushPendingPoints
+#Ifdef __FB_GFXLIB3__
+    If backend_Gfx3PresentationPending <> 0 Then ScreenSync
+    backend_Gfx3PresentationPending = 0
+    backend_Gfx3PipelinedFrame = 0
+#EndIf
 #ifdef OMAGUI_NAVIGATION_EXTENSIONS
     Window
     View Screen
@@ -604,12 +1066,20 @@ Sub backend_Exit()
     backend_Resizable = 0
     backend_HeadlessActive = 0
     backend_ColorDepth = 0
+    backend_OpenGLActive = 0
     backend_ClipDepth = 0
     backend_ClipOverflowDepth = 0
     backend_LastPresentationClock = 0.0
 #Ifdef __FB_GFXLIB3__
     Erase backend_Gfx3SpanPoints
     backend_Gfx3SpanPointCapacity = 0
+    backend_Gfx3PendingPointCount = 0
+    backend_Gfx3PendingLineCount = 0
+    backend_Gfx3PendingRectangleCount = 0
+    backend_Gfx3DrawBatchDepth = 0
+    backend_Gfx3BatchScreenWidth = 0
+    backend_Gfx3BatchScreenHeight = 0
+    backend_Gfx3BatchScreenDepth = 0
 #EndIf
 End Sub
 
@@ -902,7 +1372,7 @@ End Sub
 Sub backend_ClearFontPacks()
     backend_FontGeneration += 1
 
-    For fontIndex As Integer = 0 To BACKEND_FONT_TERMINAL
+    For fontIndex As Integer = 0 To BACKEND_FONT_LAST
         For codepoint As Integer = 32 To 126
             backend_FontPacks(fontIndex).ascii_glyphs(codepoint) = 0
         Next codepoint
@@ -925,15 +1395,19 @@ Function backend_IsFontAvailable(ByVal font_id As Integer) As Integer
 
     Select Case font_id
     Case BACKEND_FONT_DEFAULT, BACKEND_FONT_ARIAL_10_REGULAR, _
-         BACKEND_FONT_ARIAL_12_BOLD
+         BACKEND_FONT_ARIAL_12_BOLD, BACKEND_FONT_LIBERATION_SANS_18_BOLD, _
+         BACKEND_FONT_LIBERATION_SERIF_18_REGULAR
         Return -1
     Case BACKEND_FONT_CUSTOM
         Return IIf(backend_CustomFontGlyphs <> 0, -1, 0)
     Case BACKEND_FONT_CASCADIA_MONO, BACKEND_FONT_UNICODE_FALLBACK, _
-         BACKEND_FONT_TERMINAL
+         BACKEND_FONT_TERMINAL, BACKEND_FONT_LIBERATION_SANS, _
+         BACKEND_FONT_LIBERATION_SANS_BOLD
         Return IIf( _
             backend_FontPacks(font_id).glyph_count > 0, -1, 0 _
         )
+    Case BACKEND_FONT_EXTERNAL_FIRST To BACKEND_FONT_LAST
+        Return IIf(backend_FontPacks(font_id).glyph_count > 0, -1, 0)
     End Select
 
     Return 0
@@ -1121,8 +1595,17 @@ Function backend_LoadFontPack( _
             belong to distinct allocations. Keep empty glyphs out of the copy.
         '/
         If pixelCount > 0 Then
+#If Defined(OMAGUI_PORTABLE_ONLY)
+            If oma_CopyBytes(@newBitmapStorage[bitmapStoragePosition], _
+                @fontBytes[bytePosition], CUInt(pixelCount)) = 0 Then
+                Deallocate newGlyphs
+                Deallocate newBitmapStorage
+                Return 0
+            End If
+#Else
             memcpy(@newBitmapStorage[bitmapStoragePosition], _
                 @fontBytes[bytePosition], CUInt(pixelCount))
+#EndIf
         End If
         bitmapStoragePosition += pixelCount
         bytePosition += pixelCount
@@ -1211,22 +1694,21 @@ Function backend_SetWindowMode( _
     previousFlags = backend_WindowFlags
     previousDepth = backend_ColorDepth
 
-    If backend_CreateScreen(w, h, windowFlags, previousDepth) <> 0 Then _
+    Dim As Integer previousOpenGL = backend_OpenGLActive
+
+    If backend_CreateScreen(w, h, windowFlags, previousDepth, previousOpenGL) <> 0 Then _
         Return -1
 
     If previousWidth > 0 AndAlso previousHeight > 0 AndAlso previousDepth > 0 Then
         backend_CreateScreen _
-            previousWidth, previousHeight, previousFlags, previousDepth
+            previousWidth, previousHeight, previousFlags, previousDepth, previousOpenGL
     End If
 
     Return 0
 End Function
 
-Sub backend_GetSize(ByRef w As Integer, ByRef h As Integer)
-#ifdef OMAGUI_NAVIGATION_EXTENSIONS
-    w = omagui_nav_logical_w: h = omagui_nav_logical_h
-    Exit Sub
-#endif
+/' Display modes use physical pixels, independently of layout scale or IME space. '/
+Private Sub backend_GetDrawableSize(ByRef w As Integer, ByRef h As Integer)
     If backend_HeadlessActive = BACKEND_HEADLESS Then
         w = backend_RequestedWidth
         h = backend_RequestedHeight
@@ -1239,6 +1721,76 @@ Sub backend_GetSize(ByRef w As Integer, ByRef h As Integer)
     If w <= 0 Then w = backend_RequestedWidth
     If h <= 0 Then h = backend_RequestedHeight
 End Sub
+
+Private Sub backend_GetCanvasSize(ByRef w As Integer, ByRef h As Integer)
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    w = omagui_nav_logical_w: h = omagui_nav_logical_h
+#else
+    backend_GetDrawableSize w, h
+#endif
+End Sub
+
+Private Sub backend_ReadViewportSize(ByRef w As Integer, ByRef h As Integer)
+#ifdef OMAGUI_PROFILE_BACKEND
+    backend_ProfileViewportReadCount += 1
+#endif
+    backend_GetCanvasSize w, h
+    If backend_LayoutHeight > 0 AndAlso backend_LayoutHeight < h Then _
+        h = backend_LayoutHeight
+End Sub
+
+Sub backend_BeginFrame()
+    ' Backend access is serialized on the GUI thread. One frame-loop owner
+    ' brackets each iteration; inner helpers only consume the active sample.
+    If backend_FrameViewportActive <> 0 Then Exit Sub
+    backend_FrameViewportActive = -1
+    backend_FrameViewportValid = 0
+    backend_GetSize backend_FrameViewportWidth, backend_FrameViewportHeight
+End Sub
+
+Sub backend_EndFrame()
+    backend_FrameViewportActive = 0
+    backend_FrameViewportValid = 0
+End Sub
+
+Sub backend_GetSize(ByRef w As Integer, ByRef h As Integer)
+    If backend_FrameViewportActive <> 0 Then
+        If backend_FrameViewportValid = 0 Then
+            backend_ReadViewportSize _
+                backend_FrameViewportWidth, backend_FrameViewportHeight
+            backend_FrameViewportValid = -1
+        End If
+        w = backend_FrameViewportWidth
+        h = backend_FrameViewportHeight
+        Exit Sub
+    End If
+
+    backend_ReadViewportSize w, h
+End Sub
+
+#ifdef OMAGUI_PROFILE_BACKEND
+Function backend_ProfileGetViewportReadCount() As ULongInt
+    Return backend_ProfileViewportReadCount
+End Function
+
+Sub backend_ProfileResetViewportReadCount()
+    backend_ProfileViewportReadCount = 0
+End Sub
+#endif
+
+Function backend_GetDesktopSize(ByRef w As Integer, ByRef h As Integer) As Integer
+    w = 0
+    h = 0
+    ScreenControl FB.GET_DESKTOP_SIZE, w, h
+    If w > 0 AndAlso h > 0 Then Return -1
+#Ifdef __FB_GFXLIB3__
+    ' The SDL-backed GFX3 driver returns zero for GET_DESKTOP_SIZE. Before a
+    ' window mode is created, ScreenInfo reports the active desktop dimensions.
+    ScreenInfo w, h
+#EndIf
+    Return (w > 0 AndAlso h > 0)
+End Function
+
 
 Function backend_IsResizable() As Integer
     Return backend_Resizable
@@ -1267,9 +1819,9 @@ Function backend_SetColorDepth(ByVal colorDepth As Integer) As Integer
     oldDepth = backend_GetColorDepth()
     If oldDepth = colorDepth Then Return -1
 
-    backend_GetSize currentWidth, currentHeight
+    backend_GetDrawableSize currentWidth, currentHeight
     If backend_CreateScreen( _
-        currentWidth, currentHeight, backend_WindowFlags, colorDepth _
+        currentWidth, currentHeight, backend_WindowFlags, colorDepth, backend_OpenGLActive _
     ) Then
         Return -1
     End If
@@ -1280,7 +1832,7 @@ Function backend_SetColorDepth(ByVal colorDepth As Integer) As Integer
     '/
     If oldDepth > 0 Then
         backend_CreateScreen _
-            currentWidth, currentHeight, backend_WindowFlags, oldDepth
+            currentWidth, currentHeight, backend_WindowFlags, oldDepth, backend_OpenGLActive
     End If
 
     Return 0
@@ -1289,6 +1841,7 @@ End Function
 
 Private Function backend_BeginTemporaryImageMode() As Integer
     If backend_HeadlessActive <> BACKEND_HEADLESS Then Return -1
+    backend_Gfx3FlushPendingPoints
 
     Dim As Integer imageWidth = backend_RequestedWidth
     Dim As Integer imageHeight = backend_RequestedHeight
@@ -1299,17 +1852,21 @@ Private Function backend_BeginTemporaryImageMode() As Integer
         ImageCreate and BLoad require a live gfxlib context. The null driver
         supplies one briefly while ordinary screenless tests keep Print usable.
     '/
+    backend_FrameViewportValid = 0
     If ScreenRes( _
         imageWidth, imageHeight, BACKEND_COLOR_DEPTH_TRUE_COLOR, 1, _
         FB.GFX_NULL _
     ) <> 0 Then Return 0
+    backend_FrameViewportValid = 0
     Return -1
 End Function
 
 
 Private Sub backend_EndTemporaryImageMode()
     If backend_HeadlessActive <> BACKEND_HEADLESS Then Exit Sub
+    backend_Gfx3FlushPendingPoints
     Screen 0
+    backend_FrameViewportValid = 0
     backend_DoubleBufferActive = 0
     backend_GfxWorkPage = BACKEND_GFX_VISIBLE_PAGE
     backend_GfxVisiblePage = BACKEND_GFX_VISIBLE_PAGE
@@ -1335,6 +1892,187 @@ Function backend_CreateImage( _
 End Function
 
 
+Function backend_CaptureImage( _
+    ByVal x As Integer, ByVal y As Integer, _
+    ByVal imageWidth As Integer, ByVal imageHeight As Integer, _
+    ByVal imageBuffer As Any Ptr _
+) As Integer
+
+    Dim As Integer screenWidth, screenHeight
+    Dim As Integer targetWidth, targetHeight, bytesPerPixel, pitch
+    Dim As Any Ptr pixels
+
+    If imageBuffer = 0 OrElse imageWidth <= 0 OrElse imageHeight <= 0 Then _
+        Return 0
+
+    backend_GetSize screenWidth, screenHeight
+    If x < 0 OrElse y < 0 OrElse imageWidth > screenWidth OrElse _
+       imageHeight > screenHeight Then Return 0
+    If x > screenWidth - imageWidth OrElse _
+       y > screenHeight - imageHeight Then Return 0
+
+#Ifdef __FB_GFXLIB3__
+    backend_Gfx3FlushPendingPoints
+#If Defined(fb.Gfx3ScreenCapture)
+    ' The GFX3 API validates the FB.IMAGE and preserves its GPU cache state.
+    If fb.Gfx3ScreenCapture( _
+        imageBuffer, x, y, imageWidth, imageHeight _
+    ) = 0 Then Return -1
+#EndIf
+#EndIf
+
+    If ImageInfo( _
+        imageBuffer, targetWidth, targetHeight, bytesPerPixel, pitch, pixels _
+    ) <> 0 Then Return 0
+    If targetWidth < imageWidth OrElse targetHeight < imageHeight Then _
+        Return 0
+    If bytesPerPixel <> (backend_GetColorDepth() + 7) \ 8 Then Return 0
+
+    ' Keep ordinary GET as a compatibility fallback when the regional GFX3
+    ' transfer is unavailable. It also orders queued writes before the copy.
+    ' GET copies the current work page before backend_Flip changes its owner.
+    Get (x, y)-(x + imageWidth - 1, y + imageHeight - 1), imageBuffer
+    Return -1
+End Function
+
+
+Sub backend_DestroyImage(ByVal imageBuffer As Any Ptr)
+    If imageBuffer <> 0 Then ImageDestroy imageBuffer
+End Sub
+
+
+Function backend_CreateGpuSurface( _
+    ByVal surfaceWidth As Integer, ByVal surfaceHeight As Integer, _
+    ByVal surfaceDepth As Integer _
+) As Any Ptr
+#Ifdef __FB_GFXLIB3__
+    If backend_HeadlessActive = BACKEND_HEADLESS OrElse _
+       surfaceWidth <= 0 OrElse surfaceHeight <= 0 Then Return 0
+    Return fb.Gfx3SurfaceCreate(surfaceWidth, surfaceHeight, surfaceDepth)
+#Else
+    Return 0
+#EndIf
+End Function
+
+
+Function backend_CaptureGpuSurface( _
+    ByVal surface As Any Ptr, ByVal x As Integer, ByVal y As Integer, _
+    ByVal surfaceWidth As Integer, ByVal surfaceHeight As Integer _
+) As Integer
+    Return backend_CaptureGpuSurfaceAt( _
+        surface, x, y, surfaceWidth, surfaceHeight, 0, 0 _
+    )
+End Function
+
+
+Function backend_CaptureGpuSurfaceAt( _
+    ByVal surface As Any Ptr, ByVal x As Integer, ByVal y As Integer, _
+    ByVal surfaceWidth As Integer, ByVal surfaceHeight As Integer, _
+    ByVal destinationX As Integer, ByVal destinationY As Integer _
+) As Integer
+#If Defined(__FB_GFXLIB3__) And Defined(FB.Gfx3SurfaceCopyFromScreen)
+    If surface = 0 OrElse surfaceWidth <= 0 OrElse surfaceHeight <= 0 Then _
+        Return 0
+    backend_Gfx3FlushPendingPoints
+    Return fb.Gfx3SurfaceCopyFromScreen( _
+        surface, x, y, surfaceWidth, surfaceHeight, _
+        destinationX, destinationY _
+    ) = 0
+#Else
+    Return 0
+#EndIf
+End Function
+
+
+Function backend_DrawGpuSurface( _
+    ByVal surface As Any Ptr, ByVal x As Integer, ByVal y As Integer, _
+    ByVal surfaceWidth As Integer, ByVal surfaceHeight As Integer _
+) As Integer
+    Return backend_DrawGpuSurfaceRect( _
+        surface, 0, 0, surfaceWidth, surfaceHeight, x, y _
+    )
+End Function
+
+
+/'
+    The CAD viewport uses this for its brief wheel-zoom preview. The full
+    source stays GPU-resident, and the caller's active VIEW clips the output.
+'/
+Function backend_DrawGpuSurfaceScaled( _
+    ByVal surface As Any Ptr, _
+    ByVal sourceWidth As Integer, ByVal sourceHeight As Integer, _
+    ByVal destinationX As Integer, ByVal destinationY As Integer, _
+    ByVal destinationWidth As Integer, ByVal destinationHeight As Integer _
+) As Integer
+#Ifdef __FB_GFXLIB3__
+    If surface = 0 OrElse sourceWidth <= 0 OrElse sourceHeight <= 0 OrElse _
+       destinationWidth <= 0 OrElse destinationHeight <= 0 Then _
+        Return 0
+    backend_Gfx3FlushPendingPoints
+    Return fb.Gfx3SurfaceBlitScaled( _
+        0, surface, 0, 0, sourceWidth, sourceHeight, _
+        destinationX, destinationY, destinationWidth, destinationHeight, _
+        fb.GFX3_PUT_PSET, 255, fb.GFX3_FILTER_LINEAR _
+    ) = 0
+#Else
+    Return 0
+#EndIf
+End Function
+
+
+Function backend_DrawGpuSurfaceRect( _
+    ByVal surface As Any Ptr, _
+    ByVal sourceX As Integer, ByVal sourceY As Integer, _
+    ByVal sourceWidth As Integer, ByVal sourceHeight As Integer, _
+    ByVal destinationX As Integer, ByVal destinationY As Integer _
+) As Integer
+#Ifdef __FB_GFXLIB3__
+    If surface = 0 OrElse sourceX < 0 OrElse sourceY < 0 OrElse _
+       sourceWidth <= 0 OrElse sourceHeight <= 0 Then _
+        Return 0
+    backend_Gfx3FlushPendingPoints
+    Return fb.Gfx3SurfaceBlit( _
+        0, surface, sourceX, sourceY, sourceWidth, sourceHeight, _
+        destinationX, destinationY, _
+        fb.GFX3_PUT_PSET, 255 _
+    ) = 0
+#Else
+    Return 0
+#EndIf
+End Function
+
+
+Function backend_DrawGpuSurfaceRectScaled( _
+    ByVal surface As Any Ptr, _
+    ByVal sourceX As Integer, ByVal sourceY As Integer, _
+    ByVal sourceWidth As Integer, ByVal sourceHeight As Integer, _
+    ByVal destinationX As Integer, ByVal destinationY As Integer _
+) As Integer
+#Ifdef __FB_GFXLIB3__
+    If surface = 0 OrElse sourceX < 0 OrElse sourceY < 0 OrElse _
+       sourceWidth <= 0 OrElse sourceHeight <= 0 Then _
+        Return 0
+    backend_Gfx3FlushPendingPoints
+    Return fb.Gfx3SurfaceBlitScaled( _
+        0, surface, sourceX, sourceY, sourceWidth, sourceHeight, _
+        destinationX, destinationY, sourceWidth, sourceHeight, _
+        fb.GFX3_PUT_PSET, 255, fb.GFX3_FILTER_NEAREST _
+    ) = 0
+#Else
+    Return 0
+#EndIf
+End Function
+
+
+Sub backend_DestroyGpuSurface(ByVal surface As Any Ptr)
+#Ifdef __FB_GFXLIB3__
+    If surface <> 0 Then fb.Gfx3SurfaceDestroy(surface)
+#Else
+    If surface <> 0 Then Exit Sub
+#EndIf
+End Sub
+
+
 Function backend_LoadImageFile( _
     ByVal filePath As String, ByVal imageBuffer As Any Ptr _
 ) As Integer
@@ -1351,11 +2089,33 @@ End Function
 ' Rendering
 ' -------------------------------------------------------------------------
 
+Sub backend_BeginPaint()
+    If backend_HeadlessActive <> BACKEND_DISPLAY_ENABLED OrElse _
+       ScreenPtr = 0 Then Exit Sub
+
+    ' Gfxlib tracks nested locks. Keep one outer lock for all nested GUI
+    ' render helpers so a clipped multi-area edit refreshes only once.
+    If backend_PaintBatchDepth = 0 Then ScreenLock
+    backend_PaintBatchDepth += 1
+End Sub
+
+Sub backend_EndPaint()
+    If backend_PaintBatchDepth <= 0 Then Exit Sub
+
+    backend_PaintBatchDepth -= 1
+    If backend_PaintBatchDepth > 0 Then Exit Sub
+
+    If backend_HeadlessActive = BACKEND_DISPLAY_ENABLED AndAlso _
+       ScreenPtr <> 0 Then ScreenUnlock
+End Sub
+
+
 Sub backend_Clear(ByVal clr As ULong)
     Dim As Integer screen_w
     Dim As Integer screen_h
+    Dim As Integer screen_d
 
-    ScreenInfo screen_w, screen_h
+    backend_GetSize screen_w, screen_h
 
     If screen_w <= 0 Then screen_w = 800
     If screen_h <= 0 Then screen_h = 600
@@ -1367,13 +2127,24 @@ Sub backend_Clear(ByVal clr As ULong)
 End Sub
 
 Function backend_GetWorkPage() As Integer
-    If backend_HeadlessActive = BACKEND_HEADLESS OrElse _
+    If backend_OpenGLActive <> 0 OrElse backend_HeadlessActive = BACKEND_HEADLESS OrElse _
        backend_DoubleBufferActive = 0 Then Return BACKEND_GFX_VISIBLE_PAGE
     Return backend_GfxWorkPage
 End Function
 
+Function backend_IsDoubleBuffered() As Integer
+    Return IIf(backend_DoubleBufferActive <> 0, -1, 0)
+End Function
+
 Function backend_UseRetainedPage() As Integer
+    If backend_OpenGLActive <> 0 Then Return 0
     If backend_DoubleBufferActive = 0 Then Return 0
+#Ifdef __FB_GFXLIB3__
+    If backend_Gfx3PresentationPending <> 0 Then ScreenSync
+    backend_Gfx3PresentationPending = 0
+    backend_Gfx3PipelinedFrame = 0
+#EndIf
+    backend_Gfx3FlushPendingPoints
     ' Alternating pages would bring back pixels from two frames ago. A locked
     ' visible page lets gfxlib publish only the scanlines actually touched.
     ScreenSet BACKEND_GFX_VISIBLE_PAGE, BACKEND_GFX_VISIBLE_PAGE
@@ -1387,17 +2158,59 @@ Function backend_GetFontGeneration() As ULongInt
     Return backend_FontGeneration
 End Function
 
+Sub backend_BeginDrawBatch()
+#Ifdef __FB_GFXLIB3__
+    If backend_Gfx3DrawBatchDepth = 0 Then
+        backend_Gfx3PipelinedFrame = -1
+        ScreenInfo backend_Gfx3BatchScreenWidth, _
+            backend_Gfx3BatchScreenHeight, backend_Gfx3BatchScreenDepth
+    End If
+    ' The signed 32-bit limit keeps accidental nested entry from wrapping.
+    If backend_Gfx3DrawBatchDepth < 2147483647 Then _
+        backend_Gfx3DrawBatchDepth += 1
+#EndIf
+End Sub
+
+Sub backend_EndDrawBatch()
+#Ifdef __FB_GFXLIB3__
+    If backend_Gfx3DrawBatchDepth > 0 Then _
+        backend_Gfx3DrawBatchDepth -= 1
+    If backend_Gfx3DrawBatchDepth = 0 Then _
+        backend_Gfx3FlushPendingPoints
+#EndIf
+End Sub
+
 Sub backend_Flip(ByVal waitForCadence As Integer)
-    If backend_DoubleBufferActive = 0 Then Exit Sub
+    backend_Gfx3FlushPendingPoints
+    If backend_DoubleBufferActive = 0 Then
+#Ifdef __FB_GFXLIB3__
+        If backend_Gfx3PresentationPending <> 0 OrElse waitForCadence <> 0 Then
+            ScreenSync
+            backend_Gfx3PresentationPending = 0
+        End If
+        backend_Gfx3PipelinedFrame = 0
+        If waitForCadence <> 0 Then
+            backend_WaitForPresentationCadence()
+        End If
+#EndIf
+        Exit Sub
+    End If
+
+    If backend_OpenGLActive <> 0 Then
+        Flip
+#Ifndef __FB_GFXLIB3__
+        If waitForCadence <> 0 Then backend_WaitForPresentationCadence()
+#EndIf
+        Exit Sub
+    End If
 
     /'
-        ScreenSet switches the visible page after the complete frame is
-        drawn. ScreenSync before this swap can wait an extra refresh boundary
-        on windowed gfxlib drivers. Pace after the swap so rendering and
-        presentation share one 60 Hz frame budget.
+        GFX3 queues ScreenSet and later drawing commands in order. Its bounded
+        command queue supplies backpressure, so waiting for every page cycle
+        here only serializes the UI with the renderer and prevents frame
+        coalescing. Other callers keep synchronous completion below.
     '/
     backend_GfxVisiblePage = backend_GfxWorkPage
-
     If backend_GfxWorkPage = BACKEND_GFX_VISIBLE_PAGE Then
         backend_GfxWorkPage = BACKEND_GFX_WORK_PAGE
     Else
@@ -1405,16 +2218,118 @@ Sub backend_Flip(ByVal waitForCadence As Integer)
     End If
 
     ScreenSet backend_GfxWorkPage, backend_GfxVisiblePage
-#Ifndef __FB_GFXLIB3__
+#Ifdef __FB_GFXLIB3__
+    If backend_Gfx3PipelinedFrame <> 0 Then
+        backend_Gfx3PresentationPending = -1
+    ElseIf waitForCadence <> 0 Then
+        ' Callers that do not bracket rendering keep the synchronous contract.
+        ScreenSync
+        backend_Gfx3PresentationPending = 0
+    End If
+    backend_Gfx3PipelinedFrame = 0
+#EndIf
     If waitForCadence <> 0 Then backend_WaitForPresentationCadence()
+End Sub
+
+Sub backend_SyncPresentation()
+#Ifdef __FB_GFXLIB3__
+    ' Complete one frame after a canvas redraw without serializing idle frames.
+    backend_Gfx3FlushPendingPoints
+    If backend_Gfx3PresentationPending <> 0 Then
+        ScreenSync
+        backend_Gfx3PresentationPending = 0
+    End If
+    backend_Gfx3PipelinedFrame = 0
 #EndIf
 End Sub
 
 Sub backend_Rect(ByVal x As Integer, ByVal y As Integer, ByVal w As Integer, ByVal h As Integer, ByVal clr As ULong, ByVal filled As Integer)
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    backend_Gfx3FlushPendingPoints
+    If w <= 0 OrElse h <= 0 Then Exit Sub
+    If filled Then
+        backend_NavigationFill x, y, x + w - 1, y + h - 1, MapColor(clr)
+    Else
+        backend_NavigationFill x, y, x + w - 1, y, MapColor(clr)
+        backend_NavigationFill x, y + h - 1, x + w - 1, y + h - 1, MapColor(clr)
+        backend_NavigationFill x, y, x, y + h - 1, MapColor(clr)
+        backend_NavigationFill x + w - 1, y, x + w - 1, y + h - 1, MapColor(clr)
+    End If
+    Exit Sub
+#endif
+#Ifdef OMAGUI_GFX3_NATIVE_RECTANGLES
+    If backend_Gfx3DrawBatchDepth > 0 AndAlso _
+       backend_Gfx3BatchScreenDepth = BACKEND_COLOR_DEPTH_TRUE_COLOR Then
+        If backend_Gfx3PendingLineCount > 0 OrElse _
+           backend_Gfx3PendingPointCount > 0 Then _
+            backend_Gfx3FlushPendingPoints
+
+        If w > 0 AndAlso h > 0 Then
+            Dim As LongInt lastX = CLngInt(x) + CLngInt(w) - 1
+            Dim As LongInt lastY = CLngInt(y) + CLngInt(h) - 1
+            If lastX >= -2147483648 AndAlso lastX <= 2147483647 AndAlso _
+               lastY >= -2147483648 AndAlso lastY <= 2147483647 Then
+                If backend_Gfx3PendingRectangleCount >= _
+                   BACKEND_GFX3_PENDING_RECTANGLE_LIMIT Then _
+                    backend_Gfx3FlushPendingPoints
+
+                Dim As Integer rectangleIndex = _
+                    backend_Gfx3PendingRectangleCount
+                With backend_Gfx3PendingRectangles(rectangleIndex)
+                    .x1 = x: .y1 = y
+                    .x2 = CInt(lastX): .y2 = CInt(lastY)
+                    .color = MapColor(clr): .style = &hFFFF
+                    .filled = CUInt(filled <> 0)
+                End With
+                backend_Gfx3PendingRectangleCount += 1
+                Exit Sub
+            End If
+            ' The lower-right corner overflow is wholly off the visible range.
+            Exit Sub
+        End If
+    End If
+#EndIf
+    backend_Gfx3FlushPendingPoints
     If filled Then : Line (x, y)-(x + w - 1, y + h - 1), MapColor(clr), BF : Else : Line (x, y)-(x + w - 1, y + h - 1), MapColor(clr), B : End If
 End Sub
 
 Sub backend_Line(ByVal x1 As Integer, ByVal y1 As Integer, ByVal x2 As Integer, ByVal y2 As Integer, ByVal clr As ULong)
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    backend_Gfx3FlushPendingPoints
+    If x1 = x2 OrElse y1 = y2 Then
+        If x1 > x2 Then Swap x1, x2
+        If y1 > y2 Then Swap y1, y2
+        backend_NavigationFill x1, y1, x2, y2, MapColor(clr)
+        Exit Sub
+    End If
+    backend_NavigationLine x1, y1, x2, y2, MapColor(clr)
+    Exit Sub
+#endif
+    ' A zero-length line still owns one pixel on every gfxlib backend.
+    If x1 = x2 AndAlso y1 = y2 Then
+        backend_PSet x1, y1, clr
+        Exit Sub
+    End If
+#Ifdef OMAGUI_GFX3_NATIVE_LINES
+    If backend_Gfx3DrawBatchDepth > 0 AndAlso _
+       backend_Gfx3BatchScreenDepth = 32 Then
+        If backend_Gfx3PendingPointCount > 0 OrElse _
+           backend_Gfx3PendingRectangleCount > 0 Then _
+            backend_Gfx3FlushPendingPoints
+        If backend_Gfx3PendingLineCount >= _
+           BACKEND_GFX3_PENDING_LINE_LIMIT Then _
+            backend_Gfx3FlushPendingPoints
+
+        Dim As Integer lineIndex = backend_Gfx3PendingLineCount
+        With backend_Gfx3PendingLines(lineIndex)
+            .x1 = x1: .y1 = y1: .x2 = x2: .y2 = y2
+            .color = clr: .style = &hFFFF
+        End With
+        backend_Gfx3PendingLineCount += 1
+        Exit Sub
+    End If
+#EndIf
+    backend_Gfx3FlushPendingPoints
     Line (x1, y1)-(x2, y2), MapColor(clr)
 End Sub
 
@@ -1439,7 +2354,7 @@ Function backend_DrawHorizontalSpans( _
     Dim As Integer screenWidth
     Dim As Integer screenHeight
     Dim As Integer screenDepth
-    ScreenInfo screenWidth, screenHeight, screenDepth
+    backend_GetDrawScreenInfo screenWidth, screenHeight, screenDepth
     If screenWidth <= 0 OrElse screenHeight <= 0 OrElse _
         screenDepth <> BACKEND_COLOR_DEPTH_TRUE_COLOR Then Return 0
 
@@ -1460,6 +2375,39 @@ Function backend_DrawHorizontalSpans( _
         pointCount += spanWidth
     Next
     If pointCount = 0 Then Return -1
+
+    If backend_Gfx3DrawBatchDepth > 0 Then
+        /'
+            Keep adjacent span writes in the same bounded point packet. The
+            drafting grid supplies one span per row; submitting each row
+            separately needlessly repeats the GFX3 API allocation and lock.
+        '/
+        If backend_Gfx3PendingLineCount > 0 OrElse _
+           backend_Gfx3PendingRectangleCount > 0 Then _
+            backend_Gfx3FlushPendingPoints
+        Dim As ULong pointAlpha = backend_Gfx3Alpha(alpha)
+        For spanIndex As Integer = 0 To spanCount - 1
+            Dim As Integer firstX = spanStartX[spanIndex]
+            Dim As Integer lastX = spanEndX[spanIndex]
+            Dim As Integer rowY = spanY[spanIndex]
+            If rowY < 0 OrElse rowY >= screenHeight OrElse _
+                lastX < 0 OrElse firstX >= screenWidth Then Continue For
+            If firstX < 0 Then firstX = 0
+            If lastX >= screenWidth Then lastX = screenWidth - 1
+            For pixelX As Integer = firstX To lastX
+                If backend_Gfx3PendingPointCount >= _
+                   BACKEND_GFX3_PENDING_POINT_LIMIT Then _
+                    backend_Gfx3FlushPendingPoints
+                Dim As Integer pointIndex = backend_Gfx3PendingPointCount
+                backend_Gfx3PendingPoints(pointIndex).x = pixelX
+                backend_Gfx3PendingPoints(pointIndex).y = rowY
+                backend_Gfx3PendingPoints(pointIndex).color = clr
+                backend_Gfx3PendingPoints(pointIndex).alpha = pointAlpha
+                backend_Gfx3PendingPointCount += 1
+            Next
+        Next
+        Return -1
+    End If
 
     If backend_Gfx3SpanPointCapacity < pointCount Then
         ReDim backend_Gfx3SpanPoints(0 To CInt(pointCount) - 1)
@@ -1484,8 +2432,11 @@ Function backend_DrawHorizontalSpans( _
         Next
     Next
 
+    backend_Gfx3FlushPendingPoints
     If fb.Gfx3DrawPoints( _
-        0, @backend_Gfx3SpanPoints(0), pointIndex) = 0 Then Return -1
+        0, @backend_Gfx3SpanPoints(0), pointIndex) = 0 Then
+        Return -1
+    End If
 #EndIf
     Return 0
 End Function
@@ -1510,7 +2461,7 @@ Function backend_DrawAlphaMask( _
     Dim As Integer screenWidth
     Dim As Integer screenHeight
     Dim As Integer screenDepth
-    ScreenInfo screenWidth, screenHeight, screenDepth
+    backend_GetDrawScreenInfo screenWidth, screenHeight, screenDepth
     If screenWidth <= 0 OrElse screenHeight <= 0 OrElse _
         screenDepth <> BACKEND_COLOR_DEPTH_TRUE_COLOR Then Return 0
 
@@ -1528,7 +2479,17 @@ Function backend_DrawAlphaMask( _
     Next maskY
     If pointCount = 0 Then Return -1
 
-    If backend_Gfx3SpanPointCapacity < pointCount Then
+    Dim As Integer queueMask = 0
+    If backend_Gfx3DrawBatchDepth > 0 AndAlso _
+       pointCount <= BACKEND_GFX3_PENDING_POINT_LIMIT Then
+        queueMask = -1
+        If backend_Gfx3PendingLineCount > 0 OrElse _
+           backend_Gfx3PendingRectangleCount > 0 Then _
+            backend_Gfx3FlushPendingPoints
+        If backend_Gfx3PendingPointCount > _
+           BACKEND_GFX3_PENDING_POINT_LIMIT - CInt(pointCount) Then _
+            backend_Gfx3FlushPendingPoints
+    ElseIf backend_Gfx3SpanPointCapacity < pointCount Then
         ReDim backend_Gfx3SpanPoints(0 To CInt(pointCount) - 1)
         backend_Gfx3SpanPointCapacity = pointCount
     End If
@@ -1542,16 +2503,25 @@ Function backend_DrawAlphaMask( _
             Dim As Integer alpha = coverage[maskY * maskWidth + maskX]
             If pixelX < 0 OrElse pixelX >= screenWidth OrElse alpha <= 0 Then _
                 Continue For
-            backend_Gfx3SpanPoints(pointIndex).x = pixelX
-            backend_Gfx3SpanPoints(pointIndex).y = pixelY
-            backend_Gfx3SpanPoints(pointIndex).color = clr
-            backend_Gfx3SpanPoints(pointIndex).alpha = backend_Gfx3Alpha(alpha)
-            pointIndex += 1
+            If queueMask Then
+                backend_Gfx3QueuePixel CInt(pixelX), CInt(pixelY), clr, alpha
+            Else
+                backend_Gfx3SpanPoints(pointIndex).x = pixelX
+                backend_Gfx3SpanPoints(pointIndex).y = pixelY
+                backend_Gfx3SpanPoints(pointIndex).color = clr
+                backend_Gfx3SpanPoints(pointIndex).alpha = backend_Gfx3Alpha(alpha)
+                pointIndex += 1
+            End If
         Next maskX
     Next maskY
 
+    If queueMask Then Return -1
+
+    backend_Gfx3FlushPendingPoints
     If fb.Gfx3DrawPoints( _
-        0, @backend_Gfx3SpanPoints(0), pointIndex) = 0 Then Return -1
+        0, @backend_Gfx3SpanPoints(0), pointIndex) = 0 Then
+        Return -1
+    End If
 #EndIf
     Return 0
 End Function
@@ -1583,24 +2553,134 @@ Sub backend_DrawImage( _
     If imageBuffer = 0 Then Exit Sub
     ' Layout-only headless tests keep image ownership but have no gfxlib screen.
     If backend_HeadlessActive = BACKEND_HEADLESS Then Exit Sub
+    backend_Gfx3FlushPendingPoints
 
+    Dim drawX As Single = x, drawY As Single = y
+    Dim drawBuffer As Any Ptr = imageBuffer
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    drawBuffer = backend_NavigationImage(imageBuffer, x, y, drawX, drawY)
+    If drawBuffer = 0 Then Exit Sub
+#endif
     /'
         Raster decoders return gfxlib image buffers. Alpha mode preserves GIF
         transparency and PNG alpha; opaque images use ordinary palette mapping.
     '/
     If useAlpha <> 0 Then
         If preserveTransparent AndAlso backend_ColorDepth = BACKEND_COLOR_DEPTH_TRUE_COLOR Then
-            Put (x, y), imageBuffer, Custom, @backend_BlendImagePixel
+            Put (drawX, drawY), drawBuffer, Custom, @backend_BlendImagePixel
         Else
-            Put (x, y), imageBuffer, Alpha
+            Put (drawX, drawY), drawBuffer, Alpha
         End If
     Else
-        Put (x, y), imageBuffer, PSet
+        Put (drawX, drawY), drawBuffer, PSet
     End If
 
+    If drawBuffer <> imageBuffer Then ImageDestroy drawBuffer
 End Sub
 
+Private Sub backend_PlotPixel(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong)
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    backend_NavigationFill x, y, x, y, clr
+#else
+    PSet (x, y), clr
+#endif
+End Sub
+
+
+/'
+    Draw a retained opaque canvas image at a transient zoom scale. The UI
+    thread owns these writes; a screen lock protects the current work page.
+    The exact CAD scene replaces this nearest-neighbour preview after the
+    wheel burst settles. Non-32-bit targets return zero for a normal redraw.
+'/
+Function backend_DrawImageScaled( _
+    ByVal imageBuffer As Any Ptr, _
+    ByVal sourceWidth As Integer, ByVal sourceHeight As Integer, _
+    ByVal destinationX As Integer, ByVal destinationY As Integer, _
+    ByVal destinationWidth As Integer, ByVal destinationHeight As Integer _
+) As Integer
+#Ifdef __FB_GFXLIB3__
+    Return 0
+#Else
+    If imageBuffer = 0 OrElse sourceWidth <= 0 OrElse sourceHeight <= 0 OrElse _
+       destinationWidth <= 0 OrElse destinationHeight <= 0 Then Return 0
+    If backend_HeadlessActive = BACKEND_HEADLESS Then Return -1
+
+    Dim As Integer imageWidth, imageHeight, imageBytesPerPixel
+    Dim As Integer imagePitchBytes, imageBytes
+    Dim As Any Ptr imagePixelData
+    If ImageInfo(imageBuffer, imageWidth, imageHeight, imageBytesPerPixel, _
+        imagePitchBytes, imagePixelData, imageBytes) <> 0 Then Return 0
+    If imagePixelData = 0 OrElse sourceWidth > imageWidth OrElse _
+       sourceHeight > imageHeight OrElse imageBytesPerPixel <> 4 OrElse _
+       imagePitchBytes <= 0 OrElse (imagePitchBytes Mod 4) <> 0 OrElse _
+       CLngInt(sourceWidth) * 4 > imagePitchBytes OrElse _
+       CLngInt(imagePitchBytes) * imageHeight > imageBytes Then Return 0
+
+    Dim As Integer clipX, clipY, clipWidth, clipHeight
+    backend_GetClip clipX, clipY, clipWidth, clipHeight
+    If clipWidth <= 0 OrElse clipHeight <= 0 Then Return -1
+    Dim As LongInt firstX = destinationX, firstY = destinationY
+    Dim As LongInt lastX = CLngInt(destinationX) + destinationWidth - 1
+    Dim As LongInt lastY = CLngInt(destinationY) + destinationHeight - 1
+    If firstX < clipX Then firstX = clipX
+    If firstY < clipY Then firstY = clipY
+    If firstX < 0 Then firstX = 0
+    If firstY < 0 Then firstY = 0
+    Dim As Integer screenWidth, screenHeight, screenDepth
+    Dim As Integer screenBytesPerPixel, screenPitchBytes
+
+    ScreenLock
+    ScreenInfo screenWidth, screenHeight, screenDepth, _
+        screenBytesPerPixel, screenPitchBytes
+    Dim As UByte Ptr screenPixelData = ScreenPtr
+    If screenPixelData = 0 OrElse screenWidth <= 0 OrElse screenHeight <= 0 OrElse _
+       screenDepth <> 32 OrElse screenBytesPerPixel <> 4 OrElse _
+       screenPitchBytes <= 0 OrElse (screenPitchBytes Mod 4) <> 0 OrElse _
+       CLngInt(screenWidth) * 4 > screenPitchBytes OrElse _
+       CLngInt(screenPitchBytes) * screenHeight > &H7FFFFFFF Then
+        ScreenUnlock
+        Return 0
+    End If
+    If lastX >= clipX + clipWidth Then lastX = CLngInt(clipX) + clipWidth - 1
+    If lastY >= clipY + clipHeight Then lastY = CLngInt(clipY) + clipHeight - 1
+    If lastX >= screenWidth Then lastX = screenWidth - 1
+    If lastY >= screenHeight Then lastY = screenHeight - 1
+    If firstX > lastX OrElse firstY > lastY Then
+        ScreenUnlock
+        Return -1
+    End If
+
+    Dim As ULong Ptr sourcePixels = Cast(ULong Ptr, imagePixelData)
+    Dim As Integer sourcePitchPixels = imagePitchBytes \ 4
+    Dim As Double sourceStepX = sourceWidth / CDbl(destinationWidth)
+    Dim As Double sourceStepY = sourceHeight / CDbl(destinationHeight)
+    Dim As Double sampleY = (firstY - destinationY + 0.5) * sourceStepY
+    For screenY As Integer = CInt(firstY) To CInt(lastY)
+        Dim As Integer sourceY = CInt(Fix(sampleY))
+        If sourceY < 0 Then sourceY = 0
+        If sourceY >= sourceHeight Then sourceY = sourceHeight - 1
+        Dim As ULong Ptr sourceRow = sourcePixels + _
+            CLngInt(sourceY) * sourcePitchPixels
+        Dim As ULong Ptr destinationRow = Cast(ULong Ptr, _
+            screenPixelData + CLngInt(screenY) * screenPitchBytes)
+        Dim As Double sampleX = (firstX - destinationX + 0.5) * sourceStepX
+        For screenX As Integer = CInt(firstX) To CInt(lastX)
+            Dim As Integer sourceX = CInt(Fix(sampleX))
+            If sourceX < 0 Then sourceX = 0
+            If sourceX >= sourceWidth Then sourceX = sourceWidth - 1
+            destinationRow[screenX] = sourceRow[sourceX]
+            sampleX += sourceStepX
+        Next screenX
+        sampleY += sourceStepY
+    Next screenY
+    ScreenUnlock CInt(firstY), CInt(lastY)
+    Return -1
+#EndIf
+End Function
+
 Sub backend_PSetAlpha(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong, ByVal alpha As Integer)
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
     Dim As Integer screen_w
     Dim As Integer screen_h
     Dim As Integer screen_d
@@ -1627,7 +2707,7 @@ Sub backend_PSetAlpha(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong
     End If
 
     If alpha >= 255 Or screen_d < 16 Then
-        PSet (x, y), MapColor(clr)
+        backend_PSet x, y, clr
         Exit Sub
     End If
 
@@ -1639,7 +2719,28 @@ Sub backend_PSetAlpha(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong
         The extension preserves gfxlib's alpha arithmetic in the queued GPU
         command and therefore does not cross the CPU/GPU ownership boundary.
     '/
-#ifndef OMAGUI_NAVIGATION_EXTENSIONS
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    If screen_d = 32 Then
+        Dim leftPixel As Integer, topPixel As Integer, rightPixel As Integer, bottomPixel As Integer
+        If backend_NavigationBounds(x,y,x,y,leftPixel,topPixel,rightPixel,bottomPixel) = 0 Then Exit Sub
+        ' One logical pixel can cover several physical pixels. Keep alpha on
+        ' the GPU instead of downloading a complete page for each glyph cell.
+        Const cellPointLimit As Integer = 256 ' Covers density scales through 16 by 16 pixels.
+        If CLngInt(rightPixel-leftPixel+1) * (bottomPixel-topPixel+1) <= cellPointLimit Then
+            Dim cellPoints(0 To cellPointLimit-1) As fb.Gfx3Point
+            Dim pointCount As Integer
+            For rowValue As Integer = topPixel To bottomPixel
+                For columnValue As Integer = leftPixel To rightPixel
+                    cellPoints(pointCount).x = columnValue: cellPoints(pointCount).y = rowValue
+                    cellPoints(pointCount).color = MapColor(clr)
+                    cellPoints(pointCount).alpha = backend_Gfx3Alpha(alpha)
+                    pointCount += 1
+                Next columnValue
+            Next rowValue
+            If fb.Gfx3DrawPoints(0,@cellPoints(0),pointCount) = 0 Then Exit Sub
+        End If
+    End If
+#else
     If screen_d = 32 Then
         Dim As fb.Gfx3Point gpu_point
 
@@ -1655,7 +2756,12 @@ Sub backend_PSetAlpha(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong
 #endif
 #EndIf
 
-    bg = Point(x, y)
+    Dim sampleX As Integer = x, sampleY As Integer = y
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    Dim sampleRight As Integer, sampleBottom As Integer
+    If backend_NavigationBounds(x,y,x,y,sampleX,sampleY,sampleRight,sampleBottom) = 0 Then Exit Sub
+#endif
+    bg = Point(sampleX, sampleY)
 
     r = (clr Shr 16) And &HFF
     g = (clr Shr 8) And &HFF
@@ -1669,7 +2775,111 @@ Sub backend_PSetAlpha(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong
     rg = ((g * alpha) + (bg_g * (255 - alpha))) \ 255
     rb = ((b * alpha) + (bb * (255 - alpha))) \ 255
 
-    PSet (x, y), RGB(rr, rg, rb)
+    backend_PSet x, y, RGB(rr, rg, rb)
+#else
+    Dim As Integer screen_w
+    Dim As Integer screen_h
+    Dim As Integer screen_d
+    Dim As ULong bg
+    Dim As ULong r
+    Dim As ULong g
+    Dim As ULong b
+    Dim As ULong br
+    Dim As ULong bg_g
+    Dim As ULong bb
+    Dim As ULong rr
+    Dim As ULong rg
+    Dim As ULong rb
+
+    If alpha <= 0 Then Exit Sub
+
+    backend_GetDrawScreenInfo screen_w, screen_h, screen_d
+
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    screen_w = omagui_nav_logical_w: screen_h = omagui_nav_logical_h
+#endif
+    If x < 0 Or y < 0 Or x >= screen_w Or y >= screen_h Then
+        Exit Sub
+    End If
+
+    If alpha >= 255 Or screen_d < 16 Then
+        backend_PSet x, y, clr
+        Exit Sub
+    End If
+
+#Ifdef __FB_GFXLIB3__
+    /'
+        A gfxlib3 page is normally authoritative on the GPU. POINT would
+        download that complete page before blending one pixel, which is
+        especially expensive after an application has drawn a scaled surface.
+        The extension preserves gfxlib's alpha arithmetic in the queued GPU
+        command and therefore does not cross the CPU/GPU ownership boundary.
+    '/
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    If screen_d = 32 Then
+        Dim leftPixel As Integer, topPixel As Integer, rightPixel As Integer, bottomPixel As Integer
+        If backend_NavigationBounds(x,y,x,y,leftPixel,topPixel,rightPixel,bottomPixel) = 0 Then Exit Sub
+        ' One logical pixel can cover several physical pixels. Keep alpha on
+        ' the GPU instead of downloading a complete page for each glyph cell.
+        Const cellPointLimit As Integer = 256 ' Covers density scales through 16 by 16 pixels.
+        If CLngInt(rightPixel-leftPixel+1) * (bottomPixel-topPixel+1) <= cellPointLimit Then
+            Dim cellPoints(0 To cellPointLimit-1) As fb.Gfx3Point
+            Dim pointCount As Integer
+            For rowValue As Integer = topPixel To bottomPixel
+                For columnValue As Integer = leftPixel To rightPixel
+                    cellPoints(pointCount).x = columnValue: cellPoints(pointCount).y = rowValue
+                    cellPoints(pointCount).color = MapColor(clr)
+                    cellPoints(pointCount).alpha = backend_Gfx3Alpha(alpha)
+                    pointCount += 1
+                Next columnValue
+            Next rowValue
+            If fb.Gfx3DrawPoints(0,@cellPoints(0),pointCount) = 0 Then Exit Sub
+        End If
+    End If
+#else
+    If screen_d = 32 Then
+        If backend_Gfx3DrawBatchDepth > 0 Then
+            backend_Gfx3QueuePixel x, y, clr, alpha
+            Exit Sub
+        End If
+
+        If alpha < 255 Then
+            Dim As fb.Gfx3Point gpu_point
+
+            gpu_point.x = x
+            gpu_point.y = y
+            gpu_point.color = clr
+            gpu_point.alpha = backend_Gfx3Alpha(alpha)
+
+            If fb.Gfx3DrawPoints(0, @gpu_point, 1) = 0 Then
+                Exit Sub
+            End If
+        End If
+    End If
+#endif
+#EndIf
+
+    Dim sampleX As Integer = x, sampleY As Integer = y
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    Dim sampleRight As Integer, sampleBottom As Integer
+    If backend_NavigationBounds(x,y,x,y,sampleX,sampleY,sampleRight,sampleBottom) = 0 Then Exit Sub
+#endif
+    bg = Point(sampleX, sampleY)
+
+    r = (clr Shr 16) And &HFF
+    g = (clr Shr 8) And &HFF
+    b = clr And &HFF
+
+    br = (bg Shr 16) And &HFF
+    bg_g = (bg Shr 8) And &HFF
+    bb = bg And &HFF
+
+    rr = ((r * alpha) + (br * (255 - alpha))) \ 255
+    rg = ((g * alpha) + (bg_g * (255 - alpha))) \ 255
+    rb = ((b * alpha) + (bb * (255 - alpha))) \ 255
+
+    backend_PSet x, y, RGB(rr, rg, rb)
+#endif
 End Sub
 
 Private Sub backend_DrawLineAlpha(ByVal x1 As Integer, ByVal y1 As Integer, _
@@ -1806,9 +3016,22 @@ Sub backend_RectEx(ByVal x As Integer, ByVal y As Integer, _
     End If
 End Sub
 
-Sub backend_PSet(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong) : PSet (x, y), MapColor(clr) : End Sub
+Sub backend_PSet(ByVal x As Integer, ByVal y As Integer, ByVal clr As ULong)
+    backend_Gfx3FlushPendingPoints
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    backend_NavigationFill x, y, x, y, MapColor(clr)
+#else
+    PSet (x, y), MapColor(clr)
+#endif
+End Sub
 
 Sub backend_Circle(ByVal x As Integer, ByVal y As Integer, ByVal r As Integer, ByVal clr As ULong, ByVal filled As Integer)
+    backend_Gfx3FlushPendingPoints
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+    backend_NavigationCircle x, y, r, MapColor(clr), filled
+    Exit Sub
+#endif
+    backend_Gfx3FlushPendingPoints
     If filled Then : Circle (x, y), r, MapColor(clr), , , , F : Else : Circle (x, y), r, MapColor(clr) : End If
 End Sub
 
@@ -1859,12 +3082,13 @@ Sub backend_Curve(ByVal x1 As Integer, ByVal y1 As Integer, ByVal x2 As Integer,
     Dim As Integer oldY
     Dim As ULong mappedColor = MapColor(clr)
 
+    backend_Gfx3FlushPendingPoints
     For t = 0.0 To 1.0 Step BACKEND_CURVE_STEP
         pixelX = (1.0 - t) ^ 2 * x1 + 2.0 * (1.0 - t) * t * x2 + t ^ 2 * x3
         pixelY = (1.0 - t) ^ 2 * y1 + 2.0 * (1.0 - t) * t * y2 + t ^ 2 * y3
 
         If t > 0.0 Then
-            Line (oldX, oldY)-(CInt(pixelX), CInt(pixelY)), mappedColor
+            backend_Line oldX, oldY, CInt(pixelX), CInt(pixelY), mappedColor
         End If
 
         oldX = CInt(pixelX)
@@ -1902,7 +3126,12 @@ Private Function backend_UnicodeGlyph( _
         End If
     Wend
 
+#ifndef __FB_DOS__
+    ' A caller-supplied Unicode table takes precedence over the bundled face.
+    Return font_latin1_glyph(codepoint)
+#else
     Return 0
+#endif
 
 End Function
 
@@ -1974,6 +3203,54 @@ Private Function backend_FontGlyph(ByVal font_id As Integer, _
 
     ' Keep unsupported Unicode visible and measurable instead of dropping bytes.
     Return font_chars(Asc("?"))
+
+End Function
+
+
+Function backend_GetFontGlyph( _
+    ByVal font_id As Integer, ByVal codepoint As Integer, _
+    ByRef advance As Integer, ByRef bearing_x As Integer, _
+    ByRef bearing_y As Integer _
+) As UByte Ptr
+
+    Dim As UByte Ptr glyph
+    advance = 0
+    bearing_x = 0
+    bearing_y = 0
+    If font_id < 0 OrElse font_id > BACKEND_FONT_LAST OrElse _
+       codepoint < 0 OrElse codepoint > &h10FFFF OrElse _
+       (codepoint >= &hD800 AndAlso codepoint <= &hDFFF) Then Return 0
+
+    glyph = backend_FontGlyph(font_id, codepoint)
+    If glyph = 0 Then Return 0
+
+    advance = backend_FontGlyphAdvance(font_id, codepoint, glyph)
+    backend_FontGlyphBearing font_id, codepoint, glyph, bearing_x, bearing_y
+    Return glyph
+End Function
+
+
+Function backend_HasFontGlyph( _
+    ByVal font_id As Integer, ByVal codepoint As Integer _
+) As Integer
+
+    If font_id < 0 OrElse font_id > BACKEND_FONT_LAST OrElse _
+       codepoint < 32 OrElse codepoint > &h10FFFF OrElse _
+       (codepoint >= &hD800 AndAlso codepoint <= &hDFFF) OrElse _
+       codepoint = 127 Then Return 0
+
+    If backend_HasFontPack(font_id) <> 0 AndAlso _
+       backend_FontPackFind(font_id, codepoint) <> 0 Then Return -1
+
+    If codepoint < 128 Then _
+        Return IIf(backend_FontGlyph(font_id, codepoint) <> 0, -1, 0)
+
+    ' Match the canvas fallback order without treating its final '?' glyph as
+    ' evidence that the requested character exists in the selected font.
+    If backend_FontPackTextGlyph(font_id, codepoint) <> 0 Then Return -1
+    If backend_UnicodeGlyph(codepoint) <> 0 Then Return -1
+    If backend_FontPackFind(BACKEND_FONT_DEFAULT, codepoint) <> 0 Then Return -1
+    Return 0
 
 End Function
 
@@ -2130,13 +3407,14 @@ Private Function backend_DrawTextGfx3( _
     Dim As ULongInt glyph_capacity
     Dim As UByte Ptr glyph
     Dim points() As fb.Gfx3Point
+    Dim As Integer queueText = 0
 
     If scale_x < 1 Or scale_y < 1 Or text_alpha <= 0 Then
         Return -1
     End If
     If text_alpha > 255 Then text_alpha = 255
 
-    ScreenInfo screen_w, screen_h, screen_d
+    backend_GetDrawScreenInfo screen_w, screen_h, screen_d
     If screen_d <> 32 Then Return 0
 
     /'
@@ -2160,7 +3438,18 @@ Private Function backend_DrawTextGfx3( _
     Wend
 
     If point_capacity = 0 Then Return -1
-    ReDim points(0 To CInt(point_capacity) - 1)
+    If backend_Gfx3DrawBatchDepth > 0 AndAlso _
+       point_capacity <= BACKEND_GFX3_PENDING_POINT_LIMIT Then
+        queueText = -1
+        If backend_Gfx3PendingLineCount > 0 OrElse _
+           backend_Gfx3PendingRectangleCount > 0 Then _
+            backend_Gfx3FlushPendingPoints
+        If backend_Gfx3PendingPointCount > _
+           BACKEND_GFX3_PENDING_POINT_LIMIT - CInt(point_capacity) Then _
+            backend_Gfx3FlushPendingPoints
+    Else
+        ReDim points(0 To CInt(point_capacity) - 1)
+    End If
 
     current_x = x
     previous_cell_x = x
@@ -2191,15 +3480,25 @@ Private Function backend_DrawTextGfx3( _
                     If glyph_alpha > 0 Then
                         For scaled_y As Integer = 0 To scale_y - 1
                             For scaled_x As Integer = 0 To scale_x - 1
-                                points(point_count).x = glyph_draw_x + _
-                                    (bearing_x * scale_x) + _
-                                    (pixel_x * scale_x) + scaled_x
-                                points(point_count).y = y + _
-                                    (bearing_y * scale_y) + _
-                                    (pixel_y * scale_y) + scaled_y
-                                points(point_count).color = clr
-                                points(point_count).alpha = _
-                                    backend_Gfx3Alpha(glyph_alpha)
+                                If queueText Then
+                                    backend_Gfx3QueuePixel _
+                                        glyph_draw_x + _
+                                            (bearing_x * scale_x) + _
+                                            (pixel_x * scale_x) + scaled_x, _
+                                        y + (bearing_y * scale_y) + _
+                                            (pixel_y * scale_y) + scaled_y, _
+                                        clr, glyph_alpha
+                                Else
+                                    points(point_count).x = glyph_draw_x + _
+                                        (bearing_x * scale_x) + _
+                                        (pixel_x * scale_x) + scaled_x
+                                    points(point_count).y = y + _
+                                        (bearing_y * scale_y) + _
+                                        (pixel_y * scale_y) + scaled_y
+                                    points(point_count).color = clr
+                                    points(point_count).alpha = _
+                                        backend_Gfx3Alpha(glyph_alpha)
+                                End If
                                 point_count += 1
                             Next scaled_x
                         Next scaled_y
@@ -2216,6 +3515,8 @@ Private Function backend_DrawTextGfx3( _
     Wend
 
     If point_count = 0 Then Return -1
+    If queueText Then Return -1
+    backend_Gfx3FlushPendingPoints
     If fb.Gfx3DrawPoints(0, @points(0), point_count) <> 0 Then Return 0
     Return -1
 End Function
@@ -2262,10 +3563,11 @@ Private Function backend_DrawTextGfx3Percent( _
     Dim As ULongInt glyph_capacity
     Dim As UByte Ptr glyph
     Dim points() As fb.Gfx3Point
+    Dim As Integer queueText = 0
 
     If percent < BACKEND_MIN_FONT_PERCENT OrElse percent > BACKEND_MAX_FONT_PERCENT Then Return 0
 
-    ScreenInfo screen_w, screen_h, screen_d
+    backend_GetDrawScreenInfo screen_w, screen_h, screen_d
     If screen_d <> 32 Then Return 0
 
     byte_index = 0
@@ -2287,7 +3589,18 @@ Private Function backend_DrawTextGfx3Percent( _
     Wend
 
     If point_capacity = 0 Then Return -1
-    ReDim points(0 To CInt(point_capacity) - 1)
+    If backend_Gfx3DrawBatchDepth > 0 AndAlso _
+       point_capacity <= BACKEND_GFX3_PENDING_POINT_LIMIT Then
+        queueText = -1
+        If backend_Gfx3PendingLineCount > 0 OrElse _
+           backend_Gfx3PendingRectangleCount > 0 Then _
+            backend_Gfx3FlushPendingPoints
+        If backend_Gfx3PendingPointCount > _
+           BACKEND_GFX3_PENDING_POINT_LIMIT - CInt(point_capacity) Then _
+            backend_Gfx3FlushPendingPoints
+    Else
+        ReDim points(0 To CInt(point_capacity) - 1)
+    End If
 
     current_x = x
     previous_cell_x = x
@@ -2369,12 +3682,19 @@ Private Function backend_DrawTextGfx3Percent( _
                         glyph[2 + source_y * glyph[0] + source_x]
                 If glyph_alpha <= 0 Then Continue For
 
-                points(point_count).x = glyph_draw_x + _
-                    ((bearing_x * percent) \ 100) + dest_x
-                points(point_count).y = y + _
-                    ((bearing_y * percent) \ 100) + dest_y
-                points(point_count).color = clr
-                points(point_count).alpha = backend_Gfx3Alpha(glyph_alpha)
+                If queueText Then
+                    backend_Gfx3QueuePixel _
+                        glyph_draw_x + ((bearing_x * percent) \ 100) + dest_x, _
+                        y + ((bearing_y * percent) \ 100) + dest_y, _
+                        clr, glyph_alpha
+                Else
+                    points(point_count).x = glyph_draw_x + _
+                        ((bearing_x * percent) \ 100) + dest_x
+                    points(point_count).y = y + _
+                        ((bearing_y * percent) \ 100) + dest_y
+                    points(point_count).color = clr
+                    points(point_count).alpha = backend_Gfx3Alpha(glyph_alpha)
+                End If
                 point_count += 1
             Next dest_x
         Next dest_y
@@ -2387,6 +3707,8 @@ Private Function backend_DrawTextGfx3Percent( _
     Wend
 
     If point_count = 0 Then Return -1
+    If queueText Then Return -1
+    backend_Gfx3FlushPendingPoints
     If fb.Gfx3DrawPoints(0, @points(0), point_count) <> 0 Then Return 0
     Return -1
 
@@ -2431,6 +3753,23 @@ Private Function backend_ScaleFontOffsetPercent( _
 
 End Function
 
+#If Defined(__FB_GFXLIB3__) And Defined(OMAGUI_NAVIGATION_EXTENSIONS)
+Private Function backend_LockNavigationText() As Integer
+    Dim As Integer screen_w, screen_h
+    If backend_HeadlessActive = BACKEND_HEADLESS Then Return 0
+    ScreenInfo screen_w, screen_h
+    If screen_w <= 0 OrElse screen_h <= 0 Then Return 0
+    /'
+        Scaled text blends against the existing page one pixel at a time.
+        Keep the shadow page authoritative for the whole string so gfxlib3
+        does not repeatedly transfer it between the CPU and graphics backend.
+        SCREENLOCK is nested, so an application can also lock the whole frame.
+    '/
+    ScreenLock
+    Return -1
+End Function
+#EndIf
+
 Private Sub DrawCharFont(ByVal x As Integer, ByVal y As Integer, _
                          ByVal charCode As Integer, ByVal clr As ULong, _
                          ByVal font_id As Integer, ByVal text_alpha As Integer, _
@@ -2457,7 +3796,7 @@ Private Sub DrawCharFont(ByVal x As Integer, ByVal y As Integer, _
             For px As Integer = 0 To w - 1
                 Dim As ULong coverage = p[2 + py * w + px]
                 If text_alpha <> 255 Then coverage = (coverage * text_alpha) \ 255
-                ' private mask state is declared in backend_font_span.bi.
+                ' fblint: disable-next-line FBL310 -- private mask state is declared in backend_font_span.bi.
                 backend_FontSpanPixels[py * backend_FontSpanPitch + px] = coverage Shl 24
             Next px
         Next py
@@ -2470,6 +3809,18 @@ Private Sub DrawCharFont(ByVal x As Integer, ByVal y As Integer, _
             Dim As Integer alpha = (CInt(p[2 + py * w + px]) * text_alpha) \ 255
 
             If alpha > 0 Then
+#ifdef OMAGUI_NAVIGATION_EXTENSIONS
+                ' Ordinary glyphs share the same physical cell coverage and
+                ' alpha path as scaled glyphs; direct PSET bypasses that mapping.
+                backend_PSetAlpha x + bearing_x + px, y + bearing_y + py, clr, alpha
+#else
+#Ifdef __FB_GFXLIB3__
+                If screenDepth = 32 Then
+                    backend_PSetAlpha( _
+                        x + bearing_x + px, y + bearing_y + py, clr, alpha _
+                    )
+                Else
+#EndIf
                 If screenDepth < 16 Then
                     If alpha > 128 Then PSet _
                         (x + bearing_x + px, y + bearing_y + py), MapColor(clr)
@@ -2492,6 +3843,10 @@ Private Sub DrawCharFont(ByVal x As Integer, ByVal y As Integer, _
                         (x + bearing_x + px, y + bearing_y + py), _
                         RGB(resR, resG, resB)
                 End If
+#Ifdef __FB_GFXLIB3__
+                End If
+#EndIf
+#endif
             End If
         Next
     Next
@@ -2760,7 +4115,7 @@ Private Sub backend_PrintPercentStyled( _
                         ' Shear leaves empty leading pixels. Clear their coverage
                         ' because the reusable mask may still contain a prior glyph.
                         If useFontSpan <> 0 Then
-                            ' private mask state is declared in backend_font_span.bi.
+                            ' fblint: disable-next-line FBL310 -- private mask state is declared in backend_font_span.bi.
                             backend_FontSpanPixels[dest_y * backend_FontSpanPitch + dest_x] = 0
                         End If
                         Continue For
@@ -2785,7 +4140,7 @@ Private Sub backend_PrintPercentStyled( _
                     glyph_alpha = _
                         glyph[2 + source_y * glyph_width + source_x]
                 If useFontSpan <> 0 Then
-                    ' private mask state is declared in backend_font_span.bi.
+                    ' fblint: disable-next-line FBL310 -- private mask state is declared in backend_font_span.bi.
                     backend_FontSpanPixels[dest_y * backend_FontSpanPitch + dest_x] = CULng(glyph_alpha) Shl 24
                 Else
                     backend_PSetAlpha( _
@@ -3149,6 +4504,8 @@ Sub backend_SetClip(ByVal x As Integer, ByVal y As Integer, ByVal w As Integer, 
         clip for its own renderer.
     '/
 
+    backend_Gfx3FlushPendingPoints
+
     If backend_ClipDepth >= BACKEND_CLIP_STACK_CAPACITY Then
         backend_ClipOverflowDepth += 1
         Exit Sub
@@ -3212,6 +4569,8 @@ End Sub
 Sub backend_ResetClip()
     Dim stackIndex As Integer
 
+    backend_Gfx3FlushPendingPoints
+
     If backend_ClipOverflowDepth > 0 Then
         backend_ClipOverflowDepth -= 1
         Exit Sub
@@ -3260,6 +4619,16 @@ Private Sub backend_WriteBmpU32(ByVal file_number As Integer, _
 End Sub
 
 Sub backend_SaveSnapshot(ByVal filename As String)
+    Dim resultValue As Integer
+    resultValue = backend_SaveSnapshotRegion(filename, 0, 0, 0, 0)
+End Sub
+
+Function backend_SaveSnapshotRegion( _
+    ByVal filename As String, ByVal sourceX As Integer, ByVal sourceY As Integer, _
+    ByVal sourceWidth As Integer, ByVal sourceHeight As Integer _
+) As Integer
+    ' Keep a large drawing capture below the classic BMP 32-bit file limit.
+    Const BACKEND_SNAPSHOT_LIMIT_BYTES As ULongInt = 536870912
     Dim screen_w As Integer
     Dim screen_h As Integer
     Dim screen_depth As Integer
@@ -3268,10 +4637,15 @@ Sub backend_SaveSnapshot(ByVal filename As String)
     Dim bytes_per_pixel As Integer
     Dim file_number As Integer
     Dim row_stride As Integer
+    Dim row_padding As Integer
     Dim pixel_data_size As UInteger
     Dim file_size As UInteger
+    Dim bitmap_width As Integer
+    Dim bitmap_height As Integer
+    Dim file_size_wide As ULongInt
     Dim x As Integer
     Dim y As Integer
+    Dim output_y As Integer
     Dim screen_buffer As Any Ptr
     Dim row_ptr As UByte Ptr
     Dim pixel_ptr As UByte Ptr
@@ -3282,8 +4656,8 @@ Sub backend_SaveSnapshot(ByVal filename As String)
     /'
         Snapshot file format
 
-        Test and extraction tools need deterministic BMP files from headless
-        renders. The writer below emits a plain 24-bit Windows BMP:
+        Workspace snapshots and BMPOUT use one bounded 24-bit BMP writer.
+        A caller may capture the whole page or one visible canvas rectangle:
 
             14 bytes : BMP file header
             40 bytes : BITMAPINFOHEADER
@@ -3293,11 +4667,20 @@ Sub backend_SaveSnapshot(ByVal filename As String)
         Reading the framebuffer directly avoids small-preview quirks in BSave.
     '/
 
-    If Len(filename) = 0 Then Exit Sub
+    If Len(filename) = 0 Then Return 0
 
+    backend_Gfx3FlushPendingPoints
     ScreenInfo screen_w, screen_h, screen_depth, screen_bpp, screen_pitch
 
-    If screen_w <= 0 Or screen_h <= 0 Then Exit Sub
+    If screen_w <= 0 Or screen_h <= 0 Then Return 0
+
+    If sourceWidth = 0 AndAlso sourceHeight = 0 Then
+        sourceX = 0: sourceY = 0
+        sourceWidth = screen_w: sourceHeight = screen_h
+    End If
+    If sourceX < 0 OrElse sourceY < 0 OrElse sourceWidth <= 0 OrElse sourceHeight <= 0 Then Return 0
+    If sourceX > screen_w - sourceWidth OrElse sourceY > screen_h - sourceHeight Then Return 0
+    bitmap_width = sourceWidth: bitmap_height = sourceHeight
 
     bytes_per_pixel = screen_bpp
 
@@ -3309,15 +4692,19 @@ Sub backend_SaveSnapshot(ByVal filename As String)
         bytes_per_pixel = screen_depth \ 8
     End If
 
-    If bytes_per_pixel < 3 Then Exit Sub
+    If bytes_per_pixel < 3 Then Return 0
 
     If screen_pitch <= 0 Then
         screen_pitch = screen_w * bytes_per_pixel
     End If
+    If screen_pitch < screen_w * bytes_per_pixel Then Return 0
 
-    row_stride = ((screen_w * 3 + 3) \ 4) * 4
-    pixel_data_size = row_stride * screen_h
-    file_size = 54 + pixel_data_size
+    row_padding = (4 - ((bitmap_width * 3) And 3)) And 3
+    row_stride = bitmap_width * 3 + row_padding
+    file_size_wide = 54 + Culngint(row_stride) * Culngint(bitmap_height)
+    If file_size_wide > BACKEND_SNAPSHOT_LIMIT_BYTES Then Return 0
+    pixel_data_size = CUInt(Culngint(row_stride) * Culngint(bitmap_height))
+    file_size = CUInt(file_size_wide)
 
     If Dir(filename) <> "" Then
         Kill filename
@@ -3326,7 +4713,7 @@ Sub backend_SaveSnapshot(ByVal filename As String)
     file_number = FreeFile
 
     If Open(filename For Binary Access Write As #file_number) <> 0 Then
-        Exit Sub
+        Return 0
     End If
 
     /'
@@ -3340,6 +4727,14 @@ Sub backend_SaveSnapshot(ByVal filename As String)
         ScreenSet backend_GfxVisiblePage, backend_GfxVisiblePage
     ScreenLock
     screen_buffer = ScreenPtr()
+    If screen_buffer = 0 Then
+        Close #file_number
+        ScreenUnlock
+        If backend_DoubleBufferActive Then _
+            ScreenSet backend_GfxWorkPage, backend_GfxVisiblePage
+        If Dir(filename) <> "" Then Kill filename
+        Return 0
+    End If
     If screen_buffer <> 0 Then
         backend_WriteBmpByte file_number, Asc("B")
         backend_WriteBmpByte file_number, Asc("M")
@@ -3348,8 +4743,8 @@ Sub backend_SaveSnapshot(ByVal filename As String)
         backend_WriteBmpU32 file_number, 54
 
         backend_WriteBmpU32 file_number, 40
-        backend_WriteBmpU32 file_number, screen_w
-        backend_WriteBmpU32 file_number, screen_h
+        backend_WriteBmpU32 file_number, CUInt(bitmap_width)
+        backend_WriteBmpU32 file_number, CUInt(bitmap_height)
         backend_WriteBmpU16 file_number, 1
         backend_WriteBmpU16 file_number, 24
         backend_WriteBmpU32 file_number, 0
@@ -3359,10 +4754,11 @@ Sub backend_SaveSnapshot(ByVal filename As String)
         backend_WriteBmpU32 file_number, 0
         backend_WriteBmpU32 file_number, 0
 
-        For y = screen_h - 1 To 0 Step -1
-            row_ptr = Cast(UByte Ptr, screen_buffer) + (y * screen_pitch)
+        For output_y = bitmap_height - 1 To 0 Step -1
+            y = sourceY + output_y
+            row_ptr = Cast(UByte Ptr, screen_buffer) + (y * screen_pitch) + (sourceX * bytes_per_pixel)
 
-            For x = 0 To screen_w - 1
+            For x = 0 To bitmap_width - 1
                 pixel_ptr = row_ptr + (x * bytes_per_pixel)
                 blue_value = pixel_ptr[0]
                 green_value = pixel_ptr[1]
@@ -3373,17 +4769,18 @@ Sub backend_SaveSnapshot(ByVal filename As String)
                 backend_WriteBmpByte file_number, red_value
             Next x
 
-            For x = (screen_w * 3) + 1 To row_stride
+            For x = 0 To row_padding - 1
                 backend_WriteBmpByte file_number, 0
             Next x
-        Next y
+        Next output_y
     End If
 
     Close #file_number
     ScreenUnlock
     If backend_DoubleBufferActive Then _
         ScreenSet backend_GfxWorkPage, backend_GfxVisiblePage
-End Sub
+    Return -1
+End Function
 
 Private Function backend_ValidDisplayState(ByRef display_state As Const BackendDisplayState) As Integer
     ' At most 128 MiB for a double-buffered 32-bit restore.
@@ -3391,10 +4788,15 @@ Private Function backend_ValidDisplayState(ByRef display_state As Const BackendD
     If display_state.width < 1 OrElse display_state.height < 1 Then Return 0
     If display_state.width > MAX_RESTORE_PIXELS \ display_state.height Then Return 0
     If backend_IsSupportedColorDepth(display_state.color_depth) = 0 Then Return 0
+    If display_state.open_gl <> 0 AndAlso display_state.open_gl <> -1 Then Return 0
+    If display_state.open_gl <> 0 AndAlso _
+       display_state.headless <> BACKEND_DISPLAY_ENABLED Then Return 0
     If display_state.headless <> BACKEND_DISPLAY_ENABLED AndAlso _
        display_state.headless <> BACKEND_HEADLESS AndAlso _
        display_state.headless <> BACKEND_HEADLESS_DRAWABLE Then Return 0
-    If (display_state.window_flags And Not(BACKEND_WINDOW_RESIZABLE Or BACKEND_WINDOW_FULLSCREEN)) <> 0 Then Return 0
+    If (display_state.window_flags And Not( _
+        BACKEND_WINDOW_RESIZABLE Or BACKEND_WINDOW_FULLSCREEN Or BACKEND_WINDOW_FILL _
+    )) <> 0 Then Return 0
     Return -1
 End Function
 
@@ -3404,7 +4806,8 @@ Function backend_CaptureDisplay(ByRef display_state As BackendDisplayState) As I
     captured_state.headless = backend_HeadlessActive
     captured_state.color_depth = backend_ColorDepth
     captured_state.window_flags = backend_WindowFlags
-    backend_GetSize captured_state.width, captured_state.height
+    captured_state.open_gl = backend_OpenGLActive
+    backend_GetDrawableSize captured_state.width, captured_state.height
     If backend_ValidDisplayState(captured_state) = 0 Then Return 0
     display_state = captured_state
     Return -1
@@ -3419,7 +4822,7 @@ Function backend_RestoreDisplay(ByRef display_state As Const BackendDisplayState
     backend_HeadlessActive = display_state.headless
     If backend_CreateScreen( _
         display_state.width, display_state.height, _
-        display_state.window_flags, display_state.color_depth _
+        display_state.window_flags, display_state.color_depth, display_state.open_gl _
     ) <> 0 Then Return -1
 
     ' ScreenRes may have destroyed the previous screen on failure.
@@ -3427,7 +4830,7 @@ Function backend_RestoreDisplay(ByRef display_state As Const BackendDisplayState
         backend_HeadlessActive = previous_state.headless
         backend_CreateScreen _
             previous_state.width, previous_state.height, _
-            previous_state.window_flags, previous_state.color_depth
+            previous_state.window_flags, previous_state.color_depth, previous_state.open_gl
     End If
     Return 0
 End Function
@@ -3463,5 +4866,42 @@ End Sub
 
 ' The style renderer borrows the same glyph tables and clip stack.
 #include once "src/backend/backend_text_style.bi"
+
+Function backend_SetOpenGLMode( _
+    ByVal w As Integer, ByVal h As Integer, _
+    ByVal windowFlags As UInteger, ByVal enabled As Integer _
+) As Integer
+    Dim As Integer previousDepth = backend_ColorDepth
+    Dim As Integer previousHeight = backend_RequestedHeight
+    Dim As Integer previousOpenGL = backend_OpenGLActive
+    Dim As Integer previousWidth = backend_RequestedWidth
+    Dim As UInteger previousFlags = backend_WindowFlags
+
+    If w < 1 OrElse h < 1 Then Return 0
+    If enabled <> 0 Then enabled = -1
+    If enabled = previousOpenGL AndAlso w = previousWidth AndAlso _
+       h = previousHeight AndAlso windowFlags = previousFlags Then Return -1
+
+    If backend_CreateScreen( _
+        w, h, windowFlags, BACKEND_COLOR_DEPTH_TRUE_COLOR, enabled _
+    ) <> 0 Then Return -1
+
+    /'
+        ScreenRes may retire the old native window before it reports failure.
+        Restore the complete prior mode, including its renderer selection.
+    '/
+    If previousWidth > 0 AndAlso previousHeight > 0 AndAlso previousDepth > 0 Then
+        backend_CreateScreen previousWidth, previousHeight, previousFlags, _
+            previousDepth, previousOpenGL
+    End If
+    Return 0
+End Function
+
+
+
+Function backend_IsOpenGLMode() As Integer
+    Return backend_OpenGLActive
+End Function
+
 
 ' end of backend_gfxlib.bas

@@ -2408,8 +2408,12 @@ Private Function session_BeginLiveRecording( _
             End If
         End If
     End If
-    If includeMidiInput <> 0 AndAlso midiInput_IsOpen() <> 0 Then _
+    If includeMidiInput <> 0 AndAlso midiInput_IsOpen() <> 0 Then
+        ' Anchoring a take discards older input. Stop monitor voices before
+        ' discarding a queued note-off so the new take cannot leave them held.
+        session_ResetInputMonitor()
         midiInput_ClearPending()
+    End If
     session_LiveRecordingStartTick = session_Summary.durationTicks
     session_LiveRecordingStartClock = Timer
     session_LiveRecordingStartMidiTimestamp = 0
@@ -2518,7 +2522,7 @@ Private Sub session_RefreshMidiInputList()
 
     Dim As Integer deviceCount = midiInput_GetDeviceCount()
     If deviceCount <= 0 Then
-        listbox_AddItem session_MidiInputList, "No Windows MIDI input devices"
+        listbox_AddItem session_MidiInputList, "No MIDI input devices"
         session_MidiInputSelectedIndex = -1
         Exit Sub
     End If
@@ -2584,7 +2588,7 @@ Public Sub session_OnMidiInputOpenSelected(ByVal source As Widget Ptr)
 
     Dim As Integer deviceCount = midiInput_GetDeviceCount()
     If deviceCount <= 0 Then
-        session_SetStatus "No Windows MIDI input devices are available."
+        session_SetStatus "No MIDI input devices are available."
         session_RefreshMidiInputList()
         Exit Sub
     End If
@@ -2596,6 +2600,7 @@ Public Sub session_OnMidiInputOpenSelected(ByVal source As Widget Ptr)
     If selectedIndex < 0 OrElse selectedIndex >= deviceCount Then _
         selectedIndex = 0
 
+    session_ResetInputMonitor()
     If midiInput_IsOpen() <> 0 Then
         midiInput_Close()
     End If
@@ -2611,8 +2616,8 @@ Public Sub session_OnMidiInputOpenSelected(ByVal source As Widget Ptr)
     If deviceName = "" Then
         deviceName = "device " + Str(selectedIndex + 1)
     End If
-    session_SetStatus "MIDI input ready: " + deviceName + _
-        ". Press Rec to record."
+    session_SetStatus "MIDI input opening: " + deviceName + _
+        ". Press Monitor to listen or Rec to record."
 End Sub
 
 
@@ -2620,6 +2625,9 @@ Public Sub session_OnMidiInputCloseSelected(ByVal source As Widget Ptr)
     If session_MidiInputWindow = 0 Then
         Exit Sub
     End If
+    session_ResetInputMonitor()
+    session_MonitorEnabled = 0
+    session_MonitorAutoOpened = 0
     If midiInput_IsOpen() <> 0 Then
         midiInput_Close()
         session_SetStatus "MIDI input closed."
@@ -2640,19 +2648,20 @@ Public Sub session_OnMidiInput(ByVal source As Widget Ptr)
         Exit Sub
     End If
 
-    If midiInput_IsOpen() <> 0 Then
-        midiInput_Close()
-        session_SetStatus "MIDI input closed."
-        Exit Sub
-    End If
-
     Dim As Integer screenWidth
     Dim As Integer screenHeight
     backend_GetSize screenWidth, screenHeight
-    Dim As Integer windowX = (screenWidth - _
-        SESSION_MIDI_INPUT_WINDOW_WIDTH) \ 2
+    Dim As Integer windowWidth = SESSION_MIDI_INPUT_WINDOW_WIDTH
+    If windowWidth > screenWidth - 16 Then windowWidth = screenWidth - 16
+    Dim As Integer windowHeight = SESSION_MIDI_INPUT_WINDOW_HEIGHT
+    Dim As Integer deviceButtonHeight = 26
+    If session_InteractionMode = OSE_UI_INTERACTION_TOUCH Then
+        deviceButtonHeight = 44
+        windowHeight = 280
+    End If
+    Dim As Integer windowX = (screenWidth - windowWidth) \ 2
     Dim As Integer windowY = (screenHeight - _
-        SESSION_MIDI_INPUT_WINDOW_HEIGHT) \ 2
+        windowHeight) \ 2
     If windowX < 0 Then
         windowX = 0
     End If
@@ -2662,7 +2671,7 @@ Public Sub session_OnMidiInput(ByVal source As Widget Ptr)
 
     session_MidiInputWindow = session_CreateEditorWindow( _
         "midi_input_window", "MIDI Input Devices", windowX, windowY, _
-        SESSION_MIDI_INPUT_WINDOW_WIDTH, SESSION_MIDI_INPUT_WINDOW_HEIGHT)
+        windowWidth, windowHeight)
     If session_MidiInputWindow = 0 Then
         session_SetStatus "Could not create the MIDI input chooser."
         Exit Sub
@@ -2672,17 +2681,20 @@ Public Sub session_OnMidiInput(ByVal source As Widget Ptr)
         @session_OnMidiInputWindowClose
 
     session_MidiInputList = listbox_Create( _
-        "midi_input_list", 10, 28, 440, 146)
+        "midi_input_list", 10, 28, windowWidth - 20, 146)
     session_MidiInputAddChild session_MidiInputList
 
     Dim As Widget Ptr child
-    child = button_Create("midi_input_open", "Open", 10, 184, 78, 26, _
+    child = button_Create("midi_input_open", "Open", 10, 184, 78, deviceButtonHeight, _
         @session_OnMidiInputOpenSelected)
     session_MidiInputAddChild child
-    child = button_Create("midi_input_close", "Close", 96, 184, 78, 26, _
+    child = button_Create("midi_input_close", "Close", 96, 184, 78, deviceButtonHeight, _
         @session_OnMidiInputCloseSelected)
     session_MidiInputAddChild child
-    #if defined(__FB_LINUX__)
+    #if defined(__FB_ANDROID__)
+        child = session_CreateEditorLabel("midi_input_hint", _
+            "USB MIDI: choose an input port.", 10, windowHeight - 24)
+    #elseif defined(__FB_LINUX__)
         child = session_CreateEditorLabel("midi_input_hint", _
             "Select an ALSA Sequencer source port.", 10, 224)
     #elseif defined(__FB_WIN32__)
@@ -2958,6 +2970,7 @@ End Sub
 
 
 Public Sub session_OnStop(ByVal source As Widget Ptr)
+    session_ResetInputMonitor()
     Dim As Integer cancelledWavExport = session_WavExport.active
     Dim As Integer stoppedSelectedNotes = session_SelectedNotePlaybackActive
     If session_LiveRecording <> 0 Then

@@ -3,7 +3,8 @@
     File: retained_render.bas
     Purpose: Keep unchanged scene pixels and collect bounded repaint regions.
     Responsibilities: Observe GUI-thread visual keys, retain old widget bounds,
-        merge overlapping damage and recover from layout or registry changes.
+        merge overlapping damage, recover from layout changes, and invalidate
+        both old and new software-cursor regions.
     Targets:
 
         FreeBASIC builds with built-in gfxlib; gfxlib3 is optional when supplied by the compiler.
@@ -199,7 +200,14 @@ Private Function gui_RetainedPaletteKey(ByRef themePalette As Const GUI_Theme) A
         gui_InvalidateAll
         Return ""
     End If
+#If Defined(OMAGUI_PORTABLE_ONLY)
+    If oma_CopyBytes(StrPtr(result), @fields.values(0), SizeOf(fields)) = 0 Then
+        gui_InvalidateAll
+        Return ""
+    End If
+#Else
     memcpy StrPtr(result), @fields.values(0), SizeOf(fields)
+#EndIf
     Return result
 End Function
 
@@ -272,13 +280,34 @@ Private Function gui_RetainedPrefixKey(ByVal w As Widget Ptr, _
         gui_InvalidateAll
         Return ""
     End If
+#If Defined(OMAGUI_PORTABLE_ONLY)
+    If oma_CopyBytes(StrPtr(result), @fields.values(0), halfBytes) = 0 Then
+        gui_InvalidateAll
+        Return ""
+    End If
+#Else
     memcpy StrPtr(result), @fields.values(0), halfBytes
+#EndIf
     If themePalette <> 0 Then
         Dim As GUI_RetainedPaletteFields paletteFields
         gui_RetainedFillPalette *themePalette, paletteFields
+#If Defined(OMAGUI_PORTABLE_ONLY)
+        If oma_CopyBytes(StrPtr(result) + halfBytes, @paletteFields.values(0), paletteBytes) = 0 Then
+            gui_InvalidateAll
+            Return ""
+        End If
+#Else
         memcpy StrPtr(result) + halfBytes, @paletteFields.values(0), paletteBytes
+#EndIf
     End If
+#If Defined(OMAGUI_PORTABLE_ONLY)
+    If oma_CopyBytes(StrPtr(result) + halfBytes + observedPaletteBytes, @fields.values(4), halfBytes) = 0 Then
+        gui_InvalidateAll
+        Return ""
+    End If
+#Else
     memcpy StrPtr(result) + halfBytes + observedPaletteBytes, @fields.values(4), halfBytes
+#EndIf
     Return result
 End Function
 
@@ -322,7 +351,9 @@ Function gui_PrepareRetainedFrame() As Integer
             ' other windows retain their complete scene repaint.
             If w->is_window <> 0 AndAlso boundsValid = 0 Then gui_InvalidateAll
             Dim As Integer clipX, clipY, clipWidth, clipHeight
-            gui_GetWidgetRenderClip w, clipX, clipY, clipWidth, clipHeight
+            gui_GetWidgetRenderClip _
+                w, clipX, clipY, clipWidth, clipHeight, _
+                screenWidth, screenHeight
             Dim As Const GUI_Theme Ptr ownerPalette
             Dim As Widget Ptr owner = w
             Dim As Integer ownerDepth
@@ -404,6 +435,30 @@ Function gui_PrepareRetainedFrame() As Integer
         w->retained_paint_w = paintWidth: w->retained_paint_h = paintHeight
         w = w->next_widget
     Wend
+
+    ' The cursor is drawn after windows, so moving or changing it must repaint
+    ' both its former and current footprints in the retained-frame contract.
+    Dim As Integer cursorX, cursorY
+    Dim As Integer cursorStyle = gui_ResolveMouseCursor(cursorX, cursorY)
+    If gui_RetainedCursorValid = 0 OrElse _
+       gui_RetainedCursorX <> cursorX OrElse _
+       gui_RetainedCursorY <> cursorY OrElse _
+       gui_RetainedCursorStyle <> cursorStyle Then
+        If gui_DamageFull = 0 Then
+            If gui_RetainedCursorValid <> 0 AndAlso _
+               gui_RetainedCursorStyle > GUI_MOUSE_CURSOR_DEFAULT Then _
+                gui_InvalidateRect gui_RetainedCursorX, gui_RetainedCursorY, _
+                    GUI_MOUSE_CURSOR_PAINT_WIDTH, GUI_MOUSE_CURSOR_PAINT_HEIGHT
+            If cursorStyle > GUI_MOUSE_CURSOR_DEFAULT Then _
+                gui_InvalidateRect cursorX, cursorY, _
+                    GUI_MOUSE_CURSOR_PAINT_WIDTH, GUI_MOUSE_CURSOR_PAINT_HEIGHT
+        End If
+        gui_RetainedCursorX = cursorX
+        gui_RetainedCursorY = cursorY
+        gui_RetainedCursorStyle = cursorStyle
+        gui_RetainedCursorValid = -1
+    End If
+
     If gui_DamageFull <> 0 Then
         gui_DamageCount = 1
         With gui_Damage(0)

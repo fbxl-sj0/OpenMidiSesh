@@ -338,6 +338,12 @@ Private Sub menubar_SetOpenState( _
            previous_menu < bar_data->menu_count AndAlso _
            bar_data->menu_popups(previous_menu) <> 0 Then _
             menu_CloseTree bar_data->menu_popups(previous_menu)
+        If menu_index >= 0 AndAlso menu_index < bar_data->menu_count Then
+            If bar_data->menu_commands(menu_index) AndAlso bar_data->menu_visible(menu_index) AndAlso bar_data->menu_enabled(menu_index) Then
+                bar_data->hot_menu = menu_index
+                gui_SetFocus bar_widget
+            End If
+        End If
     End If
 End Sub
 
@@ -371,6 +377,7 @@ Function menubar_SetMenuPopup( _
     Dim As MenuBarData Ptr bar_data = _
         menubar_HeadingData(bar_widget, menu_index)
     If bar_data = 0 OrElse popup_root = 0 Then Return 0
+    If bar_data->menu_commands(menu_index) Then Return 0
     If bar_data->menu_popups(menu_index) = popup_root Then Return -1
     If bar_data->menu_popups(menu_index) <> 0 OrElse _
        popup_root->render <> @menu_Render OrElse _
@@ -558,6 +565,7 @@ Function menubar_AddMenu( _
     bar_data->menu_labels(menu_index) = menu_text
     bar_data->menu_visible(menu_index) = -1
     bar_data->menu_enabled(menu_index) = -1
+    bar_data->menu_commands(menu_index) = 0
     bar_data->menu_left(menu_index) = menu_left
     bar_data->menu_width(menu_index) = menu_width
     bar_data->popup_width(menu_index) = MENUBAR_MINIMUM_POPUP_WIDTH
@@ -597,6 +605,7 @@ Function menubar_RemoveMenu( _
     Dim As Integer last_menu = menu_count - 1
     For target_index As Integer = menu_index To last_menu - 1
         Dim As Integer source_index = target_index + 1
+        bar_data->menu_commands(target_index) = bar_data->menu_commands(source_index)
         bar_data->menu_labels(target_index) = _
             bar_data->menu_labels(source_index)
         bar_data->menu_popups(target_index) = _
@@ -639,6 +648,7 @@ Function menubar_RemoveMenu( _
     bar_data->item_count(last_menu) = 0
     bar_data->menu_enabled(last_menu) = 0
     bar_data->menu_visible(last_menu) = 0
+    bar_data->menu_commands(last_menu) = 0
     For item_index As Integer = 0 To MENUBAR_MAX_ITEMS - 1
         bar_data->item_labels(last_menu, item_index) = ""
         bar_data->item_checked(last_menu, item_index) = 0
@@ -668,6 +678,7 @@ Function menubar_AddItem( _
        Len(item_text) > MENUBAR_MAXIMUM_LABEL_BYTES Then Return -1
     bar_data = Cast(MenuBarData Ptr, bar_widget->data)
     If menu_index < 0 OrElse menu_index >= bar_data->menu_count Then Return -1
+    If bar_data->menu_commands(menu_index) OrElse bar_data->menu_popups(menu_index) <> 0 Then Return -1
     If bar_data->item_count(menu_index) >= MENUBAR_MAX_ITEMS Then Return -1
 
     item_index = bar_data->item_count(menu_index)
@@ -723,6 +734,59 @@ Function menubar_GetOpenMenu( _
 End Function
 
 
+Function menubar_GetHotMenu( _
+    ByVal bar_widget As Widget Ptr _
+) As Integer
+    If bar_widget = 0 OrElse bar_widget->data = 0 Then Return -1
+    Return Cast(MenuBarData Ptr, bar_widget->data)->hot_menu
+End Function
+
+
+Function menubar_GetHeadingBounds( _
+    ByVal bar_widget As Widget Ptr, _
+    ByVal menu_index As Integer, _
+    ByRef left_position As Integer, _
+    ByRef top_position As Integer, _
+    ByRef width_value As Integer, _
+    ByRef height_value As Integer _
+) As Integer
+    Dim As MenuBarData Ptr bar_data
+    Dim As LongInt heading_left, heading_right, visible_left, visible_right
+    Dim As LongInt widget_left, widget_right
+
+    left_position = 0
+    top_position = 0
+    width_value = 0
+    height_value = 0
+    If bar_widget = 0 OrElse bar_widget->data = 0 Then Return 0
+    If bar_widget->evis = 0 OrElse bar_widget->w <= 0 OrElse _
+       bar_widget->h <= 0 Then Return 0
+
+    bar_data = Cast(MenuBarData Ptr, bar_widget->data)
+    If bar_data->menu_count < 0 OrElse _
+       bar_data->menu_count > MENUBAR_MAX_MENUS Then Return 0
+    If menu_index < 0 OrElse menu_index >= bar_data->menu_count Then Return 0
+    If bar_data->menu_visible(menu_index) = 0 Then Return 0
+    If bar_data->menu_width(menu_index) <= 0 Then Return 0
+
+    widget_left = bar_widget->ax
+    widget_right = widget_left + bar_widget->w
+    heading_left = widget_left + bar_data->menu_left(menu_index)
+    heading_right = heading_left + bar_data->menu_width(menu_index)
+    visible_left = heading_left
+    visible_right = heading_right
+    If visible_left < widget_left Then visible_left = widget_left
+    If visible_right > widget_right Then visible_right = widget_right
+    If visible_right <= visible_left Then Return 0
+
+    left_position = CInt(visible_left)
+    top_position = bar_widget->ay
+    width_value = CInt(visible_right - visible_left)
+    height_value = bar_widget->h
+    Return -1
+End Function
+
+
 Function menubar_GetMenuCount( _
     ByVal bar_widget As Widget Ptr _
 ) As Integer
@@ -771,6 +835,9 @@ Function menubar_GetItemLabel( _
     If bar_widget = 0 OrElse bar_widget->data = 0 Then Return ""
     bar_data = Cast(MenuBarData Ptr, bar_widget->data)
     If menu_index < 0 OrElse menu_index >= bar_data->menu_count Then Return ""
+
+    Dim As Widget Ptr popup_root = bar_data->menu_popups(menu_index)
+    If popup_root <> 0 Then Return menu_GetItemLabel(popup_root, item_index)
     If item_index < 0 OrElse _
        item_index >= bar_data->item_count(menu_index) Then Return ""
     Return bar_data->item_labels(menu_index, item_index)
@@ -789,6 +856,9 @@ Function menubar_SetItemLabel( _
        Len(item_text) > MENUBAR_MAXIMUM_LABEL_BYTES Then Return 0
     bar_data = Cast(MenuBarData Ptr, bar_widget->data)
     If menu_index < 0 OrElse menu_index >= bar_data->menu_count Then Return 0
+
+    Dim As Widget Ptr popup_root = bar_data->menu_popups(menu_index)
+    If popup_root <> 0 Then Return menu_SetItemLabel(popup_root, item_index, item_text)
     If item_index < 0 OrElse _
        item_index >= bar_data->item_count(menu_index) Then Return 0
     bar_data->item_labels(menu_index, item_index) = item_text
@@ -809,6 +879,9 @@ Function menubar_SetItemVisible( _
     If bar_widget = 0 OrElse bar_widget->data = 0 Then Return 0
     bar_data = Cast(MenuBarData Ptr, bar_widget->data)
     If menu_index < 0 OrElse menu_index >= bar_data->menu_count Then Return 0
+
+    Dim As Widget Ptr popup_root = bar_data->menu_popups(menu_index)
+    If popup_root <> 0 Then Return menu_SetItemVisible(popup_root, item_index, visible_value)
     If item_index < 0 OrElse _
        item_index >= bar_data->item_count(menu_index) Then Return 0
     bar_data->item_visible(menu_index, item_index) = _
@@ -832,6 +905,9 @@ Function menubar_GetItemVisible( _
     If bar_widget = 0 OrElse bar_widget->data = 0 Then Return 0
     bar_data = Cast(MenuBarData Ptr, bar_widget->data)
     If menu_index < 0 OrElse menu_index >= bar_data->menu_count Then Return 0
+
+    Dim As Widget Ptr popup_root = bar_data->menu_popups(menu_index)
+    If popup_root <> 0 Then Return menu_GetItemVisible(popup_root, item_index)
     If item_index < 0 OrElse _
        item_index >= bar_data->item_count(menu_index) Then Return 0
     Return bar_data->item_visible(menu_index, item_index)
@@ -849,6 +925,9 @@ Function menubar_SetItemChecked( _
     If bar_widget = 0 OrElse bar_widget->data = 0 Then Return 0
     bar_data = Cast(MenuBarData Ptr, bar_widget->data)
     If menu_index < 0 OrElse menu_index >= bar_data->menu_count Then Return 0
+
+    Dim As Widget Ptr popup_root = bar_data->menu_popups(menu_index)
+    If popup_root <> 0 Then Return menu_SetItemChecked(popup_root, item_index, checked_value)
     If item_index < 0 OrElse _
        item_index >= bar_data->item_count(menu_index) Then Return 0
     If menubar_IsSeparator( _
@@ -871,6 +950,9 @@ Function menubar_GetItemChecked( _
     If bar_widget = 0 OrElse bar_widget->data = 0 Then Return 0
     bar_data = Cast(MenuBarData Ptr, bar_widget->data)
     If menu_index < 0 OrElse menu_index >= bar_data->menu_count Then Return 0
+
+    Dim As Widget Ptr popup_root = bar_data->menu_popups(menu_index)
+    If popup_root <> 0 Then Return menu_GetItemChecked(popup_root, item_index)
     If item_index < 0 OrElse _
        item_index >= bar_data->item_count(menu_index) Then Return 0
     Return bar_data->item_checked(menu_index, item_index)
@@ -888,6 +970,9 @@ Function menubar_SetItemEnabled( _
     If bar_widget = 0 OrElse bar_widget->data = 0 Then Return 0
     bar_data = Cast(MenuBarData Ptr, bar_widget->data)
     If menu_index < 0 OrElse menu_index >= bar_data->menu_count Then Return 0
+
+    Dim As Widget Ptr popup_root = bar_data->menu_popups(menu_index)
+    If popup_root <> 0 Then Return menu_SetItemEnabled(popup_root, item_index, enabled_value)
     If item_index < 0 OrElse _
        item_index >= bar_data->item_count(menu_index) Then Return 0
     If menubar_IsSeparator( _
@@ -916,6 +1001,9 @@ Function menubar_GetItemEnabled( _
     If bar_widget = 0 OrElse bar_widget->data = 0 Then Return 0
     bar_data = Cast(MenuBarData Ptr, bar_widget->data)
     If menu_index < 0 OrElse menu_index >= bar_data->menu_count Then Return 0
+
+    Dim As Widget Ptr popup_root = bar_data->menu_popups(menu_index)
+    If popup_root <> 0 Then Return menu_GetItemEnabled(popup_root, item_index)
     If item_index < 0 OrElse _
        item_index >= bar_data->item_count(menu_index) Then Return 0
     Return bar_data->item_enabled(menu_index, item_index)
@@ -934,6 +1022,9 @@ Function menubar_SetItemShortcutText( _
     If Len(shortcut_text) > MENUBAR_MAXIMUM_LABEL_BYTES Then Return 0
     bar_data = Cast(MenuBarData Ptr, bar_widget->data)
     If menu_index < 0 OrElse menu_index >= bar_data->menu_count Then Return 0
+
+    Dim As Widget Ptr popup_root = bar_data->menu_popups(menu_index)
+    If popup_root <> 0 Then Return menu_SetItemShortcut(popup_root, item_index, 0, INPUT_MODIFIER_NONE, shortcut_text)
     If item_index < 0 OrElse _
        item_index >= bar_data->item_count(menu_index) Then Return 0
     If menubar_IsSeparator( _
@@ -956,6 +1047,9 @@ Function menubar_GetItemShortcutText( _
     If bar_widget = 0 OrElse bar_widget->data = 0 Then Return ""
     bar_data = Cast(MenuBarData Ptr, bar_widget->data)
     If menu_index < 0 OrElse menu_index >= bar_data->menu_count Then Return ""
+
+    Dim As Widget Ptr popup_root = bar_data->menu_popups(menu_index)
+    If popup_root <> 0 Then Return menu_GetItemShortcutText(popup_root, item_index)
     If item_index < 0 OrElse _
        item_index >= bar_data->item_count(menu_index) Then Return ""
     Return bar_data->item_shortcuts(menu_index, item_index)
@@ -981,6 +1075,9 @@ Function menubar_SetItemShortcut( _
     If scan_code <> 0 AndAlso Len(shortcut_text) = 0 Then Return 0
     bar_data = Cast(MenuBarData Ptr, bar_widget->data)
     If menu_index < 0 OrElse menu_index >= bar_data->menu_count Then Return 0
+
+    Dim As Widget Ptr popup_root = bar_data->menu_popups(menu_index)
+    If popup_root <> 0 Then Return menu_SetItemShortcut(popup_root, item_index, scan_code, modifiers, shortcut_text)
     If item_index < 0 OrElse _
        item_index >= bar_data->item_count(menu_index) Then Return 0
     If menubar_IsSeparator( _
@@ -1009,6 +1106,9 @@ Function menubar_GetItemShortcut( _
     If bar_widget = 0 OrElse bar_widget->data = 0 Then Return 0
     bar_data = Cast(MenuBarData Ptr, bar_widget->data)
     If menu_index < 0 OrElse menu_index >= bar_data->menu_count Then Return 0
+
+    Dim As Widget Ptr popup_root = bar_data->menu_popups(menu_index)
+    If popup_root <> 0 Then Return menu_GetItemShortcut(popup_root, item_index, scan_code, modifiers)
     If item_index < 0 OrElse _
        item_index >= bar_data->item_count(menu_index) Then Return 0
     scan_code = bar_data->item_shortcut_scan_codes(menu_index, item_index)
@@ -1032,9 +1132,12 @@ Private Sub menubar_NotifySelection( _
 
     If bar_widget = 0 OrElse bar_data = 0 Then Exit Sub
     If menu_index < 0 OrElse menu_index >= bar_data->menu_count Then Exit Sub
-    If item_index < 0 OrElse _
-       item_index >= bar_data->item_count(menu_index) Then Exit Sub
-    If menubar_IsSelectable(bar_data, menu_index, item_index) = 0 Then Exit Sub
+    If item_index = -1 AndAlso bar_data->menu_commands(menu_index) Then
+        If menubar_HeadingAvailable(bar_data, menu_index) = 0 Then Exit Sub
+    Else
+        If item_index < 0 OrElse item_index >= bar_data->item_count(menu_index) Then Exit Sub
+        If menubar_IsSelectable(bar_data, menu_index, item_index) = 0 Then Exit Sub
+    End If
 
     /'
         Close before application code runs. The callback may remove the bar
@@ -1053,6 +1156,16 @@ Private Sub menubar_NotifySelection( _
 End Sub
 
 
+Function menubar_ActivateMenu(ByVal bar_widget As Widget Ptr, ByVal menu_index As Integer) As Integer
+    Dim As MenuBarData Ptr bar_data = menubar_HeadingData(bar_widget, menu_index)
+    If bar_data = 0 OrElse menubar_HeadingAvailable(bar_data, menu_index) = 0 Then Return 0
+    If bar_data->menu_commands(menu_index) Then
+        menubar_NotifySelection(bar_widget, bar_data, menu_index, -1)
+        Return -1
+    End If
+    Return menubar_SetOpenMenu(bar_widget, menu_index)
+End Function
+
 Function menubar_ActivateItem( _
     ByVal bar_widget As Widget Ptr, ByVal menu_index As Integer, _
     ByVal item_index As Integer _
@@ -1061,6 +1174,10 @@ Function menubar_ActivateItem( _
     If bar_widget = 0 OrElse bar_widget->data = 0 Then Return 0
     bar_data = Cast(MenuBarData Ptr, bar_widget->data)
     If menu_index < 0 OrElse menu_index >= bar_data->menu_count Then Return 0
+    If bar_data->menu_popups(menu_index) <> 0 Then
+        If menubar_HeadingAvailable(bar_data, menu_index) = 0 Then Return 0
+        Return menu_ActivateItem(bar_data->menu_popups(menu_index), item_index)
+    End If
     If item_index < 0 OrElse item_index >= bar_data->item_count(menu_index) Then Return 0
     If menubar_IsSelectable(bar_data, menu_index, item_index) = 0 Then Return 0
     ' Use the pointer/keyboard route, including closing before callback dispatch.
@@ -1153,7 +1270,7 @@ Sub menubar_Update(ByVal bar_widget As Widget Ptr)
             bar_data->menu_labels(mnemonic_index), mnemonic_key
         If mnemonic_key <> 0 AndAlso _
            input_AltShortcutPressed(mnemonic_key) Then
-            menubar_SetOpenState bar_widget, bar_data, mnemonic_index
+            menubar_ActivateMenu bar_widget, mnemonic_index
             Exit Sub
         End If
     Next mnemonic_index
@@ -1161,7 +1278,7 @@ Sub menubar_Update(ByVal bar_widget As Widget Ptr)
     If bar_data->open_menu >= 0 AndAlso pointer_buttons = 0 Then
         If pointer_menu >= 0 AndAlso pointer_item < 0 AndAlso _
            pointer_menu <> bar_data->open_menu Then
-            menubar_SetOpenState bar_widget, bar_data, pointer_menu
+            If bar_data->menu_commands(pointer_menu) = 0 Then menubar_SetOpenState bar_widget, bar_data, pointer_menu
         ElseIf pointer_menu = bar_data->open_menu AndAlso pointer_item >= 0 Then
             If menubar_IsSelectable( _
                 bar_data, pointer_menu, pointer_item _
@@ -1172,7 +1289,7 @@ Sub menubar_Update(ByVal bar_widget As Widget Ptr)
             End If
         End If
     ElseIf bar_data->open_menu < 0 Then
-        bar_data->hot_menu = pointer_menu
+        If pointer_menu >= 0 OrElse gui_GetFocus() <> bar_widget Then bar_data->hot_menu = pointer_menu
     End If
 
     If (pointer_buttons And 1) <> 0 Then
@@ -1191,7 +1308,9 @@ Sub menubar_Update(ByVal bar_widget As Widget Ptr)
                 activation_menu = pointer_menu
                 activation_item = pointer_item
             ElseIf pointer_menu >= 0 Then
-                If bar_data->pointer_open_menu = pointer_menu Then
+                If bar_data->menu_commands(pointer_menu) Then
+                    activation_menu = pointer_menu
+                ElseIf bar_data->pointer_open_menu = pointer_menu Then
                     menubar_SetOpenState bar_widget, bar_data, -1
                 Else
                     menubar_SetOpenState bar_widget, bar_data, pointer_menu
@@ -1224,12 +1343,11 @@ Sub menubar_Update(ByVal bar_widget As Widget Ptr)
            input_KeyPressEvent(KEY_DOWN) <> 0 Then
             If menubar_HeadingAvailable(bar_data, bar_data->hot_menu) = 0 Then _
                 bar_data->hot_menu = menubar_NextHeading(bar_data, -1, 1)
-            menubar_SetOpenState _
-                bar_widget, bar_data, bar_data->hot_menu
+            menubar_ActivateMenu bar_widget, bar_data->hot_menu
         ElseIf input_KeyPressEvent(KEY_LEFT) <> 0 Then
-            bar_data->hot_menu = menubar_NextHeading(bar_data, 0, -1)
+            bar_data->hot_menu = menubar_NextHeading(bar_data, IIf(bar_data->hot_menu < 0, 0, bar_data->hot_menu), -1)
         ElseIf input_KeyPressEvent(KEY_RIGHT) <> 0 Then
-            bar_data->hot_menu = menubar_NextHeading(bar_data, -1, 1)
+            bar_data->hot_menu = menubar_NextHeading(bar_data, bar_data->hot_menu, 1)
         End If
         Exit Sub
     End If

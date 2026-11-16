@@ -7,7 +7,7 @@
     Copyright (C) 2026 OpenMidiSesh contributors
     SPDX-License-Identifier: GPL-3.0-or-later
 
-    Targets: FreeBASIC fb dialect; selected by builds without a native MIDI backend (including Android).
+    Targets: FreeBASIC fb dialect; selected by builds without a native MIDI backend (Android retains only its unavailable-output half).
 
     Module API: Implements midi_input.bi and midi_output.bi with unavailable-endpoint results.
 
@@ -38,6 +38,7 @@
 ' Unavailable input endpoint
 ' -------------------------------------------------------------------------
 
+#ifndef __FB_ANDROID__
 Public Function midiInput_GetDeviceCount() As Integer
     Return 0
 End Function
@@ -103,6 +104,8 @@ End Function
 ' -------------------------------------------------------------------------
 ' Unavailable external output endpoint
 ' -------------------------------------------------------------------------
+
+#endif
 
 Public Function midiOutput_GetDeviceCount() As Integer
     Return 0

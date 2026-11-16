@@ -24,6 +24,9 @@
         - widget rendering
         - recursive screen construction
         - automatic scrolling for an overflowing layout
+
+    Targets: FreeBASIC fb dialect; use the owning project's selected build profile.
+    Module API: Implements the public interface declared in layout.bi.
 '/
 
 #lang "fb"

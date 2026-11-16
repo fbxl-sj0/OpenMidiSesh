@@ -2,7 +2,21 @@
 
 # Changelog
 
-## Unreleased
+## 0.9.1 - 2026-11-16
+
+- Package one universal Android APK with ARMv7, ARM64, and x86-64 libraries,
+  and publish matching Windows and corresponding source packages.
+
+- Read Android system MIDI inputs, including class-compliant USB MIDI 1.0,
+  through a bounded Java/JNI bridge and a tested stream decoder.
+- Add Monitor on desktop and mobile, with independent note ownership, note-off,
+  sustain, program changes and live volume, expression, pan and pitch bend.
+- Fit the Android canvas to display density and rotation, wrap primary controls,
+  fit the input chooser, and switch Score/Mixer panes on short displays.
+- Verify USB input and Monitor playback on a Galaxy S10 with an M-Audio
+  Keystation Mini 32 MK3 over Wi-Fi ADB while USB hosts the keyboard.
+- Correct Android OpenSL queued-buffer reuse and use instrument release
+  envelopes for live note-off with the qualified sfxlib runtime patch.
 
 - Equalize the optimized omaGUI tree with Tiko while retaining our CSS and
   image-array safety checks, label styles and literal-color support.

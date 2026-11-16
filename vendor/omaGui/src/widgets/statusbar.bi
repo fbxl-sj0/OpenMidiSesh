@@ -14,7 +14,7 @@
     Responsibilities:
 
         - retain fixed-width and flexible text panels
-        - expose checked panel construction, text updates, and alignment
+        - expose checked panel construction, text updates, alignment, and bounds
         - provide a noninteractive widget lifecycle
 
     This file intentionally does NOT contain:
@@ -65,6 +65,12 @@ Declare Function statusbar_GetPanelText( _
     ByVal bar_widget As Widget Ptr, _
     ByVal panel_index As Integer _
 ) As String
+' Return the current renderer allocation; invalid or exhausted panels return 0.
+Declare Function statusbar_GetPanelBounds( _
+    ByVal bar_widget As Widget Ptr, ByVal panel_index As Integer, _
+    ByRef x As Integer, ByRef y As Integer, _
+    ByRef widthValue As Integer, ByRef heightValue As Integer _
+) As Integer
 Declare Function statusbar_GetPanelAlignment( _
     ByVal bar_widget As Widget Ptr, _
     ByVal panel_index As Integer _

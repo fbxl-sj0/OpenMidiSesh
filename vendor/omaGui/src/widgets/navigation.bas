@@ -12,6 +12,9 @@
 
     The navigation profile is opt-in through OMAGUI_NAVIGATION_EXTENSIONS.
     All state belongs to the GUI thread, like the core registry and input frame.
+
+    Targets: FreeBASIC fb dialect; use the owning project's selected build profile.
+    Module API: Implements the public interface declared in navigation.bi.
 '/
 
 #lang "fb"

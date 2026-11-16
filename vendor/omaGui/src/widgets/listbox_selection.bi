@@ -142,6 +142,32 @@ Function listbox_GetSelectedCount(ByVal w As Widget Ptr) As Integer
     Return selected_count
 End Function
 
+Function listbox_GetContextClickCount(ByVal w As Widget Ptr) As ULongInt
+    Dim As ListBoxData Ptr d = listbox_SelectionData(w)
+    If d = 0 Then Return 0
+    Return d->context_click_count
+End Function
+
+Function listbox_GetLastContextClick(ByVal w As Widget Ptr, ByRef x As Integer, ByRef y As Integer) As Integer
+    x = -1: y = -1
+    Dim As ListBoxData Ptr d = listbox_SelectionData(w)
+    If d = 0 OrElse d->context_click_count = 0 Then Return 0
+    x = d->context_click_x
+    y = d->context_click_y
+    Return -1
+End Function
+
+Function listbox_GetTableHeaderClick(ByVal w As Widget Ptr, ByRef clickCount As ULongInt, ByRef columnIndex As Integer) As Integer
+    clickCount = 0: columnIndex = -1
+    Dim As ListBoxData Ptr d = listbox_SelectionData(w)
+    If d = 0 OrElse d->table_header_click_count = 0 OrElse _
+       d->table_header_click_column < 0 OrElse _
+       d->table_header_click_column >= d->table_column_count Then Return 0
+    clickCount = d->table_header_click_count
+    columnIndex = d->table_header_click_column
+    Return -1
+End Function
+
 Function listbox_GetSelectionChangeCount(ByVal w As Widget Ptr) As ULongInt
     Dim As ListBoxData Ptr d = listbox_SelectionData(w)
     If d = 0 Then Return 0

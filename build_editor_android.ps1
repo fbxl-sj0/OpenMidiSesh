@@ -12,9 +12,9 @@
 
         - validate the Android FreeBASIC wrapper and shared project sources
         - select the coarse-pointer profile as a first-run runtime default
-        - substitute only the unavailable external-MIDI endpoint adapter
-        - stage package version metadata without changing installed templates
-        - produce one signed development APK for the requested Android ABI
+        - stage the Android MIDI-input bridge and retain unavailable external output
+        - stage package metadata and bridge sources without changing installed templates
+        - produce a signed development APK for one ABI or all supported ABIs
         - optionally install and launch that APK on the attached device
 
     This file intentionally does NOT contain:
@@ -29,9 +29,9 @@ param(
     [string] $FreeBasicAndroidPath = 'C:\freebasic-android\fbc-android.cmd',
     [string] $OmaGuiPath = '',
     [string] $OutputPath = '',
-    [ValidateSet('android-arm', 'android-aarch64', 'android-x86_64')]
+    [ValidateSet('android-arm', 'android-aarch64', 'android-x86_64', 'universal')]
     [string] $Target = 'android-aarch64',
-    [ValidateRange(21, 35)]
+    [ValidateRange(23, 35)]
     [int] $ApiLevel = 24,
     [ValidateRange(1, 2100000000)]
     [int] $VersionCode = 1,
@@ -131,6 +131,8 @@ $sourceFiles = @(
     'src\audio_tracks.bas',
     'src\audio_sample_slots.bas',
     'src\midi_input_protocol.bas',
+    'src\midi_input_android.bas',
+    'src\midi_input_stream.bas',
     'src\midi_null.bas',
     'src\pitch_transcriber.bas',
     'src\music_symbols.bas'
@@ -153,22 +155,28 @@ New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
 #>
 $compilerArguments = @(
     '--api', $ApiLevel,
-    '--min-api', 21,
+    '--min-api', 23,
     '--target-api', 35,
-    '--target', $Target,
     '--package', $packageName,
     '--label', 'OpenMidiSesh',
-    '--landscape',
     '--env', 'OSE_DEFAULT_INTERACTION_MODE=touch',
     '--env', "XDG_CONFIG_HOME=/data/data/$packageName",
     '-i', $omaGuiRoot,
     '-O', '2',
     '-mt',
+    '-d', 'OMAGUI_NAVIGATION_EXTENSIONS',
     '-d', 'OSE_SFX_ECHO_AVAILABLE=0',
     '-d', 'OSE_SFX_OUTPUT_TELEMETRY_AVAILABLE=0',
+    '-d', 'OSE_SFX_GENERATED_RELEASE_AVAILABLE=1',
     (Join-Path $projectRoot 'src\openmidisesh_unity.bas'),
     '-x', $outputFile
 )
+if ($Target -eq 'universal') {
+    $compilerArguments = @('--targets', 'android-arm,android-aarch64,android-x86_64') + $compilerArguments
+}
+else {
+    $compilerArguments = @('--target', $Target) + $compilerArguments
+}
 if ($RunOnDevice) {
     $compilerArguments += '--runOnPhone'
 }
@@ -206,7 +214,62 @@ try {
         $attribute.Value = $entry[1]
         [void] $manifest.DocumentElement.Attributes.SetNamedItem($attribute)
     }
+    $activity = $manifest.SelectSingleNode('/manifest/application/activity')
+    if ($null -ne $activity) {
+        [void] $activity.SetAttribute('screenOrientation', $androidNamespace, 'unspecified')
+        [void] $activity.SetAttribute('windowSoftInputMode', $androidNamespace, 'stateAlwaysHidden|adjustResize')
+    }
+    foreach ($featureName in @('android.software.midi', 'android.hardware.usb.host')) {
+        $feature = $manifest.CreateElement('uses-feature')
+        [void] $feature.SetAttribute('name', $androidNamespace, $featureName)
+        [void] $feature.SetAttribute('required', $androidNamespace, 'false')
+        [void] $manifest.DocumentElement.AppendChild($feature)
+    }
     $manifest.Save($manifestPath)
+
+    # The wrapper compiles a fixed Java source list. Add our package-private
+    # bridge to its staged activity, without modifying the installed template.
+    $activityPath = Join-Path $stagedTemplate 'FreeBasicNativeActivity.java'
+    $activityText = [IO.File]::ReadAllText($activityPath)
+    $createCall = 'super.onCreate(savedInstanceState);'
+    if (-not $activityText.Contains($createCall)) {
+        throw 'Android activity template must call super.onCreate(savedInstanceState).'
+    }
+    $activityText = $activityText.Replace($createCall,
+        $createCall + "`n        OpenMidiBridge.initialize(this);")
+    $classEnd = $activityText.LastIndexOf('}')
+    $activityText = $activityText.Insert($classEnd, @'
+    private boolean oseFirstWindowFocus = true;
+    @Override public void onWindowFocusChanged(boolean focused) {
+        super.onWindowFocusChanged(focused);
+        if (focused && oseFirstWindowFocus) {
+            oseFirstWindowFocus = false;
+            // Older wrappers may show the IME during native graphics startup.
+            // Hide that initial request once; later user keyboard requests work.
+            getWindow().getDecorView().postDelayed(new Runnable() {
+                @Override public void run() { setKeyboardVisibleFromNative(false); }
+            }, 500);
+        }
+    }
+    @Override protected void onStop() {
+        OpenMidiBridge.shutdown();
+        super.onStop();
+    }
+    @Override protected void onDestroy() {
+        OpenMidiBridge.dispose();
+        super.onDestroy();
+    }
+'@)
+    $bridgeText = [IO.File]::ReadAllText((Join-Path $projectRoot 'src/android/OpenMidiBridge.java'))
+    $imports = [regex]::Matches($bridgeText, '(?m)^import .+;') | ForEach-Object { $_.Value }
+    $activityText = $activityText.Replace('import android.app.NativeActivity;',
+        "import android.app.NativeActivity;`n" + ($imports -join "`n"))
+    $bridgeStart = $bridgeText.IndexOf('class OpenMidiBridge')
+    $activityText += "`n" + $bridgeText.Substring($bridgeStart)
+    [IO.File]::WriteAllText($activityPath, $activityText)
+    $nativePath = Join-Path $stagedTemplate 'fb_android_app.c'
+    [IO.File]::AppendAllText($nativePath, "`n" +
+        [IO.File]::ReadAllText((Join-Path $projectRoot 'src/android/midi_bridge.c')))
 
     # This counter is independent of the product's display version. Native
     # forward-slash paths are understood by the wrapper's bundled shell.

@@ -35,7 +35,7 @@ def publish(directory: Path) -> None:
         if (not re.fullmatch(r"openmidisesh-[0-9A-Za-z.+-]+-" + target + r"-x86_64\.(zip|tar\.gz)", filename)
                 or report["system"] != target or report["architecture"] != "x86_64"
                 or report["source_commit"] != commit or report["tests_failed"] != 0
-                or report["tests_passed"] != (61 if target == "windows" else 60)
+                or report["tests_passed"] != (63 if target == "windows" else 62)
                 or report["built_editor"]["status"] != "pass"
                 or report["packaged_editor"]["status"] != "pass"):
             raise ValueError("Unqualified native target: " + target)
@@ -71,7 +71,8 @@ def publish(directory: Path) -> None:
                     "This is distribution revision " + tag + "; the application reports " + evidence[0]["application_version"] + ".\n")
     command = ["gh", "release", "create", tag, "--verify-tag", "--title", "OpenMidiSesh " + tag[1:],
                "--notes-file", str(body), "--repo", "fbxl-sj0/OpenMidiSesh"]
-    if "dev" in tag:
+    # Pre-1.0 packages retain the project's development-release designation.
+    if "dev" in tag or evidence[0]["application_version"].startswith("0."):
         command.append("--prerelease")
     subprocess.run(command + [str(path) for path in assets] + [str(checksums)], check=True)
 

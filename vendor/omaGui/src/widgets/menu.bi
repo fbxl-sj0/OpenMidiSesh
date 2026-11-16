@@ -34,7 +34,18 @@
 
 #include once "src/widgets/widgets.bi"
 
-Const MENU_MAX_ITEMS As Integer = 64
+' This shared ceiling also bounds listbox item storage. Generic consumers stay
+' compact; a compatibility profile may raise it before including omaGUI.
+#ifndef OMAGUI_MENU_MAX_ITEMS
+#define OMAGUI_MENU_MAX_ITEMS 64
+#endif
+#if OMAGUI_MENU_MAX_ITEMS < 1
+#error OMAGUI_MENU_MAX_ITEMS must be from 1 to 256
+#endif
+#if OMAGUI_MENU_MAX_ITEMS > 256
+#error OMAGUI_MENU_MAX_ITEMS must be from 1 to 256
+#endif
+Const MENU_MAX_ITEMS As Integer = OMAGUI_MENU_MAX_ITEMS
 Const MENU_ITEM_KIND_NORMAL As Integer = 0
 Const MENU_ITEM_KIND_SEPARATOR As Integer = 1
 Const MENU_MAX_NESTING As Integer = 32
@@ -129,6 +140,12 @@ Declare Function menu_GetVisibleItemCount(ByVal m As Widget Ptr) As Integer
 Declare Function menu_GetItemVisible(ByVal m As Widget Ptr, ByVal itemIndex As Integer) As Integer
 Declare Function menu_SetItemVisible(ByVal m As Widget Ptr, ByVal itemIndex As Integer, ByVal visibleValue As Integer) As Integer
 Declare Function menu_SetItemLabel(ByVal m As Widget Ptr, ByVal itemIndex As Integer, ByVal itemText As String) As Integer
+Declare Function menu_SetItemSeparator(ByVal m As Widget Ptr, ByVal itemIndex As Integer, ByVal separatorValue As Integer) As Integer
+Declare Function menu_GetItemLabel(ByVal m As Widget Ptr, ByVal itemIndex As Integer) As String
+Declare Function menu_GetItemEnabled(ByVal m As Widget Ptr, ByVal itemIndex As Integer) As Integer
+Declare Function menu_GetItemChecked(ByVal m As Widget Ptr, ByVal itemIndex As Integer) As Integer
+Declare Function menu_GetItemShortcutText(ByVal m As Widget Ptr, ByVal itemIndex As Integer) As String
+Declare Function menu_GetItemShortcut(ByVal m As Widget Ptr, ByVal itemIndex As Integer, ByRef scanCode As Integer, ByRef modifiers As Integer) As Integer
 Declare Function menu_SetItemEnabled(ByVal m As Widget Ptr, ByVal itemIndex As Integer, ByVal enabledValue As Integer) As Integer
 Declare Function menu_SetItemChecked(ByVal m As Widget Ptr, ByVal itemIndex As Integer, ByVal checkedValue As Integer) As Integer
 Declare Function menu_SetItemShortcut( _

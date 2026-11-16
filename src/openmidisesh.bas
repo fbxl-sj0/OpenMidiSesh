@@ -106,10 +106,12 @@
 #include once "wav_export_sfx.bi"
 
 #include once "editor/state.bi"
+#include once "display_profile.bi"
 #include once "editor/document_commands.bi"
 #include once "editor/channel_state.bi"
 #include once "editor/playback_source.bi"
 #include once "editor/midi_transport.bi"
+#include once "editor/input_monitor.bi"
 #include once "editor/score_input.bi"
 #include once "editor/touch_input.bi"
 #include once "editor/score_render.bi"
@@ -124,6 +126,7 @@
 #include once "editor/widgets_and_audits.bi"
 #include once "editor/smoothness.bi"
 
+session_ResetInputMonitor()
 session_MasterVolume = 1.0
 session_MasterEchoWet = 0.0
 session_MasterEchoFeedback = CSng(0.30)
@@ -243,14 +246,14 @@ Dim As Integer session_AutomatedRenderRun = _
     session_TestSmoothnessReport <> ""
 If session_AutomatedRenderRun <> 0 Then
     session_TestWindowWidth = session_TestEnvironmentInteger( _
-        "OSE_TEST_WIDTH", 800, 3840, SESSION_INITIAL_WIDTH)
+        "OSE_TEST_WIDTH", 320, 3840, SESSION_INITIAL_WIDTH)
     session_ScoreTrackRowHeight = session_TestEnvironmentInteger( _
         "OSE_TEST_SCORE_ROW_HEIGHT", _
         SESSION_SCORE_TRACK_ROW_HEIGHT_MINIMUM, _
         SESSION_SCORE_TRACK_ROW_HEIGHT_MAXIMUM, _
         SESSION_SCORE_TRACK_ROW_HEIGHT_DEFAULT)
     session_TestWindowHeight = session_TestEnvironmentInteger( _
-        "OSE_TEST_HEIGHT", 600, 2160, SESSION_INITIAL_HEIGHT)
+        "OSE_TEST_HEIGHT", 240, 2160, SESSION_INITIAL_HEIGHT)
     /'
         Some X11 window managers fit a resizable client to the desktop work
         area before the first frame. A fixed automated-capture window keeps
@@ -295,16 +298,26 @@ If session_AutomatedRenderRun <> 0 Then
     input_MockMouse session_TestMouseX, session_TestMouseY, 0
 End If
 
+If session_AutomatedRenderRun = 0 Then _
+    displayProfile_InitialSize session_TestWindowWidth, session_TestWindowHeight
 backend_Init session_TestWindowWidth, session_TestWindowHeight, 0, _
     session_TestWindowFlags
 WindowTitle OSE_PRODUCT_NAME + " " + OSE_VERSION_TEXT
 If session_TestEnvironmentFlag("OSE_TEST_HIDE_WINDOW") <> 0 Then _
     ScreenControl FB.SET_WINDOW_POS, -32000, -32000
 
+backend_SetResponsiveDisplay -1
+displayProfile_Poll()
+If backend_DeviceClass() = BACKEND_DEVICE_CLASS_HANDHELD Then
+    session_InteractionMode = OSE_UI_INTERACTION_TOUCH
+    uiInteraction_Metrics session_InteractionMetrics, session_InteractionMode
+End If
 gui_Init
 session_ApplyTheme session_ThemeMode, 0
 musicSymbols_LoadDefault()
 session_CreateWidgets()
+gui_SetFocus 0
+backend_SetSoftKeyboard 0
 
 Dim As String initialFilename = Trim(Command(1))
 If initialFilename <> "" Then
@@ -437,6 +450,7 @@ Do
     Dim As Double session_FrameStartClock = Timer
     Dim As Integer screenWidth
     Dim As Integer screenHeight
+    displayProfile_Poll()
     backend_GetSize screenWidth, screenHeight
 
     gui_SetViewportSize screenWidth, screenHeight
@@ -454,9 +468,13 @@ Do
             session_TestSmoothnessFrameCounter, screenWidth, screenHeight, _
             session_TestSmoothnessPointerUpdates
     End If
+    session_MenuInputActive = IIf(session_VisibleDesktopMenuIndex() >= 0, -1, 0)
     gui_UpdateAll
     If session_AutomatedRenderRun = 0 AndAlso _
         backend_WindowCloseRequested() <> 0 Then session_RequestQuit()
+    If session_MonitorEnabled <> 0 AndAlso (session_LiveRecording = 0 OrElse _
+        session_LiveRecordingKeyboardOnly <> 0) Then _
+        session_ProcessMidiInput()
     session_ProcessMenuBar()
     session_ProcessPaneScrollbars screenHeight
     session_ProcessDiscardConfirmation()
@@ -617,6 +635,7 @@ End If
 If session_MicCaptureActive <> 0 Then
     session_FinishMicCapture()
 End If
+session_ResetInputMonitor()
 session_StopAllAuditionNotes()
 session_StopPlayback()
 audioSampleSlots_Clear()

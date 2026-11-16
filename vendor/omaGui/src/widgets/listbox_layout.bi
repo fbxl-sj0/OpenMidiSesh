@@ -75,6 +75,22 @@ Private Sub listbox_RevealRow(ByVal w As Widget Ptr, ByVal item_index As Integer
     End If
 End Sub
 
+Private Function listbox_HitTableHeader(ByVal w As Widget Ptr, ByVal pointer_x As Integer, ByVal pointer_y As Integer) As Integer
+    Dim As ListBoxData Ptr d = w->data
+    If d->table_column_count <= 0 OrElse pointer_y < w->ay OrElse _
+       pointer_y >= w->ay + LISTBOX_HEADER_HEIGHT OrElse _
+       pointer_x < w->ax OrElse pointer_x >= w->ax + w->w Then Return -1
+    Dim As Integer column_x = w->ax
+    For column_index As Integer = 0 To d->table_column_count - 1
+        Dim As Integer column_width = d->table_column_widths(column_index)
+        If pointer_x >= column_x AndAlso pointer_x < column_x + column_width Then _
+            Return column_index
+        column_x += column_width
+        If column_x >= w->ax + w->w Then Exit For
+    Next
+    Return -1
+End Function
+
 Private Function listbox_HitRow(ByVal w As Widget Ptr, ByVal pointer_x As Integer, ByVal pointer_y As Integer) As Integer
     Dim As ListBoxData Ptr d = w->data
     Dim As Integer client_width = w->w

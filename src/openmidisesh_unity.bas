@@ -120,6 +120,11 @@
 #include once "midi_input_win.bas"
 ' This single-source packaging entry point includes each selected implementation once.
 #include once "midi_output_sfx.bas"
+#ElseIf Defined(__FB_ANDROID__)
+' FBLINT-ALLOW-BAS-INCLUDES: Android packaging selects one implementation.
+#include once "midi_input_stream.bas"
+#include once "midi_input_android.bas"
+#include once "midi_null.bas"
 #ElseIf Defined(__FB_LINUX__)
 ' This single-source packaging entry point includes each selected implementation once.
 #include once "midi_alsa.bas"

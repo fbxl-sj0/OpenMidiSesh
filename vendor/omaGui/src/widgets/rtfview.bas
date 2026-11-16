@@ -423,6 +423,8 @@ Private Function rtfview_AppendCodePoint( _
            runData->bold = parserState.bold AndAlso runData->italic = parserState.italic AndAlso _
            runData->automatic_color = automaticColor AndAlso _
            runData->color = runColor AndAlso _
+           runData->source_font_number = parserState.font_number AndAlso _
+           runData->source_font_halfpoints = parserState.font_halfpoints AndAlso _
            runData->underline = parserState.underline Then
             continueRun = -1
         End If
@@ -451,6 +453,8 @@ Private Function rtfview_AppendCodePoint( _
         d->runs(runIndex).color = runColor
         d->runs(runIndex).font_id = fontId
         d->runs(runIndex).font_percent = fontPercent
+        d->runs(runIndex).source_font_number = parserState.font_number
+        d->runs(runIndex).source_font_halfpoints = parserState.font_halfpoints
         d->runs(runIndex).bold = parserState.bold
         d->runs(runIndex).italic = parserState.italic
         d->runs(runIndex).automatic_color = automaticColor

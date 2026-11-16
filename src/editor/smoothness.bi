@@ -368,6 +368,11 @@ Private Sub session_CreateWidgets()
         SESSION_TRANSPORT_RECORD_WIDTH, @session_OnLiveRecord
     session_AddTransportButton "step_record", SESSION_TRANSPORT_STEP_LEFT, _
         SESSION_TRANSPORT_STEP_WIDTH, @session_OnStepRecord
+    session_MonitorButton = button_Create("monitor", "Monitor", 996, _
+        SESSION_TOOLBAR_TOP + 3, 92, SESSION_TOOLBAR_BUTTON_HEIGHT, @session_OnMonitor)
+    If session_MonitorButton <> 0 Then _
+        session_MonitorButton->render = @session_RenderToolbarTextButton
+    gui_AddWidget session_MonitorButton
     session_TempoLabel = session_CreateEditorLabel("tempo_label", "Tempo", 654, _
         SESSION_TOOLBAR_TOP + 13)
     If session_TempoLabel <> 0 Then
@@ -488,6 +493,7 @@ Private Sub session_CreateWidgets()
     menu_AddItem session_WindowMenu, "Fit Project    Ctrl+F", @session_OnWindowMenu
     menu_AddItem session_WindowMenu, "Fit Tracks Ctrl+Shift+F", @session_OnWindowMenu
     menu_AddItem session_WindowMenu, "MIDI Event List...", @session_OnWindowMenu
+    menu_AddItem session_WindowMenu, "Switch Score / Mixer", @session_OnWindowMenu
     gui_AddWidget session_WindowMenu
     session_TrackMenu = session_CreateEditorMenu("track_menu", 254, SESSION_MENU_HEIGHT)
     menu_AddItem session_TrackMenu, "Add Track", @session_OnTrackMenu
