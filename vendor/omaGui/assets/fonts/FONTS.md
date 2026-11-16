@@ -21,6 +21,12 @@ The small Arial-derived files remain for compatibility with existing omaGUI
 layout tests. New application headings use the Liberation bitmap faces so the
 visual result does not depend on a host font installation.
 
+`font_latin1_fallback.bi` supplies the bounded U+00A0 through U+00FF fallback
+from Liberation Sans Regular at 10 points, excluding the non-drawing soft
+hyphen. Native redistributable builds include this table alongside their
+selected ASCII faces. Its source font uses the same SIL Open Font License 1.1
+carried in `OFL-1.1.txt`.
+
 The generator command is:
 
 ```text
